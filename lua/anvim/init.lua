@@ -1,0 +1,97 @@
+local config = require('anvim.config')
+local input = require('anvim.input')
+local layout = require('anvim.layout')
+local readonly = require('anvim.readonly')
+local sidecar = require('anvim.sidecar')
+local state = require('anvim.state')
+local transcript = require('anvim.transcript')
+
+local M = {}
+
+local api = vim.api
+
+local highlights = {
+  AnvimClaude = { fg = '#d77757' },
+  AnvimPrompt = { link = 'Special' },
+  AnvimUser = { link = 'CursorLine' },
+  AnvimBullet = { link = 'Normal' },
+  AnvimToolName = { bold = true },
+  AnvimToolPending = { link = 'Comment' },
+  AnvimToolOk = { link = 'DiagnosticOk' },
+  AnvimToolError = { link = 'DiagnosticError' },
+  AnvimResult = { link = 'Comment' },
+  AnvimModeEdits = { link = 'DiagnosticHint' },
+  AnvimModePlan = { link = 'DiagnosticInfo' },
+  AnvimModeBypass = { link = 'DiagnosticError' },
+}
+
+local function set_highlights()
+  for name, spec in pairs(highlights) do
+    api.nvim_set_hl(0, name, vim.tbl_extend('force', spec, { default = true }))
+  end
+end
+
+local function refresh_branch()
+  vim.system({ 'git', 'branch', '--show-current' }, { cwd = state.cwd, text = true }, function(obj)
+    vim.schedule(function()
+      state.branch = obj.code == 0 and vim.trim(obj.stdout) or nil
+      input.redraw()
+    end)
+  end)
+end
+
+local function wire()
+  transcript.attach(sidecar)
+  input.attach()
+  readonly.attach(sidecar)
+  sidecar.on('init', function(ev)
+    state.session_id = ev.session_id
+    state.model = ev.model
+    state.permission_mode = ev.permission_mode
+    state.process = 'ready'
+  end)
+  sidecar.on('status', function(ev)
+    if ev.permission_mode then
+      state.permission_mode = ev.permission_mode
+    end
+  end)
+  sidecar.on('turn_end', refresh_branch)
+  sidecar.on('exit', function()
+    state.process = 'exited'
+  end)
+end
+
+function M.setup(opts)
+  config.setup(opts)
+  vim.o.statusline = "%!v:lua.require'anvim.statusline'.render()"
+  set_highlights()
+  api.nvim_create_autocmd('ColorScheme', { callback = set_highlights })
+  readonly.setup()
+  layout.setup_quit()
+  api.nvim_create_user_command('Anvim', M.start, { desc = 'Open the anvim layout and start Claude' })
+  api.nvim_create_user_command('AnvimInterrupt', input.interrupt, { desc = 'Interrupt Claude' })
+end
+
+local started = false
+
+function M.start()
+  layout.open()
+  if started then
+    return
+  end
+  started = true
+  state.cwd = vim.fn.getcwd()
+  state.permission_mode = config.options.permission_mode
+  wire()
+  refresh_branch()
+  sidecar.start({
+    type = 'start',
+    cwd = state.cwd,
+    model = config.options.model,
+    permission_mode = config.options.permission_mode,
+    append_system_prompt = config.options.append_system_prompt,
+  })
+  api.nvim_create_autocmd('VimLeavePre', { callback = sidecar.stop })
+end
+
+return M

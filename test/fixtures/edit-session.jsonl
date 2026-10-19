@@ -1,0 +1,76 @@
+1792449658514 {"type":"init","session_id":"00000000-0000-0000-0000-000000000000","model":"claude-opus-5-5","cwd":"/ANVIM_FIXTURE","permission_mode":"bypassPermissions","version":"2.1.304","slash_commands":[]}
+1792449658516 {"type":"status","status":"requesting"}
+1792449660511 {"type":"turn_start"}
+1792449660512 {"type":"tool_start","id":"toolu_01D5wC45cfmoA4tQa7ZCnysB","name":"Read"}
+1792449660603 {"type":"tool_field","id":"toolu_01D5wC45cfmoA4tQa7ZCnysB","name":"Read","key":"file_path","phase":"start"}
+1792449660603 {"type":"tool_field","id":"toolu_01D5wC45cfmoA4tQa7ZCnysB","name":"Read","key":"file_path","phase":"delta","text":"/private/t"}
+1792449660651 {"type":"tool_field","id":"toolu_01D5wC45cfmoA4tQa7ZCnysB","name":"Read","key":"file_path","phase":"delta","text":"mp/claude-501/"}
+1792449660702 {"type":"tool_field","id":"toolu_01D5wC45cfmoA4tQa7ZCnysB","name":"Read","key":"file_path","phase":"delta","text":"-Users-davidbach"}
+1792449660841 {"type":"tool_field","id":"toolu_01D5wC45cfmoA4tQa7ZCnysB","name":"Read","key":"file_path","phase":"delta","text":"mann-dev-anv"}
+1792449660841 {"type":"tool_field","id":"toolu_01D5wC45cfmoA4tQa7ZCnysB","name":"Read","key":"file_path","phase":"delta","text":"im/8d454673-4"}
+1792449660850 {"type":"tool_field","id":"toolu_01D5wC45cfmoA4tQa7ZCnysB","name":"Read","key":"file_path","phase":"delta","text":"b94-414"}
+1792449660898 {"type":"tool_field","id":"toolu_01D5wC45cfmoA4tQa7ZCnysB","name":"Read","key":"file_path","phase":"delta","text":"f-9147-26db"}
+1792449660949 {"type":"tool_field","id":"toolu_01D5wC45cfmoA4tQa7ZCnysB","name":"Read","key":"file_path","phase":"delta","text":"df180c74/scrat"}
+1792449660999 {"type":"tool_field","id":"toolu_01D5wC45cfmoA4tQa7ZCnysB","name":"Read","key":"file_path","phase":"delta","text":"chpad/smoke/"}
+1792449661057 {"type":"tool_field","id":"toolu_01D5wC45cfmoA4tQa7ZCnysB","name":"Read","key":"file_path","phase":"delta","text":"matchparen.lua"}
+1792449661171 {"type":"tool_field","id":"toolu_01D5wC45cfmoA4tQa7ZCnysB","name":"Read","key":"file_path","phase":"end","value":"/ANVIM_FIXTURE/matchparen.lua"}
+1792449661177 {"type":"tool_use","id":"toolu_01D5wC45cfmoA4tQa7ZCnysB","name":"Read","input":{"file_path":"/ANVIM_FIXTURE/matchparen.lua"},"parent_id":null}
+1792449661180 {"type":"tool_input_end","id":"toolu_01D5wC45cfmoA4tQa7ZCnysB"}
+1792449661198 {"type":"tool_result","id":"toolu_01D5wC45cfmoA4tQa7ZCnysB","is_error":false,"text":"1\tlocal api = vim.api\n2\tlocal fn = vim.fn\n3\tlocal nvim_on = require('vim._core.util').nvim_on\n4\t\n5\tlocal M = {}\n6\t\n7\tlocal skip_names = { 'string', 'character', 'singlequote', 'escape', 'symbol', 'comment' }\n8\t\n9\t---@param text string\n10\t---@param byte_col integer\n11\t---@return string\n12\tlocal function char_at(text, byte_col)\n13\t  if byte_col > #text then\n14\t    return ''\n15\t  end\n16\t  return text:sub(byte_col, byte_col + vim.str_utf_end(text, byte_col))\n17\tend\n18\t\n19\t---@param text string\n20\t---@param byte_col integer\n21\t---@return string\n22\tlocal function char_before(text, byte_col)\n23\t  local end_col = math.min(byte_col - 1, #text)\n24\t  if end_col < 1 then\n25\t    return ''\n26\t  end\n27\t  return text:sub(end_col + vim.str_utf_start(text, end_col), end_col)\n28\tend\n29\t\n30\tfunction M.enable()\n31\t  vim.g.loaded_matchparen = 1\n32\t\n33\t  if vim.g.matchparen_timeout == nil then\n34\t    vim.g.matchparen_timeout = 300\n35\t  end\n36\t  if vim.g.matchparen_insert_timeout == nil then\n37\t    vim.g.matchparen_insert_timeout = 60\n38\t  end\n39\t  if vim.g.matchparen_disable_cursor_hl == nil then\n40\t    vim.g.matchparen_disable_cursor_hl = 0\n41\t  end\n42\t\n43\t  local group = api.nvim_create_augroup('matchparen', { clear = true })\n44\t\n45\t  -- Replace all matchparen autocommands\n46\t  nvim_on(\n47\t    { 'CursorMoved', 'CursorMovedI', 'WinEnter', 'WinScrolled', 'TextChanged', 'TextChangedI' },\n48\t    group,\n49\t    function()\n50\t      M.highlight_matching_pair()\n51\t    end\n52\t  )\n53\t  nvim_on('BufWinEnter', group, function()\n54\t    nvim_on('SafeState', group, { once = true }, function()\n55\t      M.highlight_matching_pair()\n56\t    end)\n57\t  end)\n58\t  nvim_on({ 'WinLeave', 'BufLeave', 'TextChangedP' }, group, function()\n59\t    M.remove_matches()\n60\t  end)\n61\t\n62\t  -- Define commands that will disable and enable the plugin.\n63\t  api.nvim_create_user_command('DoMatchParen', function()\n64\t    M.do_matchparen()\n65\t  end, { force = true })\n66\t  api.nvim_create_user_command('NoMatchParen', function()\n67\t...","result":{"type":"text","file":{"filePath":"/ANVIM_FIXTURE/matchparen.lua","content":"local api = vim.api\nlocal fn = vim.fn\nlocal nvim_on = require('vim._core.util').nvim_on\n\nlocal M = {}\n\nlocal skip_names = { 'string', 'character', 'singlequote', 'escape', 'symbol', 'comment' }\n\n---@param text string\n---@param byte_col integer\n---@return string\nlocal function char_at(text, byte_col)\n  if byte_col > #text then\n    return ''\n  end\n  return text:sub(byte_col, byte_col + vim.str_utf_end(text, byte_col))\nend\n\n---@param text string\n---@param byte_col integer\n---@return string\nlocal function char_before(text, byte_col)\n  local end_col = math.min(byte_col - 1, #text)\n  if end_col < 1 then\n    return ''\n  end\n  return text:sub(end_col + vim.str_utf_start(text, end_col), end_col)\nend\n\nfunction M.enable()\n  vim.g.loaded_matchparen = 1\n\n  if vim.g.matchparen_timeout == nil then\n    vim.g.matchparen_timeout = 300\n  end\n  if vim.g.matchparen_insert_timeout == nil then\n    vim.g.matchparen_insert_timeout = 60\n  end\n  if vim.g.matchparen_disable_cursor_hl == nil then\n    vim.g.matchparen_disable_cursor_hl = 0\n  end\n\n  local group = api.nvim_create_augroup('matchparen', { clear = true })\n\n  -- Replace all matchparen autocommands\n  nvim_on(\n    { 'CursorMoved', 'CursorMovedI', 'WinEnter', 'WinScrolled', 'TextChanged', 'TextChangedI' },\n    group,\n    function()\n      M.highlight_matching_pair()\n    end\n  )\n  nvim_on('BufWinEnter', group, function()\n    nvim_on('SafeState', group, { once = true }, function()\n      M.highlight_matching_pair()\n    end)\n  end)\n  nvim_on({ 'WinLeave', 'BufLeave', 'TextChangedP' }, group, function()\n    M.remove_matches()\n  end)\n\n  -- Define commands that will disable and enable the plugin.\n  api.nvim_create_user_command('DoMatchParen', function()\n    M.do_matchparen()\n  end, { force = true })\n  api.nvim_create_user_command('NoMatchParen', function()\n    M.no_matchparen()\n  end, { force = true })\nend\n\n--- The function that is invoked (very often) to define a \":match\" highlighting\n--- for any matching paren.\n---@param win? integer\nfunction ...","numLines":319,"startLine":1,"totalLines":319}},"parent_id":null}
+1792449661204 {"type":"status","status":"requesting"}
+1792449663014 {"type":"thinking_start"}
+1792449664004 {"type":"thinking_stop"}
+1792449664005 {"type":"tool_start","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit"}
+1792449664005 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"file_path","phase":"start"}
+1792449664005 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"file_path","phase":"delta","text":"/"}
+1792449664005 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"file_path","phase":"delta","text":"private/tmp/claude"}
+1792449664005 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"file_path","phase":"delta","text":"-501/-Users-dav"}
+1792449664006 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"file_path","phase":"delta","text":"idbachmann-"}
+1792449664006 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"file_path","phase":"delta","text":"dev-anvim/8"}
+1792449664006 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"file_path","phase":"delta","text":"d454673-4b94"}
+1792449664043 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"file_path","phase":"delta","text":"-414"}
+1792449664093 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"file_path","phase":"delta","text":"f-9147-26db"}
+1792449664145 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"file_path","phase":"delta","text":"df180c74/scrat"}
+1792449664195 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"file_path","phase":"delta","text":"chpad/smoke/"}
+1792449664576 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"file_path","phase":"delta","text":"matchparen.lua"}
+1792449664577 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"file_path","phase":"end","value":"/ANVIM_FIXTURE/matchparen.lua"}
+1792449664577 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"old_string","phase":"start"}
+1792449664578 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"old_string","phase":"delta","text":"---"}
+1792449664578 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"old_string","phase":"delta","text":"@param text string\n---@param"}
+1792449664578 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"old_string","phase":"delta","text":" byte_col integer\n---"}
+1792449664578 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"old_string","phase":"delta","text":"@return string\nlocal function char_"}
+1792449664600 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"old_string","phase":"delta","text":"at(text, byte_col"}
+1792449664650 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"old_string","phase":"delta","text":")"}
+1792449664752 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"old_string","phase":"end","value":"---@param text string\n---@param byte_col integer\n---@return string\nlocal function char_at(text, byte_col)"}
+1792449664752 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"new_string","phase":"start"}
+1792449664753 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"new_string","phase":"delta","text":"--"}
+1792449664801 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"new_string","phase":"delta","text":"- Returns the whole U"}
+1792449664855 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"new_string","phase":"delta","text":"TF-8 character that star"}
+1792449664901 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"new_string","phase":"delta","text":"ts at byte_col, or"}
+1792449665031 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"new_string","phase":"delta","text":" '' past"}
+1792449665031 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"new_string","phase":"delta","text":" the end."}
+1792449665065 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"new_string","phase":"delta","text":"\n---@param text string\n---"}
+1792449665100 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"new_string","phase":"delta","text":"@param byte_col integer"}
+1792449665151 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"new_string","phase":"delta","text":"\n---@return string\nlocal function"}
+1792449665200 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"new_string","phase":"delta","text":" char_at(text, byte"}
+1792449665251 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"new_string","phase":"delta","text":"_col)"}
+1792449665330 {"type":"tool_field","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","key":"new_string","phase":"end","value":"--- Returns the whole UTF-8 character that starts at byte_col, or '' past the end.\n---@param text string\n---@param byte_col integer\n---@return string\nlocal function char_at(text, byte_col)"}
+1792449665331 {"type":"tool_use","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","name":"Edit","input":{"replace_all":false,"file_path":"/ANVIM_FIXTURE/matchparen.lua","old_string":"---@param text string\n---@param byte_col integer\n---@return string\nlocal function char_at(text, byte_col)","new_string":"--- Returns the whole UTF-8 character that starts at byte_col, or '' past the end.\n---@param text string\n---@param byte_col integer\n---@return string\nlocal function char_at(text, byte_col)"},"parent_id":null}
+1792449665331 {"type":"tool_input_end","id":"toolu_01As2qTjVSUfmaGSSLFV8u91"}
+1792449665377 {"type":"tool_result","id":"toolu_01As2qTjVSUfmaGSSLFV8u91","is_error":false,"text":"The file /ANVIM_FIXTURE/matchparen.lua has been updated successfully. (file state is current in your context — no need to Read it back)","result":{"filePath":"/ANVIM_FIXTURE/matchparen.lua","oldString":"---@param text string\n---@param byte_col integer\n---@return string\nlocal function char_at(text, byte_col)","newString":"--- Returns the whole UTF-8 character that starts at byte_col, or '' past the end.\n---@param text string\n---@param byte_col integer\n---@return string\nlocal function char_at(text, byte_col)","structuredPatch":[{"oldStart":6,"oldLines":6,"newStart":6,"newLines":7,"lines":[" "," local skip_names = { 'string', 'character', 'singlequote', 'escape', 'symbol', 'comment' }"," ","+--- Returns the whole UTF-8 character that starts at byte_col, or '' past the end."," ---@param text string"," ---@param byte_col integer"," ---@return string"]}],"userModified":false,"replaceAll":false},"parent_id":null}
+1792449665380 {"type":"status","status":"requesting"}
+1792449668262 {"type":"text_start"}
+1792449668263 {"type":"text_delta","text":"I added a one"}
+1792449668263 {"type":"text_delta","text":"-line comment at"}
+1792449668266 {"type":"text_delta","text":" `matchparen.lua"}
+1792449668266 {"type":"text_delta","text":":12`,"}
+1792449668267 {"type":"text_delta","text":" above `char_at`,"}
+1792449668267 {"type":"text_delta","text":" which says that"}
+1792449668267 {"type":"text_delta","text":" the function returns the whole U"}
+1792449668267 {"type":"text_delta","text":"TF-8 character that"}
+1792449668267 {"type":"text_delta","text":" starts at `byte_col"}
+1792449668267 {"type":"text_delta","text":"`, or an"}
+1792449668267 {"type":"text_delta","text":" empty string past the end of the"}
+1792449668267 {"type":"text_delta","text":" line."}
+1792449668319 {"type":"text_stop"}
+1792449668324 {"type":"turn_end","subtype":"success","is_error":false,"duration_ms":9828,"cost_usd":0.306408,"num_turns":3}

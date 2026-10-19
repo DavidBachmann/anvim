@@ -1,0 +1,8 @@
+#!/bin/sh
+# Usage: anvim [dir] [nvim args...]
+root=$(cd "$(dirname "$(realpath "$0")")/.." && pwd)
+if [ -d "$1" ]; then
+  cd "$1" || exit 1
+  shift
+fi
+NVIM_APPNAME=anvim exec nvim -u "$root/init.lua" "$@"
