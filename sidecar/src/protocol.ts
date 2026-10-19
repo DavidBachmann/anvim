@@ -13,7 +13,8 @@ export type Command =
   | { type: "prompt"; text: string }
   | { type: "interrupt" }
   | { type: "set_permission_mode"; mode: string }
-  | { type: "set_model"; model?: string };
+  | { type: "set_model"; model?: string }
+  | { type: "preview_done"; req: number };
 
 export type Event =
   | {
@@ -42,6 +43,9 @@ export type Event =
       value?: unknown;
     }
   | { type: "tool_input_end"; id: string }
+  // Sent before an edit tool runs. The plugin answers preview_done once its
+  // streamed preview has caught up, so the file never changes ahead of the view.
+  | { type: "await_preview"; req: number; tool_use_id: string }
   | {
       type: "tool_use";
       id: string;

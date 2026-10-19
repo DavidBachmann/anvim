@@ -4,9 +4,16 @@ local M = {}
 
 local api = vim.api
 
+local function talk()
+  require('anvim.layout').focus_input()
+end
+
 function M.lock(buf)
   if api.nvim_buf_is_valid(buf) and vim.bo[buf].buftype == '' then
     vim.bo[buf].modifiable = false
+    for _, key in ipairs({ 'i', 'a' }) do
+      vim.keymap.set('n', key, talk, { buffer = buf, desc = 'Talk to Claude' })
+    end
   end
 end
 

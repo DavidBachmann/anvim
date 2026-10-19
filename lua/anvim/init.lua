@@ -1,9 +1,11 @@
 local config = require('anvim.config')
+local follow = require('anvim.follow')
 local input = require('anvim.input')
 local layout = require('anvim.layout')
 local readonly = require('anvim.readonly')
 local sidecar = require('anvim.sidecar')
 local state = require('anvim.state')
+local stream = require('anvim.stream')
 local transcript = require('anvim.transcript')
 
 local M = {}
@@ -23,12 +25,16 @@ local highlights = {
   AnvimModeEdits = { link = 'DiagnosticHint' },
   AnvimModePlan = { link = 'DiagnosticInfo' },
   AnvimModeBypass = { link = 'DiagnosticError' },
+  AnvimInsert = { link = 'DiffAdd' },
+  AnvimRead = { link = 'Visual' },
 }
 
 local function set_highlights()
   for name, spec in pairs(highlights) do
     api.nvim_set_hl(0, name, vim.tbl_extend('force', spec, { default = true }))
   end
+  local del = api.nvim_get_hl(0, { name = 'DiffDelete', link = false })
+  api.nvim_set_hl(0, 'AnvimDelete', { bg = del.bg, strikethrough = true, default = true })
 end
 
 local function refresh_branch()
@@ -44,6 +50,8 @@ local function wire()
   transcript.attach(sidecar)
   input.attach()
   readonly.attach(sidecar)
+  follow.attach(sidecar)
+  stream.attach()
   sidecar.on('init', function(ev)
     state.session_id = ev.session_id
     state.model = ev.model

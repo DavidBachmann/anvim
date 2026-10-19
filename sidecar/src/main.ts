@@ -1,4 +1,11 @@
-import { query, type Options, type PermissionMode, type Query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import {
+  query,
+  type HookCallback,
+  type Options,
+  type PermissionMode,
+  type Query,
+  type SDKUserMessage,
+} from "@anthropic-ai/claude-agent-sdk";
 import { appendFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import type { Command, Event } from "./protocol";
@@ -45,6 +52,27 @@ class Inbox implements AsyncIterable<SDKUserMessage> {
 const inbox = new Inbox();
 let session: Query | null = null;
 
+const PREVIEW_TIMEOUT_MS = 3000;
+const previews = new Map<number, () => void>();
+let nextReq = 1;
+
+const awaitPreview: HookCallback = async (_input, toolUseID, { signal }) => {
+  if (!toolUseID) return {};
+  const req = nextReq++;
+  await new Promise<void>((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      previews.delete(req);
+      resolve();
+    };
+    const timer = setTimeout(done, PREVIEW_TIMEOUT_MS);
+    signal.addEventListener("abort", done, { once: true });
+    previews.set(req, done);
+    emit({ type: "await_preview", req, tool_use_id: toolUseID });
+  });
+  return {};
+};
+
 async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
   const mode = (cmd.permission_mode ?? "default") as PermissionMode;
   const options: Options = {
@@ -54,6 +82,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     permissionMode: mode,
     allowDangerouslySkipPermissions: mode === "bypassPermissions",
     includePartialMessages: true,
+    hooks: { PreToolUse: [{ matcher: "Edit|Write|NotebookEdit", hooks: [awaitPreview] }] },
     systemPrompt: { type: "preset", preset: "claude_code", append: cmd.append_system_prompt },
     // Permission prompts are not wired to the editor yet.
     canUseTool: async (toolName) => ({
@@ -92,6 +121,9 @@ async function handle(cmd: Command): Promise<void> {
       return;
     case "set_model":
       await session?.setModel(cmd.model);
+      return;
+    case "preview_done":
+      previews.get(cmd.req)?.();
       return;
   }
 }
