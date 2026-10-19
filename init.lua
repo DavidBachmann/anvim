@@ -61,6 +61,7 @@ vim.api.nvim_create_autocmd('FileType', {
 -- ANVIM_REPLAY=<recording> plays a session that ANVIM_RECORD saved, at no API cost.
 local replay = vim.env.ANVIM_REPLAY
 require('anvim').setup({
+  model = vim.env.ANVIM_MODEL,
   permission_mode = 'bypassPermissions',
   sidecar_cmd = replay and { 'bun', root .. '/sidecar/src/replay.ts', replay, vim.env.ANVIM_REPLAY_SPEED or '1' },
 })

@@ -49,10 +49,12 @@ local function wire()
     state.model = ev.model
     state.permission_mode = ev.permission_mode
     state.process = 'ready'
+    input.redraw()
   end)
   sidecar.on('status', function(ev)
     if ev.permission_mode then
       state.permission_mode = ev.permission_mode
+      input.redraw()
     end
   end)
   sidecar.on('turn_end', refresh_branch)

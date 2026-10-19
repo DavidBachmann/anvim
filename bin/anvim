@@ -1,6 +1,34 @@
 #!/bin/sh
-# Usage: anvim [dir] [nvim args...]
+# Usage: anvim [--model <model>] [dir] [nvim args...]
 root=$(cd "$(dirname "$(realpath "$0")")/.." && pwd)
+
+# Take --model out of the arguments and keep the rest in order.
+n=$#
+while [ "$n" -gt 0 ]; do
+  case "$1" in
+    --model)
+      if [ $# -lt 2 ]; then
+        echo "anvim: --model needs a value, e.g. --model haiku" >&2
+        exit 2
+      fi
+      ANVIM_MODEL=$2
+      shift 2
+      n=$((n - 2))
+      ;;
+    --model=*)
+      ANVIM_MODEL=${1#--model=}
+      shift
+      n=$((n - 1))
+      ;;
+    *)
+      set -- "$@" "$1"
+      shift
+      n=$((n - 1))
+      ;;
+  esac
+done
+[ -n "$ANVIM_MODEL" ] && export ANVIM_MODEL
+
 if [ -d "$1" ]; then
   cd "$1" || exit 1
   shift

@@ -161,15 +161,16 @@ function M.activity()
 end
 
 function M.footer()
-  local left = ('%%#AnvimClaude# anvim %%#Comment#%s %%#Normal#%s'):format(
-    state.branch and ('git:(' .. esc(state.branch) .. ')') or '',
-    esc(M.model_label(state.model or config.options.model))
-  )
+  local branch = state.branch and ('git:(' .. state.branch .. ')') or ''
+  local model = M.model_label(state.model or config.options.model)
+  local left = ('%%#AnvimClaude# anvim %%#Comment#%s %%#Normal#%s'):format(esc(branch), esc(model))
   local mode = mode_labels[state.permission_mode]
   if not mode then
     return left
   end
-  local hint = status_width() >= 70 and ' %#Comment#(shift+tab to cycle)' or ''
+  local hint = ' (shift+tab to cycle)'
+  local used = vim.fn.strdisplaywidth((' anvim %s %s  %s%s '):format(branch, model, mode[1], hint))
+  hint = used <= status_width() and ' %#Comment#' .. hint or ''
   return ('%s%%=%%#%s#%s%s '):format(left, mode[2], mode[1], hint)
 end
 
