@@ -1,0 +1,211 @@
+-- The compose window: the prompt in a large window in the middle of the
+-- screen, as Claude Code's Ctrl+G opens the prompt in $EDITOR. It is a
+-- snacks.win with the style of snacks' scratch window. Its buffer is like a
+-- file whose disk is the prompt: :w puts the text in the prompt, :wq, :x and
+-- ZZ also close the window, and :q! drops the changes. <C-g> puts the text in
+-- the prompt and goes back there, and so does leaving the window.
+local config = require("anvim.config")
+local input = require("anvim.input")
+local layout = require("anvim.layout")
+
+local M = {}
+
+local api = vim.api
+local NAME = "anvim://compose"
+local CODE_OPTIONS =
+  { "number", "relativenumber", "statuscolumn", "signcolumn", "cursorline", "conceallevel", "concealcursor" }
+
+---@type snacks.win?
+local win
+---@type [integer, integer]? Where typing goes on in the prompt after the window closes.
+local landing
+---@type integer? The window before the prompt, for <C-w>p.
+local previous
+
+---@return integer?
+function M.win()
+  return win and win:valid() and win.win or nil
+end
+
+local function save(buf)
+  local prompt = input.buf()
+  local lines = api.nvim_buf_get_lines(buf, 0, -1, false)
+  if not vim.deep_equal(lines, api.nvim_buf_get_lines(prompt, 0, -1, false)) then
+    api.nvim_buf_set_lines(prompt, 0, -1, false, lines)
+    input.render()
+  end
+  vim.bo[buf].modified = false
+end
+
+-- Typing goes on in the prompt where it stopped in the compose window.
+local function land()
+  local pos, prompt = landing, layout.wins.input
+  landing = nil
+  if not pos or api.nvim_get_current_win() ~= prompt then
+    return
+  end
+  pos[1] = math.min(pos[1], api.nvim_buf_line_count(input.buf()))
+  if config.options.input.auto_insert then
+    input.resume({ at = pos })
+  else
+    api.nvim_win_set_cursor(prompt, pos)
+  end
+end
+
+-- After :q!, the prompt keeps its text and its place. Neovim enters the
+-- prompt only after WinClosed, so the landing waits for the event loop.
+---@param self snacks.win
+local function on_close(self)
+  if win == self then
+    win = nil
+  end
+  local buf, w = self.buf, self.win
+  -- Next, snacks would go back to the previous window from inside WinClosed,
+  -- where it fires no WinEnter. Without its window, it leaves that to Neovim,
+  -- which goes to the previous window too, with WinEnter. Plugins such as the
+  -- explorer can change that window, so make it the prompt.
+  self.win = nil
+  local prompt, current = layout.wins.input, api.nvim_get_current_win()
+  local function hop(a, b)
+    vim.cmd(("noautocmd call nvim_set_current_win(%d)"):format(a))
+    vim.cmd(("noautocmd call nvim_set_current_win(%d)"):format(b))
+  end
+  if current == w and prompt and api.nvim_win_is_valid(prompt) then
+    hop(prompt, w)
+  elseif current == prompt and previous ~= w and previous and api.nvim_win_is_valid(previous) then
+    -- A window key or a click went to the prompt, which made this window the
+    -- previous one. Neovim forgets it once it closes.
+    hop(previous, prompt)
+  end
+  if not (buf and api.nvim_buf_is_valid(buf) and w and api.nvim_win_is_valid(w)) or vim.bo[buf].modified then
+    return
+  end
+  -- After the cursor left, the mode is the other window's.
+  local typing = api.nvim_get_current_win() == w and api.nvim_get_mode().mode:sub(1, 1) == "i"
+  landing = typing and api.nvim_win_get_cursor(w) or { input.insert_pos(w) }
+  vim.schedule(land)
+end
+
+-- Typed keys that follow <C-g> go on in the prompt, so it lands at once.
+function M.close()
+  if M.win() then
+    save(win.buf)
+    win:close()
+    land()
+  end
+end
+
+-- A float copies the options of the window it opens from, here the prompt.
+-- So it takes the numbers and columns of the code window, which has the
+-- user's own, and wraps prose. As in the prompt, a reference ends in a space,
+-- which 'list' would mark. With 'winfixbuf', <C-o> and :edit cannot put
+-- another buffer in the window.
+local function window_options()
+  local wo = {
+    winbar = "",
+    wrap = true,
+    linebreak = true,
+    list = false,
+    spell = false,
+    winfixheight = false,
+    winfixbuf = true,
+  }
+  local code = layout.code_win()
+  for _, name in ipairs(CODE_OPTIONS) do
+    wo[name] = vim.wo[code][name]
+  end
+  return wo
+end
+
+local function footer()
+  local chunks = {}
+  for _, key in ipairs({ { "<c-g>", "back to the prompt" }, { ":q!", "discard" } }) do
+    vim.list_extend(chunks, {
+      { " ", "SnacksFooter" },
+      { " " .. key[1] .. " ", "SnacksFooterKey" },
+      { " " .. key[2] .. " ", "SnacksFooterDesc" },
+    })
+  end
+  chunks[#chunks + 1] = { " ", "SnacksFooter" }
+  return chunks
+end
+
+function M.open()
+  if M.win() then
+    api.nvim_set_current_win(M.win())
+    return
+  end
+  local prompt = layout.wins.input
+  if not (prompt and api.nvim_win_is_valid(prompt)) then
+    return
+  end
+  local insert = api.nvim_get_mode().mode:sub(1, 1) == "i"
+  local cursor = api.nvim_win_get_cursor(prompt)
+  previous = vim.fn.win_getid(vim.fn.winnr("#"))
+  local lines = api.nvim_buf_get_lines(input.buf(), 0, -1, false)
+  for _, b in ipairs(api.nvim_list_bufs()) do
+    if api.nvim_buf_get_name(b) == NAME then
+      api.nvim_buf_delete(b, { force = true })
+    end
+  end
+  local buf = api.nvim_create_buf(false, false)
+  -- Set before anything can lock it as a file buffer.
+  vim.bo[buf].buftype = "acwrite"
+  api.nvim_buf_set_name(buf, NAME)
+  api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].modified = false
+  vim.b[buf].minipairs_disable = true
+  api.nvim_create_autocmd("BufWriteCmd", {
+    buffer = buf,
+    callback = function()
+      save(buf)
+    end,
+  })
+  -- After a window command, the cursor is in the other window by the time
+  -- the event loop runs. After :q! the compose window is gone.
+  api.nvim_create_autocmd("WinLeave", {
+    buffer = buf,
+    callback = function()
+      vim.schedule(function()
+        local w = M.win()
+        if w and api.nvim_get_current_win() ~= w then
+          M.close()
+        end
+      end)
+    end,
+  })
+  -- snacks defines the scratch style when its scratch module loads.
+  require("snacks.scratch")
+  win = Snacks.win({
+    style = "scratch",
+    -- The scratch window's size, within the screen, so the statusline shows.
+    width = function()
+      return math.min(100, vim.o.columns - 4)
+    end,
+    height = function()
+      return math.min(30, vim.o.lines - 4)
+    end,
+    -- Above other floats, such as the explorer's list, as for a scratch window.
+    zindex = Snacks.win.zindex(20),
+    buf = buf,
+    -- The filetype of the prompt, for its completion of @ files and slash commands.
+    bo = { buftype = "acwrite", bufhidden = "wipe", buflisted = false, swapfile = false, filetype = "anvim_input" },
+    wo = window_options(),
+    title = { { " ❯ ", "AnvimPrompt" }, { "Prompt ", "FloatTitle" } },
+    footer = footer(),
+    footer_keys = false,
+    keys = {
+      -- snacks maps q to a forced close, which drops the changes. Macros keep q.
+      q = false,
+      back = { "<C-g>", M.close, mode = { "n", "i" }, desc = "Back to the prompt" },
+    },
+    on_close = on_close,
+  })
+  local line = lines[cursor[1]] or ""
+  api.nvim_win_set_cursor(win.win, cursor)
+  if insert then
+    vim.cmd.startinsert({ bang = cursor[2] >= #line })
+  end
+end
+
+return M

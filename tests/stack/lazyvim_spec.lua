@@ -862,6 +862,80 @@ describe("LazyVim stack", function()
     keys("<Esc>")
   end)
 
+  it("writes the prompt in the compose window with <C-g>, completes there, and :wq brings it back", function()
+    start()
+    lua([[
+      local sidecar = require("anvim.sidecar")
+      _G.sent, _G.send = {}, sidecar.send
+      sidecar.send = function(msg)
+        table.insert(_G.sent, msg)
+      end
+      sidecar.dispatch({ type = "commands", commands = { { name = "compact", description = "Free up context" } } })
+      vim.cmd.stopinsert()
+      vim.api.nvim_set_current_win(require("anvim.layout").wins.input)
+      vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "" })
+    ]])
+    wait(2000, [[return vim.api.nvim_get_mode().mode == "n"]])
+    lua([[vim.api.nvim_input("A")]])
+    wait(2000, [[return vim.api.nvim_get_mode().mode == "i"]], "not in insert mode")
+    local ok, err = pcall(function()
+      keys("first line<C-g>")
+      wait(2000, [[return require("anvim.compose").win() == vim.api.nvim_get_current_win()]], "<C-g> opened no window")
+      local look = lua([[
+      local config = vim.api.nvim_win_get_config(0)
+      local tree = 0
+      for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+        if vim.bo[vim.api.nvim_win_get_buf(win)].filetype == "snacks_picker_list" then
+          tree = vim.api.nvim_win_get_config(win).zindex
+        end
+      end
+      return {
+        size = { config.width, config.height },
+        border = config.border ~= nil and config.border ~= "none",
+        above_tree = tree > 0 and config.zindex > tree,
+        mode = vim.api.nvim_get_mode().mode,
+        number = vim.wo.number,
+      }
+    ]])
+      assert.are.same({ size = { 100, 30 }, border = true, above_tree = true, mode = "i", number = true }, look)
+      keys("<Esc>osee @matchp")
+      wait(3000, [[return require("blink.cmp").is_menu_visible()]], "no menu after @")
+      keys("<CR>")
+      wait(2000, [[return vim.api.nvim_get_current_line() == "see @matchparen.lua "]], "Enter did not accept the file")
+      keys("<Esc>ggO/compa")
+      wait(3000, [[return require("blink.cmp").is_menu_visible()]], "no menu after /compa")
+      keys("<CR>")
+      wait(2000, [[return vim.api.nvim_get_current_line() == "/compact "]], "Enter did not complete /compact")
+      lua([[vim.wait(300)]])
+      assert.are.same({}, lua([[return _G.sent]]), "Enter sent from the compose window")
+      keys("<Esc>:wq<CR>")
+      wait_where({ win = "input", mode = "i" }, ":wq in the compose window")
+      assert.are.same(
+        { "/compact ", "first line", "see @matchparen.lua " },
+        lua([[return vim.api.nvim_buf_get_lines(require("anvim.input").buf(), 0, -1, false)]])
+      )
+      -- Leaving from normal mode: the prompt is in insert mode by the time the
+      -- window closes, and typing goes on where it stopped, not at the cursor.
+      keys("<C-g>")
+      wait(2000, [[return require("anvim.compose").win() == vim.api.nvim_get_current_win()]], "<C-g> opened no window")
+      keys("<Esc><C-w>h")
+      wait(2000, [[return require("anvim.compose").win() == nil]], "<C-w>h left the window open")
+      wait_where({ win = "input", mode = "i" }, "<C-w>h from the compose window")
+      keys("now")
+      wait(2000, [[return vim.api.nvim_get_current_line() == "/compact now"]], "typing went on elsewhere")
+    end)
+    lua([[
+      local compose = require("anvim.compose").win()
+      if compose then
+        vim.api.nvim_win_close(compose, true)
+      end
+      require("anvim.sidecar").send = _G.send
+      vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "" })
+    ]])
+    keys("<Esc>")
+    assert(ok, err)
+  end)
+
   it("opens Claude's trail with <leader>kt, newest first, and <CR> goes there", function()
     start()
     local file = helpers.tmp .. "/matchparen.lua"

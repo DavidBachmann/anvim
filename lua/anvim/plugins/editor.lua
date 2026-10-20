@@ -22,13 +22,14 @@ return {
   },
 
   -- Enter on a slash command in the prompt completes it and sends it, as in
-  -- Claude Code. Other items, such as @ files, are only completed.
+  -- Claude Code. Other items, such as @ files, are only completed, and so is
+  -- every item in the compose window, which shares the prompt's filetype.
   {
     "saghen/blink.cmp",
     optional = true,
     opts = function(_, opts)
       local function send_command(cmp)
-        local item = vim.bo.filetype == "anvim_input" and cmp.get_selected_item()
+        local item = vim.b.anvim_input and cmp.get_selected_item()
         local data = item and item.data
         if type(data) == "table" and data.anvim_command and data.send then
           return cmp.accept({

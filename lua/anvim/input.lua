@@ -63,6 +63,9 @@ function M.buf()
   map({ "i", "n" }, "<C-x>", function()
     require("anvim.context").clear()
   end, "Unpin the selection")
+  map({ "i", "n" }, "<C-g>", function()
+    require("anvim.compose").open()
+  end, "Write the prompt in a large window")
   -- The transcript takes no focus, so the prompt scrolls it.
   local function scroll(modes, keys)
     for _, key in ipairs(keys) do
@@ -121,12 +124,14 @@ end
 -- Where typing stopped, as a 1-based row and a byte column. <Esc> leaves the
 -- cursor on the character before that place, so the `^` mark tells it, while
 -- the cursor is still there. Otherwise it is the cursor.
+---@param win integer? Another window than the prompt, such as the compose window.
 ---@return integer row, integer col
-function M.insert_pos()
-  local win = assert(prompt_win(), "no prompt window")
-  local row, col = unpack(api.nvim_buf_get_mark(bufnr, "^"))
+function M.insert_pos(win)
+  win = win or assert(prompt_win(), "no prompt window")
+  local buf = api.nvim_win_get_buf(win)
+  local row, col = unpack(api.nvim_buf_get_mark(buf, "^"))
   local cursor = api.nvim_win_get_cursor(win)
-  local line = api.nvim_buf_get_lines(bufnr, cursor[1] - 1, cursor[1], false)[1] or ""
+  local line = api.nvim_buf_get_lines(buf, cursor[1] - 1, cursor[1], false)[1] or ""
   if row == cursor[1] and col <= #line then
     local before = col > 0 and col - 1 + vim.str_utf_start(line, col) or 0
     if cursor[2] == col or cursor[2] == before then

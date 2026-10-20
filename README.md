@@ -36,6 +36,8 @@ File buffers are read-only. `:w` does nothing but say so, and format on save nev
 
 The cursor moves between the code window and the prompt in one step: `Ctrl-W l` or `Ctrl-L` from any row of the code window, and `Ctrl-W h` or `Ctrl-H` back. Entering the prompt starts insert mode where you stopped typing. The transcript takes no focus. A window key that would land on it skips it, a click on it goes to the prompt, and the mouse wheel scrolls it from anywhere. New output keeps the transcript at its end, unless you scrolled up. Then it stays put until you scroll back down or send a prompt. To yank or search the transcript, enter read mode with `<leader>kr`, or drag across it with the mouse.
 
+For a long prompt, `Ctrl-G` in the prompt opens it in a large window in the middle of the screen, as Claude Code's `Ctrl-G` opens it in your editor. There `Enter` adds a line, and `@` and `/` complete as in the prompt. `Ctrl-G` again, `:wq` or `ZZ` puts the text back in the prompt, and typing goes on where it stopped. `:w` puts it there and keeps the window open, and `:q!` drops your changes. Leaving the window keeps the text too. Follow mode goes on while you write.
+
 Only one window shows files, so anvim always knows which file you are looking at. A split, a picker's split action or `:diffsplit` opens the file in the code window instead. Help, quickfix, terminal and plugin windows open as usual. If you close the code window, the transcript or the prompt, anvim opens it again. `:q` in any of them quits anvim, also when other tabs are open.
 
 Claude can also use your editor. It points at code with `show_user`, which marks a range and puts a short note above it until your next prompt. It asks the language servers that run in anvim for diagnostics, definitions, references, hover text and symbols, so it greps less. These tools work in every permission mode, so they read only files inside the directory that anvim opened. `show_user` can point at any file, because its answer holds no file text.
@@ -53,6 +55,7 @@ All of LazyVim's keys and your own work as usual. anvim adds these. `<leader>` i
 | `PageUp`, `PageDown` | prompt | Scroll the transcript |
 | `Ctrl-U`, `Ctrl-D`, `Ctrl-B`, `Ctrl-F` | prompt, normal mode | Scroll the transcript |
 | `Ctrl-X` | prompt | Unpin the selection |
+| `Ctrl-G` | prompt | Write the prompt in a large window. `Ctrl-G` there goes back |
 | `@`, `/` | prompt, insert mode | Complete a file, or a slash command at the start |
 | `i`, `a` | file buffer | Go to the prompt |
 | `c` | file buffer, visual mode | Put a reference to the selected lines in the prompt |

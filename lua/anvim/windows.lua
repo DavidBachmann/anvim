@@ -109,9 +109,10 @@ local function leave_transcript()
 end
 
 local function enter_input()
-  if left == wins.transcript and valid(before_prompt) then
-    -- From read mode. <C-w>p cannot go back to the transcript, so make the
-    -- window before the prompt the previous one.
+  if (left == wins.transcript or not valid(left)) and valid(before_prompt) then
+    -- From read mode, or from a window that closed, such as the compose
+    -- window. <C-w>p cannot go back there, so make the window before the
+    -- prompt the previous one.
     hop(before_prompt)
     hop(wins.input)
   elseif
@@ -207,13 +208,13 @@ local function fold(win)
   end
 end
 
----@return 'code'|'copy'|nil kind A second window that shows code, or a copy of the prompt or transcript window.
+---@return 'code'|'copy'|nil kind A second window that shows code, or a copy of the prompt, the compose window or the transcript.
 local function extra(win)
   if win == wins.code or api.nvim_win_get_config(win).relative ~= "" or vim.w[win].snacks_win then
     return
   end
   local buf = api.nvim_win_get_buf(win)
-  if buf == input.buf() then
+  if buf == input.buf() or vim.bo[buf].filetype == "anvim_input" then
     return win ~= wins.input and "copy" or nil
   elseif buf == transcript.buf() then
     return win ~= wins.transcript and "copy" or nil

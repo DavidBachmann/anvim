@@ -29,7 +29,7 @@ return {
             return "⏺ Claude is waiting"
           end,
           cond = function()
-            return permission.waiting() and not follow.enabled()
+            return permission.waiting() and vim.api.nvim_get_current_win() ~= require("anvim.layout").wins.input
           end,
           color = claude_color,
         },

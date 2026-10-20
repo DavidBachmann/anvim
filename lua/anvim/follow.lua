@@ -14,8 +14,10 @@ local ns = api.nvim_create_namespace("anvim.follow")
 M.agent = nil
 M.behind = 0
 
+-- The compose window is the prompt too.
 function M.enabled()
-  return layout.wins.input ~= nil and api.nvim_get_current_win() == layout.wins.input
+  local win = api.nvim_get_current_win()
+  return layout.wins.input ~= nil and (win == layout.wins.input or win == require("anvim.compose").win())
 end
 
 function M.paused()
