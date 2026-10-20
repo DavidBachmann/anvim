@@ -57,6 +57,11 @@ local draw = {
     transcript.output(ev.text)
   end,
   compact = transcript.compact,
+  -- A notification starts a turn of its own, as a prompt does.
+  agent_end = function(ev)
+    transcript.turn_end()
+    transcript.agent_end(ev)
+  end,
   notice = function(ev)
     transcript.notice(ev.level, ev.text)
   end,
@@ -75,6 +80,7 @@ function M.history(ev)
       end
     end
     transcript.turn_end()
+    transcript.settle_past()
   end)
   state.session_id = ev.session_id
   state.turns = 1

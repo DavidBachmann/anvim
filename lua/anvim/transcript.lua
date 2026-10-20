@@ -21,11 +21,17 @@ local ns_focus = api.nvim_create_namespace("anvim.transcript.focus")
 ---@field children string[]? Labels of a subagent's tool calls.
 ---@field child_rows integer? Rows that show them under the tool line.
 ---@field todo boolean? A TodoWrite or Task tool, which updates the todo list instead of a line.
+---@field held boolean? A background agent's line, which lives on after its result.
+---@field live boolean? Held for an agent of this sidecar, not of a resumed session's past.
 
 ---@type integer?
 local bufnr
 ---@type table<string, anvim.Tool>
 local tools = {}
+-- The lines of background agents. Their tool call returns once the agent
+-- starts, and the line lives on after the turn, until the agent ends.
+---@type table<string, anvim.Tool>
+local held = {}
 local text_open = false
 -- The blocks that other modules own, by the id of the extmark on their first
 -- line. The buffer tells a block from a mark of a rebuilt transcript.
@@ -548,19 +554,24 @@ function M.tool_field(ev)
 end
 
 -- A subagent's tool calls, under its tool line: the last three, and a count of
--- the others, as in Claude Code.
+-- the others, as in Claude Code. A background agent's line says so first.
 local function set_children(tool)
   local row = tool_row(tool)
   if not row then
     return
   end
-  local n = #tool.children
-  local lines = {}
+  local children = tool.children or {}
+  local n = #children
+  local items = tool.held and { "Backgrounded agent" } or {}
   for i = math.max(1, n - 2), n do
-    lines[#lines + 1] = (#lines == 0 and "  ⎿  " or "     ") .. tool.children[i]
+    items[#items + 1] = children[i]
   end
   if n > 3 then
-    lines[#lines + 1] = ("     +%d more tool use%s"):format(n - 3, n - 3 == 1 and "" or "s")
+    items[#items + 1] = ("+%d more tool use%s"):format(n - 3, n - 3 == 1 and "" or "s")
+  end
+  local lines = {}
+  for i, item in ipairs(items) do
+    lines[i] = (i == 1 and "  ⎿  " or "     ") .. item
   end
   local old = tool.child_rows or 0
   api.nvim_buf_clear_namespace(M.buf(), ns, row + 1, row + 1 + old)
@@ -574,7 +585,7 @@ local function set_children(tool)
 end
 
 local function child(ev)
-  local parent = tools[ev.parent_id]
+  local parent = tools[ev.parent_id] or held[ev.parent_id]
   if parent and parent.mark and not parent.done then
     parent.children = parent.children or {}
     parent.children[#parent.children + 1] = tool_label(ev.name, ev.input)
@@ -602,29 +613,6 @@ function M.tool_use(ev)
   set_tool_line(tool, tool_label(ev.name, ev.input), pending(tool))
 end
 
--- Agents started, ended or changed slots, or the focus moved. The focused
--- agent's line says so at its end. Its mark keeps its row when the line is
--- set again, because it stays left of inserted text.
-local function paint_agents()
-  for _, tool in pairs(tools) do
-    local row = (tool.name == "Agent" or tool.name == "Task") and tool.mark and not tool.done and tool_row(tool)
-    if row then
-      tool.mark = hl(row, 0, #"⏺", pending(tool), { id = tool.mark })
-    end
-  end
-  api.nvim_buf_clear_namespace(M.buf(), ns_focus, 0, -1)
-  local agent = require("anvim.follow").focused()
-  local tool = agent and tools[agent.tool_use_id]
-  local row = tool and tool.mark and tool_row(tool)
-  if row then
-    api.nvim_buf_set_extmark(M.buf(), ns_focus, row, 0, {
-      virt_text = { { "◉ focused", agents.group(agent.slot) } },
-      virt_text_pos = "eol",
-      right_gravity = false,
-    })
-  end
-end
-
 local function finish_tool(tool, is_error, summary, group)
   tool.done = true
   set_tool_line(tool, tool_label(tool.name, tool.input), is_error and "AnvimToolError" or "AnvimToolOk")
@@ -644,6 +632,15 @@ end
 
 local task_result
 
+-- A background agent's tool call returns as the agent starts. A saved
+-- session keeps no result, but the text says so.
+local function launched(tool, ev)
+  local r = type(ev.result) == "table" and ev.result or {}
+  return (tool.name == "Agent" or tool.name == "Task")
+    and not ev.is_error
+    and (r.status == "async_launched" or (ev.result == nil and (ev.text or ""):find("^Async agent launched") ~= nil))
+end
+
 function M.tool_result(ev)
   local tool = tools[ev.id]
   if tool and tool.todo then
@@ -651,8 +648,92 @@ function M.tool_result(ev)
     if not ev.is_error then
       task_result(tool, ev)
     end
-  elseif tool and not tool.done then
-    finish_tool(tool, ev.is_error, summarize(tool, ev))
+  elseif tool and not (tool.done or tool.held) then
+    if launched(tool, ev) then
+      tool.held, tool.live = true, agents.by_tool(tool.id) ~= nil
+      held[tool.id] = tool
+      set_children(tool)
+    else
+      finish_tool(tool, ev.is_error, summarize(tool, ev))
+    end
+  end
+end
+
+local ended = { completed = "finished", failed = "failed", stopped = "was stopped" }
+
+-- A background agent ended. Its line gets its result, and a row at the end
+-- says so where the user reads, as Claude Code shows the notification.
+---@param tool anvim.Tool? Its line, unless the transcript lacks it.
+---@param ev { status: string?, summary: string?, description: string?, tool_uses: integer?, tokens: integer?, duration_ms: integer? }
+local function end_agent(tool, ev)
+  local ok = ev.status == "completed"
+  local description = ev.description
+  if tool then
+    held[tool.id] = nil
+    local input = type(tool.input) == "table" and tool.input or {}
+    description = type(input.description) == "string" and input.description or description
+    local usage = { totalToolUseCount = ev.tool_uses, totalTokens = ev.tokens, totalDurationMs = ev.duration_ms }
+    finish_tool(tool, not ok, ok and agent_done(tool, usage) or ev.status == "stopped" and "Stopped" or "Failed")
+  end
+  text_open = false
+  local name = description and description ~= "" and ('Agent "%s"'):format(description) or "Agent"
+  local lines = { ("⏺ %s %s"):format(name, ended[ev.status] or "ended") }
+  local summary = M.short(first_line(ev.summary))
+  if summary ~= "" then
+    lines[2] = "  ⎿  " .. summary
+  end
+  local row = append_item(lines)
+  hl(row, 0, #"⏺", ok and "AnvimToolOk" or "AnvimToolError")
+  for i, line in ipairs(lines) do
+    hl(row + i - 1, i == 1 and #"⏺" or 0, #line, "AnvimResult")
+  end
+end
+
+-- A background agent's end in a resumed session's past.
+function M.agent_end(ev)
+  end_agent(ev.tool_use_id and held[ev.tool_use_id], ev)
+end
+
+-- After a resumed session draws, a background agent of its past whose end was
+-- not saved stops looking busy. Its line keeps "Backgrounded agent".
+function M.settle_past()
+  for id, tool in pairs(held) do
+    if not tool.live then
+      held[id], tool.done = nil, true
+      set_tool_line(tool, tool_label(tool.name, tool.input), "AnvimResult")
+    end
+  end
+end
+
+-- Agents started, ended or changed slots, or the focus moved. A background
+-- agent's line ends with its agent. The focused agent's line says so at its
+-- end. Its mark keeps its row when the line is set again, because it stays
+-- left of inserted text.
+local function paint_agents()
+  for id, tool in pairs(held) do
+    local agent = agents.by_tool(id)
+    if agent and agent.status ~= "running" then
+      end_agent(tool, vim.tbl_extend("force", agent.usage or {}, { status = agent.status, summary = agent.summary }))
+    end
+  end
+  for _, list in ipairs({ tools, held }) do
+    for _, tool in pairs(list) do
+      local row = (tool.name == "Agent" or tool.name == "Task") and tool.mark and not tool.done and tool_row(tool)
+      if row then
+        tool.mark = hl(row, 0, #"⏺", pending(tool), { id = tool.mark })
+      end
+    end
+  end
+  api.nvim_buf_clear_namespace(M.buf(), ns_focus, 0, -1)
+  local agent = require("anvim.follow").focused()
+  local tool = agent and (tools[agent.tool_use_id] or held[agent.tool_use_id])
+  local row = tool and tool.mark and tool_row(tool)
+  if row then
+    api.nvim_buf_set_extmark(M.buf(), ns_focus, row, 0, {
+      virt_text = { { "◉ focused", agents.group(agent.slot) } },
+      virt_text_pos = "eol",
+      right_gravity = false,
+    })
   end
 end
 
@@ -922,10 +1003,12 @@ function task_result(tool, ev)
 end
 
 -- Tools that never got a result were cut off by an interrupt or an error.
+-- The next text starts a new reply, such as the reply to a background
+-- agent's end, which no prompt comes before.
 function M.turn_end()
-  text_open = false
+  text_open, reply_done = false, true
   for _, tool in pairs(tools) do
-    if not tool.done and not tool.todo then
+    if not (tool.done or tool.todo or tool.held) then
       finish_tool(tool, true, "Interrupted", "AnvimToolError")
     end
   end
@@ -962,7 +1045,7 @@ function M.clear()
       blocks[id] = nil
     end
   end
-  tools, todo, reply, reply_done, text_open, texts = {}, nil, {}, true, false, {}
+  tools, held, todo, reply, reply_done, text_open, texts = {}, {}, nil, {}, true, false, {}
   tasks = { order = {}, by_id = {} }
   api.nvim_buf_clear_namespace(buf, ns, 0, -1)
   api.nvim_buf_clear_namespace(buf, ns_text, 0, -1)
@@ -998,7 +1081,17 @@ function M.attach(sidecar)
     callback = paint_agents,
   })
   sidecar.on("exit", function(ev)
-    if not ev.restart and bufnr and api.nvim_buf_is_loaded(bufnr) then
+    if not (bufnr and api.nvim_buf_is_loaded(bufnr)) then
+      return
+    end
+    -- Background agents end with the sidecar.
+    for id, tool in pairs(held) do
+      if tool.live then
+        held[id] = nil
+        finish_tool(tool, true, "Interrupted", "AnvimToolError")
+      end
+    end
+    if not ev.restart then
       M.notice(
         ev.code == 0 and "warn" or "error",
         ("Sidecar exited (code %d). :AnvimRestart starts it again. See %s"):format(ev.code, sidecar.log_path)

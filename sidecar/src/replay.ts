@@ -21,10 +21,9 @@ const frames = readFileSync(file, "utf8")
 
 let cursor = 0;
 let playing: Promise<void> = Promise.resolve();
-
-function typeOf(line: string): string {
-  return JSON.parse(line).type;
-}
+// Background agents work on after their turn, and each one's end starts a
+// turn of its own, so a prompt plays on until none runs.
+const background = new Set<string>();
 
 // Plays frames until (and including) the first one whose type is `until`.
 // The context usage that the sidecar sends after a turn ends belongs to it.
@@ -33,14 +32,16 @@ async function play(until: string | null, inclusive: boolean): Promise<void> {
   let ended = false;
   while (cursor < frames.length) {
     const frame = frames[cursor]!;
-    const type = typeOf(frame.line);
-    if (ended && type !== "context") return;
-    if (type === until && !inclusive) return;
+    const ev = JSON.parse(frame.line);
+    if (ended && ev.type !== "context") return;
+    if (ev.type === until && !inclusive) return;
     if (last !== null) await Bun.sleep(Math.max(0, frame.at - last) / speed);
     last = frame.at;
     process.stdout.write(frame.line + "\n");
     cursor++;
-    if (type === until) ended = true;
+    if (ev.type === "agent_start" && ev.background) background.add(ev.agent_id);
+    if (ev.type === "agent_end") background.delete(ev.agent_id);
+    if (ev.type === until) ended = background.size === 0;
   }
 }
 

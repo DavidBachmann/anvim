@@ -680,8 +680,6 @@ function M.attach()
     end,
   })
   sidecar.on("editor_request", M.handle)
-  -- Marks from show_user last until the user's next prompt starts a turn.
-  sidecar.on("turn_start", M.clear)
 end
 
 return M

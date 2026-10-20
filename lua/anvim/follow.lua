@@ -385,8 +385,14 @@ function M.attach(sidecar)
       M.track(write.path, 1, nil, write.agent)
     end
   end)
+  -- A background agent works on after the turn.
   sidecar.on("turn_end", function()
-    writes = {}
+    for id, write in pairs(writes) do
+      local agent = agents.get(write.agent)
+      if not (agent and agent.background and agent.status == "running") then
+        writes[id] = nil
+      end
+    end
   end)
   local group = api.nvim_create_augroup("anvim.follow", {})
   -- The catch-up waits for the event loop. A file that it loads inside the

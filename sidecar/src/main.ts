@@ -125,16 +125,8 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     .then((commands) => emit(commandsEvent(commands)))
     .catch(() => {});
   const translator = new Translator();
-  let turnOpen = false;
   for await (const msg of session) {
-    if (!turnOpen) {
-      turnOpen = true;
-      contexts.turnStart();
-    }
-    if (msg.type === "result") {
-      turnOpen = false;
-      contexts.turnEnd();
-    }
+    contexts.message(msg);
     for (const ev of translate(translator, msg)) emit(ev);
     if (msg.type === "result") void reportContext();
   }

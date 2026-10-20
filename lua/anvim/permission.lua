@@ -638,10 +638,24 @@ function M.cancel(req)
   end
 end
 
--- Drops every request without an answer, when the turn ends or the sidecar exits.
-function M.cancel_all()
-  while queue[1] do
-    close(queue[#queue])
+-- Drops every request without an answer, when the turn ends or the sidecar
+-- exits. A background agent works on after the turn, so with `turn`, its
+-- requests stay.
+---@param turn boolean?
+function M.cancel_all(turn)
+  for i = #queue, 1, -1 do
+    local r = queue[i]
+    local id = r.ev.agent_id
+    local agent = id and agents.get(id)
+    -- At a turn's end, an agent that runs on keeps its request, and so does
+    -- one that /clear forgot. The others get a no, so no agent waits on a
+    -- request that is gone. The sidecar ignores an answer that came too late.
+    if not (turn and id and (not agent or agent.status == "running")) then
+      if turn then
+        sidecar.send({ type = "permission_response", req = r.ev.req, behavior = "deny" })
+      end
+      close(r)
+    end
   end
 end
 
@@ -685,8 +699,12 @@ function M.attach()
   sidecar.on("permission_cancel", function(ev)
     M.cancel(ev.req)
   end)
-  sidecar.on("turn_end", M.cancel_all)
-  sidecar.on("exit", M.cancel_all)
+  sidecar.on("turn_end", function()
+    M.cancel_all(true)
+  end)
+  sidecar.on("exit", function()
+    M.cancel_all()
+  end)
 end
 
 return M

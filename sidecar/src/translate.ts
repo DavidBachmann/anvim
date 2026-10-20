@@ -12,6 +12,15 @@ type Block =
 
 type AnyRecord = Record<string, any>;
 
+// A message of the main agent's own conversation. Background subagents send
+// their messages between the main agent's turns too, as do the task messages
+// that report on them.
+export function mainThread(msg: SDKMessage): boolean {
+  const m = msg as AnyRecord;
+  if (m.parent_tool_use_id != null || m.agent_id) return false;
+  return !(m.type === "system" && (m.subtype?.startsWith("task_") || m.subtype === "background_tasks_changed"));
+}
+
 // Turns the SDK message stream into anvim events. Stateful: it tracks the
 // open content blocks of the main session's current message.
 export class Translator {
@@ -22,11 +31,13 @@ export class Translator {
   // The task ids of running subagents. Only task_started names a task's type,
   // and shells and other tasks send task messages too.
   private agents = new Set<string>();
+  // The running agents that started in the background.
+  private background = new Set<string>();
 
   translate(msg: SDKMessage): Event[] {
     const m = msg as AnyRecord;
     const out: Event[] = [];
-    if (!this.inTurn && (m.type === "stream_event" || m.type === "assistant")) {
+    if (!this.inTurn && (m.type === "stream_event" || m.type === "assistant") && mainThread(msg)) {
       this.inTurn = true;
       out.push({ type: "turn_start" });
     }
@@ -96,15 +107,30 @@ export class Translator {
       });
     } else if (m.subtype?.startsWith("task_")) {
       this.task(m, out);
+    } else if (m.subtype === "background_tasks_changed") {
+      this.backgroundTasks(m, out);
     }
   }
 
   // An ambient task is housekeeping, which Claude Code shows no activity for.
+  // The list of background tasks is the level signal: a background agent that
+  // left it has ended, even when its task_notification never came.
+  private backgroundTasks(m: AnyRecord, out: Event[]): void {
+    const live = new Set((m.tasks ?? []).map((t: AnyRecord) => t.task_id));
+    for (const id of this.background) {
+      if (live.has(id)) continue;
+      this.background.delete(id);
+      this.agents.delete(id);
+      out.push({ type: "agent_end", agent_id: id, status: "completed" });
+    }
+  }
+
   private task(m: AnyRecord, out: Event[]): void {
     const id = m.task_id;
     if (m.subtype === "task_started") {
       if (m.task_type !== "local_agent" || m.ambient || !m.tool_use_id) return;
       this.agents.add(id);
+      if (m.is_backgrounded) this.background.add(id);
       out.push({
         type: "agent_start",
         agent_id: id,
@@ -128,7 +154,15 @@ export class Translator {
       });
     } else if (m.subtype === "task_notification") {
       this.agents.delete(id);
-      out.push({ type: "agent_end", agent_id: id, status: m.status, ...(m.summary ? { summary: truncate(m.summary) } : {}) });
+      this.background.delete(id);
+      out.push({
+        type: "agent_end",
+        agent_id: id,
+        ...(m.tool_use_id ? { tool_use_id: m.tool_use_id } : {}),
+        status: m.status,
+        ...(m.summary ? { summary: truncate(m.summary) } : {}),
+        ...(m.usage ? { tool_uses: m.usage.tool_uses, tokens: m.usage.total_tokens, duration_ms: m.usage.duration_ms } : {}),
+      });
     }
   }
 

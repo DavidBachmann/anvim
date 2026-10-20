@@ -60,6 +60,46 @@ describe("historyEvents", () => {
     ]);
   });
 
+  // As Claude Code 2.1.304 saves a background agent's end, and a shell's.
+  test("a background agent's notification is its end, not a prompt", () => {
+    const origin = { origin: { kind: "task-notification", producer: "session-task", runId: "r1" } };
+    const events = historyEvents([
+      user(
+        [
+          "<task-notification>",
+          "<task-id>aa666b4d4824e8e44</task-id>",
+          "<tool-use-id>toolu_01NX</tool-use-id>",
+          "<output-file>/tmp/tasks/aa666b4d4824e8e44.output</output-file>",
+          "<status>completed</status>",
+          '<summary>Agent "Add FAST line to alpha.js" finished</summary>',
+          "<note>A task-notification fires each time this agent stops.</note>",
+          "<result>Added `// edited by FAST` as the first line of alpha.js.</result>",
+          "<usage><subagent_tokens>16061</subagent_tokens><tool_uses>2</tool_uses><duration_ms>7469</duration_ms></usage>",
+          "</task-notification>",
+        ].join("\n"),
+        origin,
+      ),
+      user(
+        "<task-notification>\n<task-id>b8u5jl1cw</task-id>\n<tool-use-id>toolu_B</tool-use-id>\n<status>completed</status>\n" +
+          '<summary>Background command "Wait 10 seconds" completed (exit code 0)</summary>\n</task-notification>',
+        origin,
+      ),
+    ]);
+    expect(events).toEqual([
+      {
+        type: "agent_end",
+        agent_id: "aa666b4d4824e8e44",
+        tool_use_id: "toolu_01NX",
+        status: "completed",
+        description: "Add FAST line to alpha.js",
+        summary: "Added `// edited by FAST` as the first line of alpha.js.",
+        tool_uses: 2,
+        tokens: 16061,
+        duration_ms: 7469,
+      },
+    ]);
+  });
+
   test("slash commands, their output and compaction", () => {
     const events = historyEvents([
       user("This session is being continued from a previous conversation", { is_meta: true, isCompactSummary: true }),

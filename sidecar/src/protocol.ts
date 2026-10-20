@@ -155,7 +155,20 @@ export type Event =
       tokens?: number;
       last_tool?: string;
     }
-  | { type: "agent_end"; agent_id: string; status: "completed" | "failed" | "stopped"; summary?: string }
+  // A subagent ended. A background agent's Agent tool call returned when it
+  // started, so this is its result. description is set in a resumed
+  // session's history, which may lack the tool call.
+  | {
+      type: "agent_end";
+      agent_id: string;
+      tool_use_id?: string;
+      status: "completed" | "failed" | "stopped";
+      summary?: string;
+      description?: string;
+      tool_uses?: number;
+      tokens?: number;
+      duration_ms?: number;
+    }
   | {
       type: "turn_end";
       subtype: string;

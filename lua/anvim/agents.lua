@@ -22,6 +22,7 @@ M.slots = 4
 ---@field tokens integer?
 ---@field activity string? What it does now, such as "Editing alpha.js".
 ---@field summary string?
+---@field usage { tool_uses: integer?, tokens: integer?, duration_ms: integer? }? Its totals, once it ended.
 ---@field order integer
 
 ---@type table<string, anvim.Agent>
@@ -164,7 +165,9 @@ function M.start(ev)
     agent.description = ev.description
   end
   agent.status = "running"
-  agent.background = ev.background == true
+  -- An agent that a background agent starts works on after the turn too.
+  local parent = ev.parent_agent_id and agents[ev.parent_agent_id]
+  agent.background = ev.background == true or (parent ~= nil and parent.background)
   agent.depth = tonumber(ev.depth) or 1
   agent.parent = ev.parent_agent_id
   agent.files, agent.tools, agent.order = {}, 0, order
@@ -192,6 +195,8 @@ function M.finish(ev)
     return
   end
   agent.summary = ev.summary or agent.summary
+  agent.usage =
+    { tool_uses = tonumber(ev.tool_uses), tokens = tonumber(ev.tokens), duration_ms = tonumber(ev.duration_ms) }
   local was = agent.status
   stop(agent, ev.status or "completed")
   if was == "running" then

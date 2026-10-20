@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Event } from "./protocol";
-import { Translator } from "./translate";
+import { mainThread, Translator } from "./translate";
 
 const se = (event: object, parent: string | null = null) =>
   ({ type: "stream_event", event, parent_tool_use_id: parent }) as unknown as SDKMessage;
@@ -165,11 +165,122 @@ describe("Translator", () => {
         background: false,
       },
       { type: "agent_progress", agent_id: "a1", description: "Editing alpha.js", tool_uses: 1, tokens: 1200, last_tool: "Edit" },
-      { type: "turn_start" },
       { type: "tool_use", id: "t1", name: "Edit", input: { file_path: "/alpha.js" }, parent_id: "toolu_A", agent_id: "a1" },
       { type: "tool_result", id: "t1", is_error: false, text: "updated", result: undefined, parent_id: "toolu_A", agent_id: "a1" },
-      { type: "agent_end", agent_id: "a1", status: "completed", summary: "Added a comment" },
+      { type: "agent_end", agent_id: "a1", tool_use_id: "toolu_A", status: "completed", summary: "Added a comment" },
     ]);
+  });
+
+  // Shapes and order as Claude Code 2.1.304 sends them for a background
+  // subagent: the Agent call returns at once, the main turn ends, the agent
+  // works on, and its end starts a turn of its own.
+  test("a background agent works between turns, and its end starts a turn", () => {
+    const agent = { parent_tool_use_id: "toolu_F", agent_id: "f1", subagent_type: "general-purpose" };
+    const result = msg({ type: "result", subtype: "success", is_error: false, duration_ms: 5, total_cost_usd: 0, num_turns: 1 });
+    const t = new Translator();
+    const launch = [
+      se({ type: "message_start" }),
+      msg({ type: "system", subtype: "background_tasks_changed", tasks: [{ task_id: "f1", task_type: "local_agent" }] }),
+      msg({
+        type: "system",
+        subtype: "task_started",
+        task_id: "f1",
+        tool_use_id: "toolu_F",
+        description: "Add FAST line",
+        subagent_type: "general-purpose",
+        is_backgrounded: true,
+        spawn_depth: 1,
+        task_type: "local_agent",
+      }),
+      msg({
+        type: "user",
+        parent_tool_use_id: null,
+        message: { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_F", content: "Async agent launched successfully." }] },
+        tool_use_result: { isAsync: true, status: "async_launched", agentId: "f1", description: "Add FAST line" },
+      }),
+      result,
+    ];
+    expect(launch.flatMap((m) => t.translate(m))).toEqual([
+      { type: "turn_start" },
+      {
+        type: "agent_start",
+        agent_id: "f1",
+        tool_use_id: "toolu_F",
+        description: "Add FAST line",
+        subagent_type: "general-purpose",
+        depth: 1,
+        background: true,
+      },
+      {
+        type: "tool_result",
+        id: "toolu_F",
+        is_error: false,
+        text: "Async agent launched successfully.",
+        result: { isAsync: true, status: "async_launched", agentId: "f1", description: "Add FAST line" },
+        parent_id: null,
+      },
+      { type: "turn_end", subtype: "success", is_error: false, duration_ms: 5, cost_usd: 0, num_turns: 1 },
+    ]);
+    const between = [
+      msg({ type: "system", subtype: "task_progress", task_id: "f1", description: "Editing alpha.js", usage: { total_tokens: 900, tool_uses: 2 } }),
+      msg({ type: "assistant", ...agent, message: { content: [{ type: "thinking", thinking: "Now the edit." }] } }),
+      msg({ type: "assistant", ...agent, message: { content: [{ type: "tool_use", id: "e1", name: "Edit", input: { file_path: "/alpha.js" } }] } }),
+      msg({ type: "user", ...agent, message: { role: "user", content: [{ type: "tool_result", tool_use_id: "e1", content: "updated" }] } }),
+      msg({ type: "assistant", ...agent, message: { content: [{ type: "text", text: "Done: alpha.js starts with // FAST." }] } }),
+      msg({ type: "system", subtype: "task_updated", task_id: "f1", patch: { status: "completed", end_time: 1 } }),
+      msg({
+        type: "system",
+        subtype: "task_notification",
+        task_id: "f1",
+        tool_use_id: "toolu_F",
+        status: "completed",
+        output_file: "/tmp/f1.output",
+        summary: "Done: alpha.js starts with // FAST.",
+        usage: { total_tokens: 16071, tool_uses: 3, duration_ms: 10442 },
+      }),
+      msg({ type: "system", subtype: "background_tasks_changed", tasks: [] }),
+    ];
+    expect(between.flatMap((m) => t.translate(m))).toEqual([
+      { type: "agent_progress", agent_id: "f1", description: "Editing alpha.js", tool_uses: 2, tokens: 900, last_tool: undefined },
+      { type: "tool_use", id: "e1", name: "Edit", input: { file_path: "/alpha.js" }, parent_id: "toolu_F", agent_id: "f1" },
+      { type: "tool_result", id: "e1", is_error: false, text: "updated", result: undefined, parent_id: "toolu_F", agent_id: "f1" },
+      {
+        type: "agent_end",
+        agent_id: "f1",
+        tool_use_id: "toolu_F",
+        status: "completed",
+        summary: "Done: alpha.js starts with // FAST.",
+        tool_uses: 3,
+        tokens: 16071,
+        duration_ms: 10442,
+      },
+    ]);
+    const notified = [
+      msg({ type: "system", subtype: "init", session_id: "s1", model: "claude-haiku-5-5", cwd: "/p", permissionMode: "default" }),
+      msg({ type: "system", subtype: "status", status: "requesting" }),
+      se({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }),
+      se({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "FAST finished." } }),
+      se({ type: "content_block_stop", index: 0 }),
+      result,
+    ];
+    expect(notified.flatMap((m) => t.translate(m)).map((e) => e.type)).toEqual([
+      "init",
+      "status",
+      "turn_start",
+      "text_start",
+      "text_delta",
+      "text_stop",
+      "turn_end",
+    ]);
+  });
+
+  test("only the main agent's own messages are of the main thread", () => {
+    expect(mainThread(se({ type: "message_start" }))).toBe(true);
+    expect(mainThread(msg({ type: "system", subtype: "init" }))).toBe(true);
+    expect(mainThread(msg({ type: "user", parent_tool_use_id: null, message: { content: "hi" } }))).toBe(true);
+    expect(mainThread(msg({ type: "assistant", parent_tool_use_id: "toolu_A", agent_id: "a1" }))).toBe(false);
+    expect(mainThread(msg({ type: "system", subtype: "task_notification", task_id: "a1" }))).toBe(false);
+    expect(mainThread(msg({ type: "system", subtype: "background_tasks_changed", tasks: [] }))).toBe(false);
   });
 
   test("a nested subagent names its parent, and other tasks send no agent events", () => {
@@ -213,6 +324,36 @@ describe("Translator", () => {
         background: true,
       },
       { type: "agent_end", agent_id: "c1", status: "stopped" },
+    ]);
+  });
+
+  test("a background agent that leaves the task list ends, also without its notification", () => {
+    const started = (id: string, background: boolean) =>
+      msg({
+        type: "system",
+        subtype: "task_started",
+        task_id: id,
+        tool_use_id: `toolu_${id}`,
+        description: id,
+        is_backgrounded: background,
+        task_type: "local_agent",
+      });
+    const tasks = (...ids: string[]) =>
+      msg({ type: "system", subtype: "background_tasks_changed", tasks: ids.map((task_id) => ({ task_id })) });
+    const ends = run([
+      tasks("b1"),
+      started("b1", true),
+      tasks("b1", "b2"),
+      started("b2", true),
+      started("f1", false),
+      msg({ type: "system", subtype: "task_notification", task_id: "b1", status: "completed", output_file: "", summary: "" }),
+      tasks("b2"),
+      tasks(),
+      tasks(),
+    ]).filter((e) => e.type === "agent_end");
+    expect(ends).toEqual([
+      { type: "agent_end", agent_id: "b1", status: "completed" },
+      { type: "agent_end", agent_id: "b2", status: "completed" },
     ]);
   });
 

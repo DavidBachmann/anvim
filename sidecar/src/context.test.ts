@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { HookInput } from "@anthropic-ai/claude-agent-sdk";
+import type { HookInput, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { contextHook, contextText, PendingContexts } from "./context";
 import { commandsEvent } from "./translate";
 
@@ -89,6 +89,43 @@ describe("PendingContexts", () => {
     expect(p.size).toBe(0);
     p.push("/compact", ctx("new"));
     expect(p.take("/compact")).toEqual(ctx("new"));
+  });
+
+  // Message shapes and order as Claude Code 2.1.304 sends them while two
+  // background agents run.
+  describe("turns of a session with background agents", () => {
+    const msg = (m: object) => m as unknown as SDKMessage;
+    const init = msg({ type: "system", subtype: "init", session_id: "s" });
+    const main = msg({ type: "stream_event", event: { type: "message_start" }, parent_tool_use_id: null });
+    const result = msg({ type: "result", subtype: "success", num_turns: 1 });
+    const between = [
+      msg({ type: "assistant", parent_tool_use_id: "toolu_A", agent_id: "a1", message: { content: [] } }),
+      msg({ type: "user", parent_tool_use_id: "toolu_A", agent_id: "a1", message: { content: [] } }),
+      msg({ type: "system", subtype: "task_progress", task_id: "a1", tool_use_id: "toolu_A" }),
+      msg({ type: "system", subtype: "task_started", task_id: "b1", task_type: "local_bash" }),
+      msg({ type: "system", subtype: "background_tasks_changed", tasks: [] }),
+    ];
+    const local = msg({ type: "user", parent_tool_use_id: null, message: { content: "<local-command-stdout>$0</local-command-stdout>" } });
+
+    test("a subagent's messages between turns start no turn", () => {
+      const p = new PendingContexts();
+      p.push("launch two agents", ctx("a"));
+      expect(p.take("launch two agents")).toEqual(ctx("a"));
+      [init, main, result, ...between].forEach((m) => p.message(m));
+      // A local command while the agents run: its turn starts with its output.
+      p.push("/cost");
+      [local, result].forEach((m) => p.message(m));
+      expect(p.size).toBe(0);
+    });
+
+    test("a notification turn passes the hook and keeps a prompt sent meanwhile", () => {
+      const p = new PendingContexts();
+      [main, result, ...between].forEach((m) => p.message(m));
+      p.push("what changed?", ctx("b"));
+      expect(p.take("<task-notification>\n<task-id>a1</task-id>")).toBeUndefined();
+      [init, main, result].forEach((m) => p.message(m));
+      expect(p.take("what changed?")).toEqual(ctx("b"));
+    });
   });
 
   test("keeps a bounded queue", () => {

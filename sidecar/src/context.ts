@@ -1,9 +1,10 @@
 // Editor context for prompts: what the code window showed when the user sent
 // one. A UserPromptSubmit hook adds it to its prompt, in the words that Claude
 // Code uses for its IDE integrations, so Claude reads it the same way.
-import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
+import type { HookCallback, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { isAbsolute, resolve } from "node:path";
 import type { PromptContext } from "./protocol";
+import { mainThread } from "./translate";
 
 // Claude Code cuts an IDE selection at this many characters.
 const MAX_SELECTION = 2000;
@@ -39,13 +40,28 @@ export function contextText(ctx: PromptContext, cwd: string): string {
 // A prompt sent while a turn runs reaches the hook after that turn's result,
 // so a turn's end must keep it. A turn that ran no hook was a local command,
 // and its prompt and older ones never will: they go, so that a prompt sent
-// again later cannot take their context.
+// again later cannot take their context. A background agent's end starts a
+// turn too, and its notification passes the hook as the prompt.
 export class PendingContexts {
   private queue: { text: string; context?: PromptContext; seq: number }[] = [];
   private seq = 0;
   // The newest prompt when the current turn started.
   private turnFrom = 0;
   private hooked = false;
+  private inTurn = false;
+
+  // Each message of the session. A turn starts with its first main-thread
+  // message: background subagents work on between turns.
+  message(msg: SDKMessage): void {
+    if (!this.inTurn && mainThread(msg)) {
+      this.inTurn = true;
+      this.turnStart();
+    }
+    if (msg.type === "result") {
+      this.inTurn = false;
+      this.turnEnd();
+    }
+  }
 
   push(text: string, context?: PromptContext): void {
     this.queue.push({ text, context, seq: ++this.seq });

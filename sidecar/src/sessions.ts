@@ -45,9 +45,42 @@ export async function history(id: string, cwd: string): Promise<HistoryEvent[]> 
   return historyEvents(await getSessionMessages(id, { dir: cwd }));
 }
 
+const STATUSES: Record<string, "completed" | "failed" | "stopped"> = {
+  completed: "completed",
+  failed: "failed",
+  stopped: "stopped",
+  killed: "stopped",
+};
+
+// Claude Code saves the end of a background task as a user message. An
+// agent's end draws as it does live, and other tasks send nothing, as live.
+function notification(content: string): HistoryEvent | undefined {
+  const tag = (name: string) => content.match(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`))?.[1]?.trim();
+  const num = (name: string) => {
+    const n = Number(tag(name) || NaN);
+    return Number.isNaN(n) ? undefined : n;
+  };
+  const description = tag("summary")?.match(/^Agent "(.*)"/)?.[1];
+  const id = tag("task-id");
+  if (description === undefined || !id) return undefined;
+  const result = tag("result");
+  return {
+    type: "agent_end",
+    agent_id: id,
+    tool_use_id: tag("tool-use-id"),
+    status: STATUSES[tag("status") ?? ""] ?? "completed",
+    description,
+    summary: result ? truncate(result) : undefined,
+    tool_uses: num("tool_uses"),
+    tokens: num("subagent_tokens") ?? num("total_tokens"),
+    duration_ms: num("duration_ms"),
+  };
+}
+
 // A prompt as the user typed it. Slash commands are saved as tags, and an
 // interrupt as Claude Code's own marker text.
 function prompt(content: string): HistoryEvent | undefined {
+  if (content.trimStart().startsWith("<task-notification>")) return notification(content);
   if (/^\[Request interrupted by user[^\]]*\]$/.test(content.trim())) {
     return { type: "notice", level: "warn", text: "Interrupted by user" };
   }

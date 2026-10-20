@@ -96,6 +96,8 @@ Claude's todo list stays at the end of the transcript, under the newest output, 
 
 Follow mode follows one agent at a time, at first Claude itself. A running subagent has a number from 1 to 4, and anvim names it by its type and that number, such as `Explore 2`. `<leader>k2` focuses it, and `<leader>k0` focuses Claude again. `<leader>ka` lists Claude and the running subagents, with what each one does, its tool uses and its place, which the preview shows. While a subagent has focus, the code window goes where that subagent reads and edits, and the other agents' moves leave it alone. The statusline says `◉ following Explore 2` in the agent's color, the agent's dot in the footer is `◉`, and its line in the transcript ends in `◉ focused`. A subagent's edits do not stream, so anvim types the focused subagent's edits into the code window at a steady pace, in 2 s at most, before the file changes. When the subagent ends, focus goes back to Claude, and the transcript says so. A permission request from a subagent names it in its color, such as `Edit file · Explore 2 (Find x)`.
 
+A background subagent keeps working after Claude's turn ends. Its line says `Backgrounded agent`, lists its newest tool calls, and keeps its color and its number until it ends. Then its line shows its totals, and a row at the end of the transcript says `Agent "Find x" finished`, with its summary. When Claude is idle, it replies to each end in a turn of its own, as in Claude Code.
+
 ## Pointing
 
 Claude always knows what you look at. Each prompt tells it the file in the code window, the cursor line and the visible lines, so "What does this file do?" needs no reference. The footer under the prompt shows what the next prompt carries: `⧉ In stream.lua`.

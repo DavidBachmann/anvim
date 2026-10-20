@@ -56,7 +56,12 @@ describe("show_user", function()
       "the note has the range's indent"
     )
 
+    -- A background agent's end starts a turn without a prompt.
     sidecar.dispatch({ type = "turn_start" })
+    assert(#marks(buf) > 0, "a turn without a prompt keeps the marks")
+    helpers.capture_sends(function()
+      require("anvim.input").send("next")
+    end)
     assert.are.same({}, marks(buf), "the next prompt clears the marks")
     sidecar.dispatch({ type = "turn_end", subtype = "success", is_error = false, duration_ms = 1, cost_usd = 0 })
   end)
