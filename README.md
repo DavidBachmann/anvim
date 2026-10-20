@@ -85,9 +85,11 @@ Each prompt you send during a replay plays the next recorded turn.
 cd sidecar && bunx tsc --noEmit && bun test
 scripts/test
 scripts/test-stack
+scripts/test-ui
 ~/.local/share/nvim/mason/bin/stylua --check . && selene .
+cd tools/screen && bunx tsc --noEmit
 ```
 
-`scripts/test` runs the Neovim specs in `tests/`. Its first run downloads the test plugins into `.tests/`, and later runs work offline. `scripts/test-stack` boots the real `init.lua` with your LazyVim config in a child Neovim, with temporary state dirs, and checks that your main Neovim stays unchanged. Run `:checkhealth anvim` when something does not start.
+`scripts/test` runs the Neovim specs in `tests/`. Its first run downloads the test plugins into `.tests/`, and later runs work offline. `scripts/test-stack` boots the real `init.lua` with your LazyVim config in a child Neovim, with temporary state dirs, and checks that your main Neovim stays unchanged. `scripts/test-ui` embeds anvim with a UI attached and checks the frames it draws: splits that fold back, the cursor after a close, mouse drags, resizes, and permission prompts typed at a user's pace. Run `:checkhealth anvim` when something does not start.
 
-`tools/screen/screen.ts` drives anvim headless and saves text, highlight and PNG snapshots of the real screen. See the header of that file for its steps. The log is at `~/.local/state/anvim/anvim.log`.
+`tools/screen/screen.ts` drives anvim headless and saves text, highlight and PNG snapshots of the real screen. See the header of that file for its steps. It shares its UI client, `tools/screen/ui.ts`, with the UI tests. The log is at `~/.local/state/anvim/anvim.log`. A screen tool run keeps its own in a temp dir, and prints its path.

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Runs tests/ui: each test embeds anvim with the user's LazyVim, attaches as a
+# UI and replays a fixture. File arguments run only those files.
+
+cd "$(dirname "$0")/.." || exit 1
+paths=0
+for arg in "$@"; do
+  [ -e "$arg" ] && paths=1
+done
+# Without a path, bun test would run every test file in the repository.
+[ $paths -eq 0 ] && set -- ./tests/ui "$@"
+exec bun test --timeout 60000 "$@"

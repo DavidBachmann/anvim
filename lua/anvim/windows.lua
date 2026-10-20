@@ -303,6 +303,18 @@ function M.setup()
       check()
     end,
   })
+  -- When the code window closes, the tree takes its columns, and the explorer
+  -- flushes a redraw from its own WinResized handler, before SafeState. anvim
+  -- defines this one before it opens the explorer, so it runs first.
+  api.nvim_create_autocmd("WinResized", {
+    group = group,
+    nested = true,
+    callback = function()
+      if not valid(wins.code) then
+        check()
+      end
+    end,
+  })
   api.nvim_create_autocmd("ExitPre", {
     group = group,
     callback = function()
