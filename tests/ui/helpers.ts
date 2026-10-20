@@ -2,7 +2,7 @@
 // temp copy of the fixture project, with temp Neovim dirs and a replay sidecar.
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { root, Ui, type Frame, type Pos } from "../../tools/screen/ui.ts";
 
 // A window's cells on the grid, 0-based.
@@ -163,6 +163,8 @@ export type StartOptions = {
   // Edits the recording's frames, one JSON line each, before the replay plays them.
   frames?: (frames: string[]) => string[];
   env?: Record<string, string>;
+  // More files in the project dir, by path.
+  files?: Record<string, string>;
   cols?: number;
   rows?: number;
 };
@@ -172,6 +174,10 @@ export async function start(opts: StartOptions = {}): Promise<Anvim> {
   const dir = join(tmp, "proj");
   mkdirSync(dir);
   copyFileSync(join(root, "tests/fixtures/matchparen.lua"), join(dir, "matchparen.lua"));
+  for (const [name, text] of Object.entries(opts.files ?? {})) {
+    mkdirSync(dirname(join(dir, name)), { recursive: true });
+    writeFileSync(join(dir, name), text);
+  }
   let frames = readFileSync(join(root, "tests/fixtures", opts.recording ?? "edit-session.jsonl"), "utf8")
     .replaceAll("/ANVIM_FIXTURE", dir)
     .split("\n")

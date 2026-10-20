@@ -18,6 +18,10 @@ M.defaults = {
     claude_width = 0.36,
     -- Rows for the prompt and its footer. The window grows with the prompt.
     input_height = { min = 2, max = 12 },
+    -- The explorer's columns. With focus, its list widens over the code
+    -- window to fit its rows, up to max_width (columns, or a fraction of the
+    -- screen width).
+    tree = { width = 24, max_width = 0.4 },
   },
   input = {
     -- Start insert mode whenever the cursor enters the prompt.

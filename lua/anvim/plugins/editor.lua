@@ -63,6 +63,14 @@ return {
       picker = {
         sources = {
           explorer = {
+            -- Narrow, to leave the columns to the code. With focus, the tree
+            -- widens over the code window to fit its rows.
+            layout = {
+              layout = {
+                width = require("anvim.config").options.layout.tree.width,
+                min_width = require("anvim.config").options.layout.tree.width,
+              },
+            },
             actions = {
               anvim_reference = function(picker)
                 require("anvim.refs").files(vim.tbl_map(function(item)
