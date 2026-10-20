@@ -1,6 +1,7 @@
 -- Follow mode: while the cursor is in the prompt, the code window shows where
 -- Claude reads and writes. Elsewhere the user is in control, and the
--- statusline says where Claude is.
+-- statusline says where Claude is. A pinned selection pauses it, so the code
+-- window keeps what the user points at until the next prompt.
 local input = require("anvim.input")
 local layout = require("anvim.layout")
 
@@ -15,6 +16,15 @@ M.behind = 0
 
 function M.enabled()
   return layout.wins.input ~= nil and api.nvim_get_current_win() == layout.wins.input
+end
+
+function M.paused()
+  return require("anvim.context").selection() ~= nil
+end
+
+-- Whether Claude's moves move the code window.
+function M.following()
+  return M.enabled() and not M.paused()
 end
 
 ---@return integer buf
@@ -49,8 +59,8 @@ end
 -- Records Claude's location and moves the code window there when following.
 ---@param buf integer? A buffer to show instead of the file itself, such as a Write preview.
 function M.track(path, line, buf)
-  M.agent = { path = path, line = line or 1 }
-  if M.enabled() then
+  M.agent = { path = path, line = line or 1, buf = buf }
+  if M.following() then
     M.behind = 0
     M.show(buf or M.load(path), M.agent.line)
   else
@@ -59,11 +69,34 @@ function M.track(path, line, buf)
   end
 end
 
--- Moves the code window to Claude's latest location.
+-- Claude's place: the buffer that it writes into while that lives, as a
+-- Write preview of a file that may not exist yet, else the file. Without
+-- either, Claude stays ahead.
+local function catch_up()
+  local agent = M.agent
+  local buf = agent and agent.buf
+  if not (buf and api.nvim_buf_is_valid(buf)) then
+    buf = agent and vim.uv.fs_stat(agent.path) and M.load(agent.path)
+  end
+  if buf then
+    M.behind = 0
+    M.show(buf, agent.line)
+  end
+end
+
+-- Moves the code window to Claude's latest location. A pin goes first, since
+-- it would keep the view where the user pointed.
 function M.jump()
-  M.behind = 0
-  if M.agent and vim.uv.fs_stat(M.agent.path) then
-    M.show(M.load(M.agent.path), M.agent.line)
+  require("anvim.context").clear()
+  catch_up()
+  input.redraw()
+end
+
+-- When following, the code window catches up with Claude, as on entering the
+-- prompt or after a pin ends.
+function M.resume()
+  if M.following() and M.behind > 0 then
+    catch_up()
   end
   input.redraw()
 end
@@ -92,7 +125,7 @@ local function on_read(ev)
   end
   local first = tonumber(ev.input.offset) or 1
   M.track(path, first)
-  if not M.enabled() then
+  if not M.following() then
     return
   end
   local win = layout.code_win()
@@ -110,15 +143,21 @@ end
 
 -- Where Claude is, as plain text for the statusline. A global statusline
 -- shows the current window, so this does not depend on the window.
-function M.status()
-  if M.enabled() then
+---@param short boolean? Without the words, for a narrow statusline.
+function M.status(short)
+  local where = M.agent
+    and ("%s:%d%s"):format(
+      require("anvim.transcript").relpath(M.agent.path),
+      M.agent.line,
+      M.behind > 0 and (" +%d"):format(M.behind) or ""
+    )
+  local claude = where and (short and where or "Claude at " .. where)
+  if M.paused() then
+    return short and "⏸ " .. (where or "pinned") or "⏸ pinned" .. (claude and " · " .. claude or "")
+  elseif M.enabled() then
     return "◉ following"
   end
-  if not M.agent then
-    return ""
-  end
-  local where = ("%s:%d"):format(require("anvim.transcript").relpath(M.agent.path), M.agent.line)
-  return ("⏺ Claude at %s%s"):format(where, M.behind > 0 and (" +%d"):format(M.behind) or "")
+  return claude and "⏺ " .. claude or ""
 end
 
 function M.attach(sidecar)
@@ -127,15 +166,16 @@ function M.attach(sidecar)
       on_read(ev)
     end
   end)
+  -- The catch-up waits for the event loop. A file that it loads inside the
+  -- window's autocmds can miss its filetype: a non-nested autocmd blocks
+  -- BufReadPost, and in one order of the stack tests did_filetype() was
+  -- already 1 for the new buffer, nested or not. And :redrawstatus inside a
+  -- window command, such as a split that anvim is about to fold back, would
+  -- show a frame too early.
   api.nvim_create_autocmd("WinEnter", {
     group = api.nvim_create_augroup("anvim.follow", {}),
     callback = function()
-      if M.enabled() and M.behind > 0 then
-        M.jump()
-      end
-      -- :redrawstatus redraws the whole screen. Inside a window command, such
-      -- as a split that anvim is about to fold back, that shows a frame too early.
-      vim.schedule(input.redraw)
+      vim.schedule(M.resume)
     end,
   })
   vim.keymap.set("n", "<leader>j", M.jump, { desc = "Jump to where Claude is" })

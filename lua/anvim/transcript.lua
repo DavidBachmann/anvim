@@ -245,7 +245,8 @@ local function set_tool_line(tool, label, bullet_hl)
   hl(row, bullet + 1, bullet + 1 + (name_end and name_end - 1 or #label), "AnvimToolName")
 end
 
-function M.user(text)
+---@param context string? The editor context that went with the prompt, such as a.lua#L12-30.
+function M.user(text, context)
   text_open = false
   local lines = vim.split(text, "\n", { plain = true })
   for i, line in ipairs(lines) do
@@ -256,6 +257,13 @@ function M.user(text)
     api.nvim_buf_set_extmark(M.buf(), ns, row + i, 0, { line_hl_group = "AnvimUser" })
   end
   hl(row, 0, #"❯", "AnvimPrompt")
+  if context then
+    local line = "  ⎿  ⧉ " .. context
+    with_modifiable(function(buf)
+      api.nvim_buf_set_lines(buf, -1, -1, false, { line })
+    end)
+    hl(row + #lines, 0, #line, "AnvimResult")
+  end
   -- A new prompt brings every view back to the end.
   scroll(follow_wins(false))
 end

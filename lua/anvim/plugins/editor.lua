@@ -10,20 +10,45 @@ return {
     "saghen/blink.cmp",
     optional = true,
     opts = {
-      sources = { per_filetype = { anvim_input = { "path", "buffer" } } },
+      sources = {
+        per_filetype = {
+          anvim_input = function()
+            return require("anvim.completion").providers()
+          end,
+        },
+        providers = { anvim = { name = "anvim", module = "anvim.completion" } },
+      },
     },
   },
 
   -- The explorer's list is a float, and from a float <C-w>l goes to the
   -- previous window, which can be the prompt. To its right is the code window.
   -- LazyVim's <C-l> remaps to <C-w>l but does not reach this key, so map it too.
+  -- `@` puts a reference to the files under the cursor or selected in the prompt.
   {
     "folke/snacks.nvim",
     optional = true,
     opts = {
       picker = {
         sources = {
-          explorer = { win = { list = { keys = { ["<c-w>l"] = to_code, ["<c-l>"] = to_code } } } },
+          explorer = {
+            actions = {
+              anvim_reference = function(picker)
+                require("anvim.refs").files(vim.tbl_map(function(item)
+                  return { path = item.file, dir = item.dir }
+                end, picker:selected({ fallback = true })))
+              end,
+            },
+            win = {
+              list = {
+                keys = {
+                  ["<c-w>l"] = to_code,
+                  ["<c-l>"] = to_code,
+                  ["@"] = { "anvim_reference", desc = "Point Claude at the file" },
+                },
+              },
+            },
+          },
         },
       },
     },

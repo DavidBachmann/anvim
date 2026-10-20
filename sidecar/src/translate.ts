@@ -1,4 +1,4 @@
-import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKMessage, SlashCommand as SdkSlashCommand } from "@anthropic-ai/claude-agent-sdk";
 import { FieldStream } from "./fieldstream";
 import type { Event } from "./protocol";
 
@@ -68,6 +68,8 @@ export class Translator {
         version: m.claude_code_version,
         slash_commands: m.slash_commands ?? [],
       });
+    } else if (m.subtype === "commands_changed" && Array.isArray(m.commands)) {
+      out.push(commandsEvent(m.commands));
     } else if (m.subtype === "status") {
       out.push({ type: "status", status: m.status ?? null, permission_mode: m.permissionMode });
     } else if (m.subtype === "api_retry") {
@@ -147,6 +149,17 @@ export class Translator {
       });
     }
   }
+}
+
+export function commandsEvent(commands: SdkSlashCommand[]): Event {
+  return {
+    type: "commands",
+    commands: commands.map((c) => ({
+      name: c.name,
+      description: c.description ?? "",
+      ...(c.argumentHint ? { argument_hint: c.argumentHint } : {}),
+    })),
+  };
 }
 
 function resultText(content: unknown): string {

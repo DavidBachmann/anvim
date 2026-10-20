@@ -204,7 +204,7 @@ local function draw_cursor(p)
     right_gravity = true,
   })
   local win = require("anvim.layout").wins.code
-  if follow.enabled() and win and api.nvim_win_is_valid(win) and api.nvim_win_get_buf(win) == p.buf then
+  if follow.following() and win and api.nvim_win_is_valid(win) and api.nvim_win_get_buf(win) == p.buf then
     api.nvim_win_set_cursor(win, { row + 1, col })
   end
 end
@@ -403,6 +403,8 @@ local function finish_write(p, ev)
       end
     end
     follow.flash(buf, rows, "AnvimInsert")
+    -- The preview goes, so a catch-up lands on the file.
+    follow.track(p.path, (rows[1] or 0) + 1)
   end
   release(p)
   if preview and api.nvim_buf_is_valid(preview) then

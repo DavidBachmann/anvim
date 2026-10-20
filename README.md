@@ -48,11 +48,30 @@ All of LazyVim's keys and your own work as usual. anvim adds these. `<leader>` i
 | `Shift-Tab` | prompt | Cycle the permission mode |
 | `PageUp`, `PageDown` | prompt | Scroll the transcript |
 | `Ctrl-U`, `Ctrl-D`, `Ctrl-B`, `Ctrl-F` | prompt, normal mode | Scroll the transcript |
+| `Ctrl-X` | prompt | Unpin the selection |
+| `@`, `/` | prompt, insert mode | Complete a file, or a slash command at the start |
 | `i`, `a` | file buffer | Go to the prompt |
+| `c` | file buffer, visual mode | Put a reference to the selected lines in the prompt |
+| `c{motion}`, `cc` | file buffer | Put a reference to the lines of the motion in the prompt |
+| `Ctrl-L` | file buffer, visual mode | Go to the prompt and keep the selection |
 | `Ctrl-W l`, `Ctrl-L` | explorer | Go to the code window |
+| `@` | explorer | Put a reference to the file in the prompt |
 | `<leader>j`, `<leader>kj` | anywhere | Jump to where Claude is |
+| `<leader>kt`, `:AnvimTrail` | anywhere | Pick a place from Claude's trail |
 | `<leader>kr`, `:AnvimTranscript` | anywhere | Read the transcript: put the cursor in it to yank and search |
 | `q`, `Esc`, `i` | transcript in read mode | Go back to the prompt |
+
+## Pointing
+
+Claude always knows what you look at. Each prompt tells it the file in the code window, the cursor line and the visible lines, so "What does this file do?" needs no reference. The footer under the prompt shows what the next prompt carries: `⧉ In stream.lua`.
+
+Select lines in the code window, in any visual mode, and go to the prompt: `Ctrl-L`, `Ctrl-W l`, a click, or `Esc` and then `i`. The selection stays highlighted, and the footer says `⧉ 19 lines selected`. Your next prompt carries it, and sending that prompt unpins it. It also goes when you move on: move the cursor in the code window, open another file, start a new selection, or press `Esc` in normal mode there. Scrolling keeps it. `Ctrl-X` in the prompt unpins it. When Claude edits the file, the selection goes, because its text changed. A long selection gives Claude its line numbers and its first 2000 characters, as Claude Code's IDE integrations do. Slash commands run in Claude Code and carry no editor context.
+
+While a selection is pinned, follow mode waits, so the code window keeps what you point at. The statusline says so, for example `⏸ pinned · Claude at stream.lua:40 +2`. Once the prompt is sent or the pin goes, the code window catches up with Claude, also with a file that Claude is still writing. `<leader>j` unpins and goes to Claude at once.
+
+References are text in the prompt, in the form `@path#L12-30`, and you can write several. In a file buffer, `c` puts one in the prompt and goes on typing after it: `c` in visual mode for the selection, `c{motion}` for the lines of a motion such as `cip` or `cj`, and `cc` for the current line or, with a count, more lines. Read-only buffers leave `c` free, so read it as "change this, Claude". `@` in the explorer references whole files. In the prompt, `@` completes files and directories, and `/` at the start completes slash commands. The transcript shows what went with each prompt, dimmed under it: `⎿  ⧉ stream.lua#L12-30`.
+
+`<leader>kt` opens Claude's trail: every file and range that Claude read, edited, wrote or showed you, and your own references, newest first, with a preview. `Enter` opens the place in the code window.
 
 ## Permissions
 
@@ -90,6 +109,6 @@ scripts/test-ui
 cd tools/screen && bunx tsc --noEmit
 ```
 
-`scripts/test` runs the Neovim specs in `tests/`. Its first run downloads the test plugins into `.tests/`, and later runs work offline. `scripts/test-stack` boots the real `init.lua` with your LazyVim config in a child Neovim, with temporary state dirs, and checks that your main Neovim stays unchanged. `scripts/test-ui` embeds anvim with a UI attached and checks the frames it draws: splits that fold back, the cursor after a close, mouse drags, resizes, and permission prompts typed at a user's pace. Run `:checkhealth anvim` when something does not start.
+`scripts/test` runs the Neovim specs in `tests/`. Its first run downloads the test plugins into `.tests/`, and later runs work offline. `scripts/test-stack` boots the real `init.lua` with your LazyVim config in a child Neovim, with temporary state dirs, and checks that your main Neovim stays unchanged. `scripts/test-ui` embeds anvim with a UI attached and checks the frames it draws: splits that fold back, the cursor after a close, mouse drags, resizes, permission prompts typed at a user's pace, and a selection pinned while Claude reads elsewhere. Run `:checkhealth anvim` when something does not start.
 
 `tools/screen/screen.ts` drives anvim headless and saves text, highlight and PNG snapshots of the real screen. See the header of that file for its steps. It shares its UI client, `tools/screen/ui.ts`, with the UI tests. The log is at `~/.local/state/anvim/anvim.log`. A screen tool run keeps its own in a temp dir, and prints its path.

@@ -59,6 +59,9 @@ function M.buf()
   map("n", "<Esc>", or_answer("<Esc>", M.interrupt), "Interrupt Claude")
   map({ "i", "n" }, "<C-c>", M.interrupt, "Interrupt Claude")
   map({ "i", "n" }, "<S-Tab>", M.cycle_mode, "Cycle permission mode")
+  map({ "i", "n" }, "<C-x>", function()
+    require("anvim.context").clear()
+  end, "Unpin the selection")
   -- The transcript takes no focus, so the prompt scrolls it.
   local function scroll(modes, keys)
     for _, key in ipairs(keys) do
@@ -106,16 +109,35 @@ function M.setup_win(win)
   wo.cursorline = false
   wo.wrap = true
   wo.linebreak = true
+  -- A reference ends in a space, which 'list' would mark.
+  wo.list = false
   wo.winfixheight = true
   wo.winfixbuf = true
   M.render()
 end
 
--- Starts insert mode where typing stopped. <Esc> leaves the cursor on the
--- character before that place, so a plain :startinsert lands one short.
--- With `at_cursor`, as after a click, insert mode starts at the cursor. While
--- a request waits for an answer, the prompt stays in normal mode.
----@param opts? { at_cursor: boolean? }
+-- Where typing stopped, as a 1-based row and a byte column. <Esc> leaves the
+-- cursor on the character before that place, so the `^` mark tells it, while
+-- the cursor is still there. Otherwise it is the cursor.
+---@return integer row, integer col
+function M.insert_pos()
+  local win = assert(prompt_win(), "no prompt window")
+  local row, col = unpack(api.nvim_buf_get_mark(bufnr, "^"))
+  local cursor = api.nvim_win_get_cursor(win)
+  local line = api.nvim_buf_get_lines(bufnr, cursor[1] - 1, cursor[1], false)[1] or ""
+  if row == cursor[1] and col <= #line then
+    local before = col > 0 and col - 1 + vim.str_utf_start(line, col) or 0
+    if cursor[2] == col or cursor[2] == before then
+      return row, col
+    end
+  end
+  return cursor[1], cursor[2]
+end
+
+-- Starts insert mode where typing stopped, or at `at`. With `at_cursor`, as
+-- after a click, insert mode starts at the cursor. While a request waits for
+-- an answer, the prompt stays in normal mode.
+---@param opts? { at_cursor: boolean?, at: [integer, integer]? }
 function M.resume(opts)
   local win = prompt_win()
   if win ~= api.nvim_get_current_win() or state.waiting then
@@ -125,20 +147,10 @@ function M.resume(opts)
     vim.cmd.startinsert()
     return
   end
-  local row, col = unpack(api.nvim_buf_get_mark(bufnr, "^"))
-  local cursor = api.nvim_win_get_cursor(win)
-  local line = api.nvim_get_current_line()
-  if row == cursor[1] and col <= #line then
-    local before = col > 0 and col - 1 + vim.str_utf_start(line, col) or 0
-    if cursor[2] == col or cursor[2] == before then
-      if col == #line then
-        vim.cmd.startinsert({ bang = true })
-        return
-      end
-      api.nvim_win_set_cursor(win, { row, col })
-    end
-  end
-  vim.cmd.startinsert()
+  local row, col = unpack(opts and opts.at or { M.insert_pos() })
+  local line = api.nvim_buf_get_lines(bufnr, row - 1, row, false)[1] or ""
+  api.nvim_win_set_cursor(win, { row, math.min(col, #line) })
+  vim.cmd.startinsert({ bang = col >= #line })
 end
 
 function M.submit()
@@ -152,8 +164,9 @@ function M.submit()
 end
 
 function M.send(text)
-  transcript.user(text)
-  sidecar.send({ type = "prompt", text = text })
+  local context, label = require("anvim.context").prompt(text)
+  transcript.user(text, label)
+  sidecar.send({ type = "prompt", text = text, context = context })
   if not state.busy then
     M.set_busy(true)
   end
@@ -274,23 +287,42 @@ function M.working()
   return ("✻ %s %ds"):format((verb:gsub("%.+$", "")), secs)
 end
 
+-- The model on the left and the mode on the right. After the model, the chip
+-- says what the next prompt shows Claude. In a narrow column, the hint goes
+-- first, then the branch, which the statusline shows too. Then the chip's
+-- file name gets shorter, and last the chip goes.
 ---@param width integer
 ---@return [string, string?][] chunks
 function M.footer(width)
+  local w = api.nvim_strwidth
   local branch = state.branch and ("git:(" .. state.branch .. ") ") or ""
   local model = M.model_label(state.model or config.options.model)
-  local chunks = { { " anvim ", "AnvimClaude" }, { branch, "Comment" }, { model } }
   local mode = state.waiting and { "⏺ Claude is waiting for you", "AnvimClaude" }
     or mode_labels[state.permission_mode]
+  local hint = state.waiting and "" or " (shift+tab to cycle)"
+  local context = require("anvim.context")
+  local chip = context.chip()
+  -- Columns to spare between the left side and the right side.
+  local function free()
+    local right = mode and 2 + w(mode[1] .. hint .. " ") or 0
+    return width - w(" anvim " .. branch .. model) - (chip and w("  " .. chip[1]) or 0) - right
+  end
+  if free() < 0 then
+    hint = ""
+  end
+  if free() < 0 then
+    branch = ""
+  end
+  if chip and free() < 0 then
+    chip = context.chip(w(chip[1]) + free())
+  end
+  local chunks = { { " anvim ", "AnvimClaude" }, { branch, "Comment" }, { model } }
+  if chip then
+    vim.list_extend(chunks, { { "  " }, chip })
+  end
   if mode then
-    local left = vim.fn.strdisplaywidth(" anvim " .. branch .. model)
-    local hint = state.waiting and "" or " (shift+tab to cycle)"
-    if left + 2 + vim.fn.strdisplaywidth(mode[1] .. hint .. " ") > width then
-      hint = ""
-    end
-    local right = vim.fn.strdisplaywidth(mode[1] .. hint .. " ")
     vim.list_extend(chunks, {
-      { (" "):rep(math.max(1, width - left - right)) },
+      { (" "):rep(math.max(1, free() + 2)) },
       { mode[1], mode[2] },
       { hint, "Comment" },
       { " " },

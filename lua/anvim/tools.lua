@@ -190,7 +190,7 @@ local function show_user(params, done)
     api.nvim_buf_set_extmark(buf, ns, first - 1, 0, { virt_lines = virt, virt_lines_above = true })
   end
   local where = ("%s#L%d%s"):format(relpath(path), first, last > first and ("-%d"):format(last) or "")
-  if follow.enabled() then
+  if follow.following() then
     reveal(layout.code_win(), first, last, #virt)
     done(("Showed %s to the user."):format(where))
   else

@@ -19,6 +19,7 @@ function M.lock(buf)
     for _, key in ipairs({ "i", "a" }) do
       vim.keymap.set("n", key, talk, { buffer = buf, desc = "Talk to Claude" })
     end
+    require("anvim.refs").map(buf)
     -- A *Cmd autocmd replaces the write, so BufWritePre hooks such as format
     -- on save never run.
     local events = { "BufWriteCmd", "FileWriteCmd", "FileAppendCmd" }

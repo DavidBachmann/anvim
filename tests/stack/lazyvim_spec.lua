@@ -384,7 +384,7 @@ describe("LazyVim stack", function()
       }
     ]])
     assert(out.winbar:find("^%d+%.%ds · %$%d+%.%d%d ─"), out.winbar)
-    assert(out.footer:find("^ anvim Opus 5%.5 +⏵⏵ bypass permissions on"), out.footer)
+    assert(out.footer:find("^ anvim Opus 5%.5  ⧉ In [%w._-]+ +⏵⏵ bypass permissions on"), out.footer)
     assert.are.same(out.width, vim.fn.strdisplaywidth(out.footer))
     assert.are.same(3, out.height, "one prompt line, the footer and the winbar")
     lua([[vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "a", "b", "c" })]])
@@ -496,7 +496,293 @@ describe("LazyVim stack", function()
       require("anvim.input").set_busy(false)
       return _G.sent
     ]])
-    assert.are.same({ { type = "prompt", text = word } }, sent)
+    assert.are.same(1, #sent)
+    assert.are.same({ "prompt", word }, { sent[1].type, sent[1].text })
+    assert(sent[1].context and sent[1].context.file, "the prompt has no editor context")
+  end)
+
+  it("pins a visual selection for the prompt, until the cursor moves in the code window", function()
+    start()
+    local function probe()
+      return lua([[
+        local footer = {}
+        for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(require("anvim.input").buf(), -1, 0, -1, { details = true })) do
+          for _, line in ipairs(mark[4].virt_lines or {}) do
+            for _, chunk in ipairs(line) do
+              footer[#footer + 1] = chunk[1]
+            end
+          end
+        end
+        local sel = require("anvim.context").selection()
+        return { footer = table.concat(footer), sel = sel and { sel.start_line, sel.end_line, sel.mode } or false }
+      ]])
+    end
+    lua(
+      [[
+      vim.cmd.stopinsert()
+      vim.api.nvim_set_current_win(require("anvim.layout").wins.code)
+      vim.cmd.edit(...)
+    ]],
+      helpers.tmp .. "/matchparen.lua"
+    )
+    keys("2GVjj<C-l>")
+    wait_where({ win = "input", mode = "i" }, "<C-l> from visual mode")
+    local out = probe()
+    assert.are.same({ 2, 4, "line" }, out.sel)
+    assert(out.footer:find("⧉ 3 lines selected", 1, true), out.footer)
+    keys("<Esc><C-h>")
+    wait_where({ win = "code", mode = "n" }, "<C-h> from the prompt")
+    vim.wait(200)
+    assert.are.same({ 2, 4, "line" }, probe().sel, "going back to the code window dropped the pin")
+    keys("j")
+    wait(2000, [[return require("anvim.context").selection() == nil]], "j kept the pin")
+    assert(probe().footer:find("⧉ In matchparen.lua", 1, true), probe().footer)
+    keys("5Gvj")
+    local pos = lua([[
+      local pos = vim.fn.win_screenpos(require("anvim.layout").wins.input)
+      return { row = pos[1], col = pos[2] + 3 }
+    ]])
+    lua(
+      [[
+      vim.api.nvim_input_mouse("left", "press", "", 0, ...)
+      vim.api.nvim_input_mouse("left", "release", "", 0, ...)
+    ]],
+      pos.row,
+      pos.col
+    )
+    wait_where({ win = "input", mode = "i" }, "a click on the prompt from visual mode")
+    assert.are.same({ 5, 6, "char" }, probe().sel)
+    lua([[require("anvim.context").clear()]])
+    keys("<Esc>")
+  end)
+
+  it("pauses follow mode while a selection is pinned, and follows again after the prompt", function()
+    start()
+    local file, other = helpers.tmp .. "/matchparen.lua", helpers.tmp .. "/pin_other.lua"
+    vim.fn.writefile({ "local x = 1", "local yy = 22", "return x" }, other)
+    local function read(id)
+      lua(
+        [[require("anvim.sidecar").dispatch({ type = "tool_use", id = ..., name = "Read", input = { file_path = select(2, ...) } })]],
+        id,
+        other
+      )
+    end
+    local function code_file()
+      return lua([[return vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(require("anvim.layout").wins.code))]])
+    end
+    -- Types a prompt and sends it, and returns what the plugin sent.
+    local function ask()
+      lua([[
+        local sidecar = require("anvim.sidecar")
+        _G.sent, _G.send = {}, sidecar.send
+        sidecar.send = function(msg)
+          table.insert(_G.sent, msg)
+        end
+      ]])
+      keys("what is this?")
+      wait(2000, [[return vim.api.nvim_get_current_line() == "what is this?"]], "the prompt was not typed")
+      lua([[require("blink.cmp").hide()]])
+      keys("<CR>")
+      wait(2000, [[return #_G.sent > 0]], "the prompt was not sent")
+      return lua([[
+        require("anvim.sidecar").send = _G.send
+        require("anvim.input").set_busy(false)
+        return _G.sent[1]
+      ]])
+    end
+    local function in_code()
+      lua(
+        [[
+        vim.cmd.stopinsert()
+        vim.api.nvim_set_current_win(require("anvim.layout").wins.code)
+        vim.cmd.edit(...)
+      ]],
+        file
+      )
+    end
+
+    -- Claude reads another file after the user pinned and went to the prompt.
+    in_code()
+    keys("10G")
+    vim.wait(300)
+    keys("Vj<C-l>")
+    wait_where({ win = "input", mode = "i" }, "<C-l> with a selection")
+    read("pin1")
+    vim.wait(100)
+    assert.are.same(file, code_file(), "follow mode left the pinned file")
+    local text = statusline()
+    assert(text:find("⏸ pinned · Claude at pin_other.lua:1 +1", 1, true), text)
+    local sent = ask()
+    assert.are.same({ 10, 11 }, { sent.context.selection.start_line, sent.context.selection.end_line })
+    wait(
+      2000,
+      ([[return vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(require("anvim.layout").wins.code)) == %q]]):format(
+        other
+      ),
+      "follow mode did not catch up after the prompt"
+    )
+    assert(statusline():find("◉ following", 1, true), statusline())
+
+    -- Claude reads another file while the user reads, and the user then points.
+    keys("<Esc>")
+    in_code()
+    read("pin2")
+    keys("10G")
+    vim.wait(300)
+    keys("Vj<C-l>")
+    wait_where({ win = "input", mode = "i" }, "<C-l> with a selection")
+    vim.wait(100)
+    assert.are.same(file, code_file(), "entering the prompt took the pinned file away")
+    sent = ask()
+    assert.are.same({ "matchparen.lua", 10, 11 }, {
+      sent.context.file,
+      sent.context.selection.start_line,
+      sent.context.selection.end_line,
+    })
+    keys("<Esc>")
+  end)
+
+  it("gives a file that follow mode catches up to its filetype and the read-only lock", function()
+    start()
+    local fresh = helpers.tmp .. "/caught_up.lua"
+    vim.fn.writefile({ "local fresh = 1", "return fresh" }, fresh)
+    lua([[
+      vim.cmd.stopinsert()
+      vim.api.nvim_set_current_win(require("anvim.layout").wins.code)
+    ]])
+    lua(
+      [[require("anvim.sidecar").dispatch({ type = "tool_use", id = "fresh1", name = "Read", input = { file_path = ... } })]],
+      fresh
+    )
+    keys("<C-l>")
+    wait_where({ win = "input", mode = "i" }, "<C-l>")
+    local out = lua(
+      [[
+      local buf = vim.fn.bufnr(...)
+      return {
+        shown = vim.api.nvim_win_get_buf(require("anvim.layout").wins.code) == buf,
+        ft = vim.bo[buf].filetype,
+        modifiable = vim.bo[buf].modifiable,
+        ts = vim.treesitter.highlighter.active[buf] ~= nil,
+      }
+    ]],
+      fresh
+    )
+    assert.are.same({ shown = true, ft = "lua", modifiable = false, ts = true }, out)
+    keys("<Esc>")
+  end)
+
+  it("puts references in the prompt with visual c, c{motion} and cc, and with @ in the explorer", function()
+    start()
+    local file = helpers.tmp .. "/matchparen.lua"
+    local function prompt()
+      return lua([[return vim.api.nvim_buf_get_lines(require("anvim.input").buf(), 0, -1, false)[1] ]])
+    end
+    local function to_code()
+      keys("<Esc><C-h>")
+      wait_where({ win = "code", mode = "n" }, "<C-h> from the prompt")
+    end
+    lua(
+      [[
+      vim.cmd.stopinsert()
+      vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "" })
+      vim.api.nvim_set_current_win(require("anvim.layout").wins.code)
+      vim.cmd.edit(...)
+    ]],
+      file
+    )
+    keys("3GVjc")
+    wait_where({ win = "input", mode = "i" }, "visual c")
+    assert.are.same("@matchparen.lua#L3-4 ", prompt())
+    to_code()
+    -- `c` starts the operator at once. Neither mini.surround's `cs` nor
+    -- which-key makes it wait for more keys.
+    keys("10Gc")
+    vim.wait(100)
+    assert.are.same("no", vim.rpcrequest(chan, "nvim_get_mode").mode, "c waits for more keys")
+    keys("j")
+    wait_where({ win = "input", mode = "i" }, "cj")
+    assert.are.same("@matchparen.lua#L3-4 @matchparen.lua#L10-11 ", prompt())
+    to_code()
+    keys("5G2cc")
+    wait_where({ win = "input", mode = "i" }, "2cc")
+    assert.are.same("@matchparen.lua#L3-4 @matchparen.lua#L10-11 @matchparen.lua#L5-6 ", prompt())
+
+    lua(
+      [[
+      vim.cmd.stopinsert()
+      vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "" })
+      Snacks.explorer.reveal({ file = ... })
+      Snacks.picker.get({ source = "explorer" })[1]:focus()
+    ]],
+      file
+    )
+    wait_where({ win = "snacks_picker_list", mode = "n" }, "the tree has the cursor")
+    wait(
+      2000,
+      [[return Snacks.picker.get({ source = "explorer" })[1]:current().file:find("matchparen.lua", 1, true) ~= nil]]
+    )
+    keys("@")
+    wait_where({ win = "input", mode = "i" }, "@ in the explorer")
+    assert.are.same("@matchparen.lua ", prompt())
+    lua([[vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "" })]])
+    keys("<Esc>")
+  end)
+
+  it("completes files after @ in the prompt", function()
+    start()
+    lua([[
+      vim.cmd.stopinsert()
+      vim.api.nvim_set_current_win(require("anvim.layout").wins.input)
+      vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "" })
+    ]])
+    wait(2000, [[return vim.api.nvim_get_mode().mode == "n"]])
+    lua([[vim.api.nvim_input("A")]])
+    wait(2000, [[return vim.api.nvim_get_mode().mode == "i"]], "not in insert mode")
+    keys("look at @matchp")
+    wait(3000, [[return require("blink.cmp").is_menu_visible()]], "the menu did not open")
+    local first = lua([[
+      local item = require("blink.cmp").get_items()[1]
+      return { item.source_id, item.label }
+    ]])
+    assert.are.same({ "anvim", "matchparen.lua" }, first)
+    keys("<CR>")
+    wait(2000, [[return vim.api.nvim_get_current_line() == "look at @matchparen.lua "]], "the file was not accepted")
+    lua([[vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "" })]])
+    keys("<Esc>")
+  end)
+
+  it("opens Claude's trail with <leader>kt, newest first, and <CR> goes there", function()
+    start()
+    local file = helpers.tmp .. "/matchparen.lua"
+    lua(
+      [[
+      vim.cmd.stopinsert()
+      vim.api.nvim_set_current_win(require("anvim.layout").wins.code)
+      vim.api.nvim_win_set_cursor(0, { 1, 0 })
+      local read = { file_path = ..., offset = 20, limit = 5 }
+      require("anvim.sidecar").dispatch({ type = "tool_use", id = "trail1", name = "Read", input = read })
+    ]],
+      file
+    )
+    keys("<leader>kt")
+    wait(
+      3000,
+      [[
+      local picker = Snacks.picker.get({ source = "anvim_trail" })[1]
+      local item = picker and picker:current()
+      return item ~= nil and item.where == "matchparen.lua#L20-24"
+    ]],
+      "the trail does not start with the newest read"
+    )
+    keys("<CR>")
+    wait_where({ win = "code", mode = "n" }, "<CR> in the trail")
+    local out = lua([[
+      local win = require("anvim.layout").wins.code
+      return { name = vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(win)), line = vim.api.nvim_win_get_cursor(win)[1] }
+    ]])
+    assert.are.same({ name = file, line = 20 }, out)
+    lua([[require("anvim.layout").focus_input()]])
   end)
 
   it("moves between the code window, the prompt and the tree with window keys", function()
@@ -607,6 +893,14 @@ describe("LazyVim stack", function()
     end
     in_code(helpers.tmp .. "/session.jsonl")
     lua([[Snacks.picker.files()]])
+    -- The picker opens once its finder has results, later while a language
+    -- server loads, and starts insert mode after that. Keys typed before go
+    -- to the code window, or run as normal-mode commands in the picker.
+    wait(
+      5000,
+      [[return vim.bo.filetype == "snacks_picker_input" and vim.api.nvim_get_mode().mode == "i"]],
+      "the picker did not open"
+    )
     keys("matchparen.lua")
     wait(
       5000,
@@ -702,7 +996,7 @@ describe("LazyVim stack", function()
       end
       return { maps = maps, groups = groups }
     ]])
-    assert.are.same({ kj = "Jump to where Claude is", kr = "Read the transcript" }, out.maps)
+    assert.are.same({ kj = "Jump to where Claude is", kr = "Read the transcript", kt = "Claude's trail" }, out.maps)
     assert.are.same({ { desc = "claude", group = true } }, out.groups)
   end)
 

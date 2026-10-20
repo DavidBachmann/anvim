@@ -2,6 +2,11 @@ local function claude_color()
   return { fg = Snacks.util.color("AnvimClaude") }
 end
 
+-- Below this width, Neovim would cut the follow status from the left.
+local function narrow()
+  return vim.o.columns < 100
+end
+
 return {
   -- The global statusline shows where Claude is and whether it works, from any window.
   {
@@ -37,7 +42,7 @@ return {
         },
         {
           function()
-            return (follow.status():gsub("%%", "%%%%"))
+            return (follow.status(narrow()):gsub("%%", "%%%%"))
           end,
           cond = function()
             return follow.status() ~= ""
@@ -50,7 +55,7 @@ return {
             return "(<leader>j)"
           end,
           cond = function()
-            return follow.agent ~= nil and not follow.enabled()
+            return follow.agent ~= nil and not follow.following() and not narrow()
           end,
           color = function()
             return { fg = Snacks.util.color("Comment") }

@@ -59,6 +59,9 @@ local function wire()
   stream.attach()
   require("anvim.tools").attach()
   require("anvim.permission").attach()
+  require("anvim.context").attach()
+  require("anvim.trail").attach(sidecar)
+  require("anvim.completion").attach(sidecar)
   sidecar.on("init", function(ev)
     state.session_id = ev.session_id
     state.model = ev.model

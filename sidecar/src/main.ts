@@ -8,10 +8,11 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { appendFileSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { contextHook, PendingContexts } from "./context";
 import { PermissionBridge } from "./permissions";
 import type { Command, Event } from "./protocol";
 import { EditorBridge, editorServer, SERVER } from "./tools";
-import { Translator } from "./translate";
+import { commandsEvent, Translator } from "./translate";
 
 const record = process.env.ANVIM_RECORD;
 
@@ -55,6 +56,7 @@ const inbox = new Inbox();
 let session: Query | null = null;
 const editor = new EditorBridge(emit);
 const permissions = new PermissionBridge(emit);
+const contexts = new PendingContexts();
 
 const PREVIEW_TIMEOUT_MS = 3000;
 const previews = new Map<number, () => void>();
@@ -88,15 +90,31 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     permissionMode: mode,
     allowDangerouslySkipPermissions: mode === "bypassPermissions",
     includePartialMessages: true,
-    hooks: { PreToolUse: [{ matcher: "Edit|Write|NotebookEdit", hooks: [awaitPreview] }] },
+    hooks: {
+      PreToolUse: [{ matcher: "Edit|Write|NotebookEdit", hooks: [awaitPreview] }],
+      UserPromptSubmit: [{ hooks: [contextHook(contexts)] }],
+    },
     systemPrompt: { type: "preset", preset: "claude_code", append: cmd.append_system_prompt },
     mcpServers: { [SERVER]: editorServer(editor) },
     canUseTool: permissions.canUseTool,
     stderr: (data) => process.stderr.write(data),
   };
   session = query({ prompt: inbox, options });
+  session
+    .supportedCommands()
+    .then((commands) => emit(commandsEvent(commands)))
+    .catch(() => {});
   const translator = new Translator();
+  let turnOpen = false;
   for await (const msg of session) {
+    if (!turnOpen) {
+      turnOpen = true;
+      contexts.turnStart();
+    }
+    if (msg.type === "result") {
+      turnOpen = false;
+      contexts.turnEnd();
+    }
     for (const ev of translator.translate(msg)) emit(ev);
   }
 }
@@ -114,6 +132,7 @@ async function handle(cmd: Command): Promise<void> {
         .finally(() => process.exit());
       return;
     case "prompt":
+      contexts.push(cmd.text, cmd.context);
       inbox.push(cmd.text);
       return;
     case "interrupt":
