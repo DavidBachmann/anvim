@@ -31,6 +31,8 @@ The screen has three columns: your explorer, code, and Claude. Type in the promp
 
 File buffers are read-only. `:w` does nothing but say so, and format on save never runs. Claude makes every change, and buffers reload when files change on disk.
 
+Claude can also use your editor. It points at code with `show_user`, which marks a range and puts a short note above it until your next prompt. It asks the language servers that run in anvim for diagnostics, definitions, references, hover text and symbols, so it greps less. These tools work in every permission mode, so they read only files inside the directory that anvim opened. `show_user` can point at any file, because its answer holds no file text.
+
 All of LazyVim's keys and your own work as usual. anvim adds these. `<leader>` is Space.
 
 | Key | Where | Action |

@@ -9,6 +9,7 @@ import {
 import { appendFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import type { Command, Event } from "./protocol";
+import { EditorBridge, editorServer, isEditorTool, SERVER } from "./tools";
 import { Translator } from "./translate";
 
 const record = process.env.ANVIM_RECORD;
@@ -51,6 +52,7 @@ class Inbox implements AsyncIterable<SDKUserMessage> {
 
 const inbox = new Inbox();
 let session: Query | null = null;
+const editor = new EditorBridge(emit);
 
 const PREVIEW_TIMEOUT_MS = 3000;
 const previews = new Map<number, () => void>();
@@ -84,11 +86,15 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     includePartialMessages: true,
     hooks: { PreToolUse: [{ matcher: "Edit|Write|NotebookEdit", hooks: [awaitPreview] }] },
     systemPrompt: { type: "preset", preset: "claude_code", append: cmd.append_system_prompt },
+    mcpServers: { [SERVER]: editorServer(editor) },
     // Permission prompts are not wired to the editor yet.
-    canUseTool: async (toolName) => ({
-      behavior: "deny",
-      message: `anvim cannot show permission prompts yet, so ${toolName} was denied. Ask the user to switch permission mode.`,
-    }),
+    canUseTool: async (toolName, input, { mcpServer }) =>
+      isEditorTool(mcpServer)
+        ? { behavior: "allow", updatedInput: input }
+        : {
+            behavior: "deny",
+            message: `anvim cannot show permission prompts yet, so ${toolName} was denied. Ask the user to switch permission mode.`,
+          },
     stderr: (data) => process.stderr.write(data),
   };
   session = query({ prompt: inbox, options });
@@ -124,6 +130,9 @@ async function handle(cmd: Command): Promise<void> {
       return;
     case "preview_done":
       previews.get(cmd.req)?.();
+      return;
+    case "editor_response":
+      editor.respond(cmd);
       return;
   }
 }

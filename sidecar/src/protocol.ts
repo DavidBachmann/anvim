@@ -14,7 +14,9 @@ export type Command =
   | { type: "interrupt" }
   | { type: "set_permission_mode"; mode: string }
   | { type: "set_model"; model?: string }
-  | { type: "preview_done"; req: number };
+  | { type: "preview_done"; req: number }
+  // The answer to an editor_request: plain text for Claude, or an error.
+  | { type: "editor_response"; req: number; result?: string; error?: string };
 
 export type Event =
   | {
@@ -46,6 +48,8 @@ export type Event =
   // Sent before an edit tool runs. The plugin answers preview_done once its
   // streamed preview has caught up, so the file never changes ahead of the view.
   | { type: "await_preview"; req: number; tool_use_id: string }
+  // An editor tool call (tools.ts). The plugin answers with editor_response.
+  | { type: "editor_request"; req: number; method: string; params: Record<string, unknown> }
   | {
       type: "tool_use";
       id: string;

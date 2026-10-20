@@ -1,0 +1,132 @@
+1792456315238 {"type":"status","status":null,"permission_mode":"default"}
+1792456315776 {"type":"init","session_id":"00000000-0000-0000-0000-000000000000","model":"claude-haiku-5-5","cwd":"/ANVIM_FIXTURE","permission_mode":"default","version":"2.1.304","slash_commands":[]}
+1792456315779 {"type":"status","status":"requesting"}
+1792456317538 {"type":"turn_start"}
+1792456317539 {"type":"tool_start","id":"toolu_015NzU2enLyCWLqWMWpmhZgj","name":"mcp__anvim__lsp_workspace_symbols"}
+1792456317539 {"type":"tool_field","id":"toolu_015NzU2enLyCWLqWMWpmhZgj","name":"mcp__anvim__lsp_workspace_symbols","key":"query","phase":"start"}
+1792456317539 {"type":"tool_field","id":"toolu_015NzU2enLyCWLqWMWpmhZgj","name":"mcp__anvim__lsp_workspace_symbols","key":"query","phase":"delta","text":"take"}
+1792456317710 {"type":"tool_field","id":"toolu_015NzU2enLyCWLqWMWpmhZgj","name":"mcp__anvim__lsp_workspace_symbols","key":"query","phase":"end","value":"take"}
+1792456317715 {"type":"tool_use","id":"toolu_015NzU2enLyCWLqWMWpmhZgj","name":"mcp__anvim__lsp_workspace_symbols","input":{"query":"take"},"parent_id":null}
+1792456317720 {"type":"tool_input_end","id":"toolu_015NzU2enLyCWLqWMWpmhZgj"}
+1792456317726 {"type":"tool_start","id":"toolu_011zy13GHdRX7uLaDUGWW6fS","name":"Bash"}
+1792456317726 {"type":"tool_field","id":"toolu_011zy13GHdRX7uLaDUGWW6fS","name":"Bash","key":"command","phase":"start"}
+1792456317726 {"type":"tool_field","id":"toolu_011zy13GHdRX7uLaDUGWW6fS","name":"Bash","key":"command","phase":"delta","text":"grep -rn"}
+1792456317726 {"type":"tool_field","id":"toolu_011zy13GHdRX7uLaDUGWW6fS","name":"Bash","key":"command","phase":"delta","text":" --"}
+1792456317726 {"type":"tool_field","id":"toolu_011zy13GHdRX7uLaDUGWW6fS","name":"Bash","key":"command","phase":"delta","text":"ex"}
+1792456317726 {"type":"tool_field","id":"toolu_011zy13GHdRX7uLaDUGWW6fS","name":"Bash","key":"command","phase":"delta","text":"clude-dir=node_"}
+1792456317727 {"type":"tool_field","id":"toolu_011zy13GHdRX7uLaDUGWW6fS","name":"Bash","key":"command","phase":"delta","text":"modules --exclude-d"}
+1792456317727 {"type":"tool_field","id":"toolu_011zy13GHdRX7uLaDUGWW6fS","name":"Bash","key":"command","phase":"delta","text":"ir=.tests -w "}
+1792456317727 {"type":"tool_field","id":"toolu_011zy13GHdRX7uLaDUGWW6fS","name":"Bash","key":"command","phase":"delta","text":"'take' . |"}
+1792456317732 {"type":"editor_request","req":1,"method":"lsp_workspace_symbols","params":{"query":"take"}}
+1792456317851 {"type":"tool_result","id":"toolu_015NzU2enLyCWLqWMWpmhZgj","is_error":false,"text":"5 symbols\nVariable take  lua/anvim/stream.lua:189\nVariable table.pack  ~/.local/share/nvim/mason/packages/lua-language-server/libexec/meta/Lua 5.4 en-us utf8/table.lua:86\nVariable table.unpack  ~/.local/share/nvim/mason/packages/lua-language-server/libexec/meta/Lua 5.4 en-us utf8/table.lua:136\nVariable debug.traceback  ~/.local/share/nvim/mason/packages/lua-language-server/libexec/meta/Lua 5.4 en-us utf8/debug.lua:248\nField traceback  ~/.local/share/nvim/mason/packages/lua-language-server/libexec/meta/Lua 5.4 en-us utf8/debug.lua:248","result":[{"type":"text","text":"5 symbols\nVariable take  lua/anvim/stream.lua:189\nVariable table.pack  ~/.local/share/nvim/mason/packages/lua-language-server/libexec/meta/Lua 5.4 en-us utf8/table.lua:86\nVariable table.unpack  ~/.local/share/nvim/mason/packages/lua-language-server/libexec/meta/Lua 5.4 en-us utf8/table.lua:136\nVariable debug.traceback  ~/.local/share/nvim/mason/packages/lua-language-server/libexec/meta/Lua 5.4 en-us utf8/debug.lua:248\nField traceback  ~/.local/share/nvim/mason/packages/lua-language-server/libexec/meta/Lua 5.4 en-us utf8/debug.lua:248"}],"parent_id":null}
+1792456318057 {"type":"tool_field","id":"toolu_011zy13GHdRX7uLaDUGWW6fS","name":"Bash","key":"command","phase":"delta","text":" grep -v '^./."}
+1792456318057 {"type":"tool_field","id":"toolu_011zy13GHdRX7uLaDUGWW6fS","name":"Bash","key":"command","phase":"delta","text":"git/'"}
+1792456318057 {"type":"tool_field","id":"toolu_011zy13GHdRX7uLaDUGWW6fS","name":"Bash","key":"command","phase":"end","value":"grep -rn --exclude-dir=node_modules --exclude-dir=.tests -w 'take' . | grep -v '^./.git/'"}
+1792456318057 {"type":"tool_field","id":"toolu_011zy13GHdRX7uLaDUGWW6fS","name":"Bash","key":"description","phase":"start"}
+1792456318058 {"type":"tool_field","id":"toolu_011zy13GHdRX7uLaDUGWW6fS","name":"Bash","key":"description","phase":"delta","text":"Search rep"}
+1792456318058 {"type":"tool_field","id":"toolu_011zy13GHdRX7uLaDUGWW6fS","name":"Bash","key":"description","phase":"delta","text":"o"}
+1792456318058 {"type":"tool_field","id":"toolu_011zy13GHdRX7uLaDUGWW6fS","name":"Bash","key":"description","phase":"delta","text":" for the"}
+1792456318058 {"type":"tool_field","id":"toolu_011zy13GHdRX7uLaDUGWW6fS","name":"Bash","key":"description","phase":"delta","text":" word take"}
+1792456318058 {"type":"tool_field","id":"toolu_011zy13GHdRX7uLaDUGWW6fS","name":"Bash","key":"description","phase":"end","value":"Search repo for the word take"}
+1792456318062 {"type":"tool_use","id":"toolu_011zy13GHdRX7uLaDUGWW6fS","name":"Bash","input":{"command":"grep -rn --exclude-dir=node_modules --exclude-dir=.tests -w 'take' . | grep -v '^./.git/'","description":"Search repo for the word take"},"parent_id":null}
+1792456318063 {"type":"tool_input_end","id":"toolu_011zy13GHdRX7uLaDUGWW6fS"}
+1792456318780 {"type":"tool_result","id":"toolu_011zy13GHdRX7uLaDUGWW6fS","is_error":false,"text":"README.md:29:The screen has three columns: tree, code, and Claude. Type in the prompt at the bottom right. While your cursor is in the prompt, the code window follows Claude. It opens the files Claude reads, and edits stream in with the old text struck through. Move the cursor anywhere else to take control. The statusline then shows where Claude is.\ntests/tools_lsp_spec.lua:13:  \"local function take(s, n)\",\ntests/tools_lsp_spec.lua:18:  \"  return take(s, 1)\",\ntests/tools_lsp_spec.lua:22:  \"  return take(s:reverse(), 1)\",\ntests/tools_lsp_spec.lua:62:      { \"Defined at lsp/lib.lua:4\", \"lsp/lib.lua:4: local function take(s, n)\" },\ntests/tools_lsp_spec.lua:63:      lines(helpers.ask(\"lsp_definition\", { path = \"lsp/lib.lua\", line = 9, symbol = \"take\" }))\ntests/tools_lsp_spec.lua:71:      \"lsp/lib.lua:4: local function take(s, n)\",\ntests/tools_lsp_spec.lua:72:      \"lsp/lib.lua:9: return take(s, 1)\",\ntests/tools_lsp_spec.lua:73:      \"lsp/lib.lua:13: return take(s:reverse(), 1)\",\ntests/tools_lsp_spec.lua:74:    }, lines(helpers.ask(\"lsp_references\", { path = dir .. \"/lib.lua\", line = 4, symbol = \"take\" })))\ntests/tools_lsp_spec.lua:87:    local text = helpers.ask(\"lsp_hover\", { path = \"lsp/lib.lua\", line = 13, symbol = \"take\" }).result\ntests/tools_lsp_spec.lua:88:    assert(text:find(\"function take(s: any, n: any)\", 1, true), text)\ntests/tools_lsp_spec.lua:90:    assert.are.same(\"function take(s: any, n: any)\", require(\"anvim.tools\").summary(\"lsp_hover\", {}, text):match(\"%S.*\"))\ntests/tools_lsp_spec.lua:97:    helpers.contains(out, \"^%a+ take  L4%-6$\")\ntests/tools_lsp_spec.lua:106:    local out = lines(helpers.ask(\"lsp_workspace_symbols\", { query = \"take\" }))\ntests/tools_lsp_spec.lua:108:    assert(out[2]:match(\" take  lsp/lib%.lua:4$\"), table.concat(out, \"\\n\"))\ntests/tools_spec.lua:198:    local input = { path = helpers.tmp .. \"/lua/stream.lua\", line = 42, symbol = \"take\" }\ntests/tools_spec.lua:214:    helpers.contains(lines, \"^⏺ lsp_references%(lua/stream%.lua:42 take%...","result":{"stdout":"README.md:29:The screen has three columns: tree, code, and Claude. Type in the prompt at the bottom right. While your cursor is in the prompt, the code window follows Claude. It opens the files Claude reads, and edits stream in with the old text struck through. Move the cursor anywhere else to take control. The statusline then shows where Claude is.\ntests/tools_lsp_spec.lua:13:  \"local function take(s, n)\",\ntests/tools_lsp_spec.lua:18:  \"  return take(s, 1)\",\ntests/tools_lsp_spec.lua:22:  \"  return take(s:reverse(), 1)\",\ntests/tools_lsp_spec.lua:62:      { \"Defined at lsp/lib.lua:4\", \"lsp/lib.lua:4: local function take(s, n)\" },\ntests/tools_lsp_spec.lua:63:      lines(helpers.ask(\"lsp_definition\", { path = \"lsp/lib.lua\", line = 9, symbol = \"take\" }))\ntests/tools_lsp_spec.lua:71:      \"lsp/lib.lua:4: local function take(s, n)\",\ntests/tools_lsp_spec.lua:72:      \"lsp/lib.lua:9: return take(s, 1)\",\ntests/tools_lsp_spec.lua:73:      \"lsp/lib.lua:13: return take(s:reverse(), 1)\",\ntests/tools_lsp_spec.lua:74:    }, lines(helpers.ask(\"lsp_references\", { path = dir .. \"/lib.lua\", line = 4, symbol = \"take\" })))\ntests/tools_lsp_spec.lua:87:    local text = helpers.ask(\"lsp_hover\", { path = \"lsp/lib.lua\", line = 13, symbol = \"take\" }).result\ntests/tools_lsp_spec.lua:88:    assert(text:find(\"function take(s: any, n: any)\", 1, true), text)\ntests/tools_lsp_spec.lua:90:    assert.are.same(\"function take(s: any, n: any)\", require(\"anvim.tools\").summary(\"lsp_hover\", {}, text):match(\"%S.*\"))\ntests/tools_lsp_spec.lua:97:    helpers.contains(out, \"^%a+ take  L4%-6$\")\ntests/tools_lsp_spec.lua:106:    local out = lines(helpers.ask(\"lsp_workspace_symbols\", { query = \"take\" }))\ntests/tools_lsp_spec.lua:108:    assert(out[2]:match(\" take  lsp/lib%.lua:4$\"), table.concat(out, \"\\n\"))\ntests/tools_spec.lua:198:    local input = { path = helpers.tmp .. \"/lua/stream.lua\", line = 42, symbol = \"take\" }\ntests/tools_spec.lua:214:    helpers.contains(lines, \"^⏺ lsp_references%(lua/stream%.lua:42 take%...","stderr":"","interrupted":false,"isImage":false,"noOutputExpected":false},"parent_id":null}
+1792456318782 {"type":"status","status":"requesting"}
+1792456319987 {"type":"thinking_start"}
+1792456320363 {"type":"thinking_stop"}
+1792456320364 {"type":"tool_start","id":"toolu_015tuLTqevDTyu9HyRHmy5MC","name":"mcp__anvim__lsp_references"}
+1792456320364 {"type":"tool_field","id":"toolu_015tuLTqevDTyu9HyRHmy5MC","name":"mcp__anvim__lsp_references","key":"path","phase":"start"}
+1792456320364 {"type":"tool_field","id":"toolu_015tuLTqevDTyu9HyRHmy5MC","name":"mcp__anvim__lsp_references","key":"path","phase":"delta","text":"l"}
+1792456320364 {"type":"tool_field","id":"toolu_015tuLTqevDTyu9HyRHmy5MC","name":"mcp__anvim__lsp_references","key":"path","phase":"delta","text":"ua/anvim/stream"}
+1792456320364 {"type":"tool_field","id":"toolu_015tuLTqevDTyu9HyRHmy5MC","name":"mcp__anvim__lsp_references","key":"path","phase":"delta","text":".lua"}
+1792456320365 {"type":"tool_field","id":"toolu_015tuLTqevDTyu9HyRHmy5MC","name":"mcp__anvim__lsp_references","key":"path","phase":"end","value":"lua/anvim/stream.lua"}
+1792456320365 {"type":"tool_field","id":"toolu_015tuLTqevDTyu9HyRHmy5MC","name":"mcp__anvim__lsp_references","key":"line","phase":"start"}
+1792456320409 {"type":"tool_field","id":"toolu_015tuLTqevDTyu9HyRHmy5MC","name":"mcp__anvim__lsp_references","key":"line","phase":"end","value":189}
+1792456320409 {"type":"tool_field","id":"toolu_015tuLTqevDTyu9HyRHmy5MC","name":"mcp__anvim__lsp_references","key":"symbol","phase":"start"}
+1792456320409 {"type":"tool_field","id":"toolu_015tuLTqevDTyu9HyRHmy5MC","name":"mcp__anvim__lsp_references","key":"symbol","phase":"delta","text":"take"}
+1792456320502 {"type":"tool_field","id":"toolu_015tuLTqevDTyu9HyRHmy5MC","name":"mcp__anvim__lsp_references","key":"symbol","phase":"end","value":"take"}
+1792456320505 {"type":"tool_use","id":"toolu_015tuLTqevDTyu9HyRHmy5MC","name":"mcp__anvim__lsp_references","input":{"path":"lua/anvim/stream.lua","line":189,"symbol":"take"},"parent_id":null}
+1792456320508 {"type":"tool_input_end","id":"toolu_015tuLTqevDTyu9HyRHmy5MC"}
+1792456320518 {"type":"editor_request","req":2,"method":"lsp_references","params":{"path":"lua/anvim/stream.lua","line":189,"symbol":"take"}}
+1792456320662 {"type":"tool_result","id":"toolu_015tuLTqevDTyu9HyRHmy5MC","is_error":false,"text":"2 references\nlua/anvim/stream.lua:189: local function take(s, n)\nlua/anvim/stream.lua:205: chunk, p.queue = take(p.queue, n)","result":[{"type":"text","text":"2 references\nlua/anvim/stream.lua:189: local function take(s, n)\nlua/anvim/stream.lua:205: chunk, p.queue = take(p.queue, n)"}],"parent_id":null}
+1792456320664 {"type":"status","status":"requesting"}
+1792456321915 {"type":"tool_start","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user"}
+1792456322215 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"path","phase":"start"}
+1792456322215 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"path","phase":"delta","text":"l"}
+1792456322216 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"path","phase":"delta","text":"ua/anvim/stream"}
+1792456322216 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"path","phase":"delta","text":".lua"}
+1792456322216 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"path","phase":"end","value":"lua/anvim/stream.lua"}
+1792456322216 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"start_line","phase":"start"}
+1792456322217 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"start_line","phase":"end","value":189}
+1792456322217 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"end_line","phase":"start"}
+1792456322217 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"end_line","phase":"end","value":205}
+1792456322217 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"note","phase":"start"}
+1792456322217 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"note","phase":"delta","text":"The only"}
+1792456322326 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"note","phase":"delta","text":" real"}
+1792456322327 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"note","phase":"delta","text":" use of take"}
+1792456322327 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"note","phase":"delta","text":" is the"}
+1792456322327 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"note","phase":"delta","text":" local function here"}
+1792456322327 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"note","phase":"delta","text":", called"}
+1792456322328 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"note","phase":"delta","text":" once"}
+1792456322328 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"note","phase":"delta","text":" on line 205 to"}
+1792456322328 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"note","phase":"delta","text":" p"}
+1792456322328 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"note","phase":"delta","text":"ull the"}
+1792456322328 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"note","phase":"delta","text":" next ch"}
+1792456322358 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"note","phase":"delta","text":"unk from the queue."}
+1792456322402 {"type":"tool_field","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","key":"note","phase":"end","value":"The only real use of take is the local function here, called once on line 205 to pull the next chunk from the queue."}
+1792456322405 {"type":"tool_use","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","name":"mcp__anvim__show_user","input":{"path":"lua/anvim/stream.lua","start_line":189,"end_line":205,"note":"The only real use of take is the local function here, called once on line 205 to pull the next chunk from the queue."},"parent_id":null}
+1792456322408 {"type":"tool_input_end","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX"}
+1792456322416 {"type":"editor_request","req":3,"method":"show_user","params":{"path":"lua/anvim/stream.lua","start_line":189,"end_line":205,"note":"The only real use of take is the local function here, called once on line 205 to pull the next chunk from the queue."}}
+1792456322436 {"type":"tool_result","id":"toolu_01XcHa2R3yw8m9JME6Rv3MmX","is_error":false,"text":"Showed lua/anvim/stream.lua#L189-205 to the user.","result":[{"type":"text","text":"Showed lua/anvim/stream.lua#L189-205 to the user."}],"parent_id":null}
+1792456322438 {"type":"status","status":"requesting"}
+1792456323651 {"type":"text_start"}
+1792456323651 {"type":"text_delta","text":"The"}
+1792456323824 {"type":"text_delta","text":" only"}
+1792456323824 {"type":"text_delta","text":" real use of `take` is"}
+1792456323825 {"type":"text_delta","text":" in"}
+1792456323825 {"type":"text_delta","text":" `lua/anvim/"}
+1792456323825 {"type":"text_delta","text":"stream.lua`. It"}
+1792456323825 {"type":"text_delta","text":" def"}
+1792456323825 {"type":"text_delta","text":"ines `"}
+1792456323825 {"type":"text_delta","text":"local"}
+1792456323825 {"type":"text_delta","text":" function take(s, n)`"}
+1792456323825 {"type":"text_delta","text":" at line 189 and calls"}
+1792456323831 {"type":"text_delta","text":" it once,"}
+1792456323853 {"type":"text_delta","text":" at line 205 "}
+1792456324001 {"type":"text_delta","text":"(`chunk, p."}
+1792456324002 {"type":"text_delta","text":"queue = take(p.que"}
+1792456324003 {"type":"text_delta","text":"ue, n)`). Language"}
+1792456324003 {"type":"text_delta","text":" server references"}
+1792456324003 {"type":"text_delta","text":" confirm this"}
+1792456324003 {"type":"text_delta","text":".\n\nOther matches are not"}
+1792456324004 {"type":"text_delta","text":" cal"}
+1792456324018 {"type":"text_delta","text":"ls to that"}
+1792456324038 {"type":"text_delta","text":" function:\n- `"}
+1792456324057 {"type":"text_delta","text":"tests/tools_ls"}
+1792456324077 {"type":"text_delta","text":"p_spec.lua`"}
+1792456324170 {"type":"text_delta","text":" u"}
+1792456324174 {"type":"text_delta","text":"ses `take` as a s"}
+1792456324174 {"type":"text_delta","text":"ample function name in a Lua"}
+1792456324174 {"type":"text_delta","text":" fixture,"}
+1792456324179 {"type":"text_delta","text":" and as a sym"}
+1792456324199 {"type":"text_delta","text":"bol to"}
+1792456324349 {"type":"text_delta","text":" look"}
+1792456324349 {"type":"text_delta","text":" up.\n- `t"}
+1792456324350 {"type":"text_delta","text":"ests/tools_spec."}
+1792456324350 {"type":"text_delta","text":"lua:"}
+1792456324350 {"type":"text_delta","text":"198` and"}
+1792456324350 {"type":"text_delta","text":" `:214` use `take`"}
+1792456324350 {"type":"text_delta","text":" as a symbol arg"}
+1792456324364 {"type":"text_delta","text":"ument in"}
+1792456324386 {"type":"text_delta","text":" an"}
+1792456324407 {"type":"text_delta","text":" LSP test.\n- `"}
+1792456324426 {"type":"text_delta","text":"lua/anvim"}
+1792456324446 {"type":"text_delta","text":"/tools.lua` m"}
+1792456324469 {"type":"text_delta","text":"entions `"}
+1792456324488 {"type":"text_delta","text":"take` only"}
+1792456324505 {"type":"text_delta","text":" in comments (l"}
+1792456324528 {"type":"text_delta","text":"ines 249, 250, "}
+1792456324547 {"type":"text_delta","text":"436,"}
+1792456324563 {"type":"text_delta","text":" 593)."}
+1792456324635 {"type":"text_stop"}
+1792456324640 {"type":"turn_end","subtype":"success","is_error":false,"duration_ms":8886,"cost_usd":0.012240420000000002,"num_turns":5}

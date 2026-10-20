@@ -19,6 +19,10 @@ M.defaults = {
     "The user reads code in anvim, a read-only Neovim viewer, while you work.",
     "They cannot edit files themselves; you make every change.",
     "They point at code as @path#L12-30 (1-based, inclusive).",
+    "The mcp__anvim__ tools work in their editor.",
+    "When you explain code or say where something is, call show_user so they see it, with a short note.",
+    "For code symbols, use the lsp_ tools before grep. They ask the language servers that run in the editor.",
+    "To find where a symbol is used, locate it with lsp_workspace_symbols, then call lsp_references.",
   }, " "),
 }
 

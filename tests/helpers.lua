@@ -83,6 +83,31 @@ function M.hl_groups(buf, ns_name)
   return groups
 end
 
+local next_req = 1000
+
+-- Sends an editor request the way the sidecar does, and waits for the answer.
+---@return { result: string?, error: string? }
+function M.ask(method, params)
+  next_req = next_req + 1
+  local req, reply = next_req, nil
+  M.capture_sends(function(sent)
+    require("anvim.sidecar").dispatch({ type = "editor_request", req = req, method = method, params = params })
+    assert(
+      vim.wait(15000, function()
+        for _, msg in ipairs(sent) do
+          if msg.type == "editor_response" and msg.req == req then
+            reply = msg
+            return true
+          end
+        end
+        return false
+      end),
+      method .. " got no answer"
+    )
+  end)
+  return reply
+end
+
 -- Captures what the plugin sends to the sidecar while fn runs.
 function M.capture_sends(fn)
   local sidecar = require("anvim.sidecar")

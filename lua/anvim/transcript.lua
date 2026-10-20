@@ -114,7 +114,9 @@ end
 
 local function tool_label(name, input)
   local mcp_server, mcp_tool = name:match("^mcp__(.-)__(.+)$")
-  if mcp_server then
+  if mcp_server == "anvim" then
+    return require("anvim.tools").label(mcp_tool, input)
+  elseif mcp_server then
     name = ("%s:%s"):format(mcp_server, mcp_tool)
   end
   if not input then
@@ -168,7 +170,10 @@ local function summarize(tool, ev)
   end
   local r = type(ev.result) == "table" and ev.result or {}
   local name = tool.name
-  if name == "Read" and r.file and r.file.numLines then
+  local editor_tool = name:match("^mcp__anvim__(.+)$")
+  if editor_tool then
+    return require("anvim.tools").summary(editor_tool, tool.input or {}, ev.text)
+  elseif name == "Read" and r.file and r.file.numLines then
     return "Read " .. plural(r.file.numLines, "line")
   elseif name == "Write" and r.type == "create" then
     local content = tool.input and tool.input.content or ""
@@ -246,9 +251,10 @@ end
 
 function M.tool_start(id, name)
   text_open = false
-  local row = append_item({ "⏺ " .. name })
+  local label = tool_label(name)
+  local row = append_item({ "⏺ " .. label })
   tools[id] = { name = name, mark = hl(row, 0, #"⏺", "AnvimToolPending") }
-  hl(row, #"⏺" + 1, #"⏺" + 1 + #name, "AnvimToolName")
+  hl(row, #"⏺" + 1, #"⏺" + 1 + #label, "AnvimToolName")
 end
 
 function M.tool_field(ev)
