@@ -34,9 +34,9 @@ The screen has three columns: your explorer, code, and Claude. The explorer is 2
 
 File buffers are read-only. `:w` does nothing but say so, and format on save never runs. Claude makes every change, and buffers reload when files change on disk.
 
-The cursor moves between the code window and the prompt in one step: `Ctrl-W l` or `Ctrl-L` from any row of the code window, and `Ctrl-W h` or `Ctrl-H` back. Entering the prompt starts insert mode where you stopped typing. The transcript takes no focus. A window key that would land on it skips it, a click on it goes to the prompt, and the mouse wheel scrolls it from anywhere. New output keeps the transcript at its end, unless you scrolled up. Then it stays put until you scroll back down or send a prompt. To yank or search the transcript, enter read mode with `<leader>kr`, or drag across it with the mouse.
+The cursor moves between the code window and the prompt in one step: `Ctrl-W l` or `Ctrl-L` from any row of the code window, and `Ctrl-W h` or `Ctrl-H` back. Moving into the prompt leaves you in normal mode. Only insert commands start typing: `i`, `a` and the others in the prompt, or `i` and `a` in a file buffer, which go to the prompt and type where you stopped. The transcript takes no focus. A window key that would land on it skips it, a click on it goes to the prompt, and the mouse wheel scrolls it from anywhere. New output keeps the transcript at its end, unless you scrolled up. Then it stays put until you scroll back down or send a prompt. To yank or search the transcript, enter read mode with `<leader>kr`, or drag across it with the mouse.
 
-For a long prompt, `Ctrl-G` in the prompt opens it in a large window in the middle of the screen, as Claude Code's `Ctrl-G` opens it in your editor. There `Enter` adds a line, and `@` and `/` complete as in the prompt. `Ctrl-G` again, `:wq` or `ZZ` puts the text back in the prompt, and typing goes on where it stopped. `:w` puts it there and keeps the window open, and `:q!` drops your changes. Leaving the window keeps the text too. Follow mode goes on while you write.
+For a long prompt, `Ctrl-G` in the prompt opens it in a large window in the middle of the screen, as Claude Code's `Ctrl-G` opens it in your editor. There `Enter` adds a line, and `@` and `/` complete as in the prompt. `Ctrl-G` again, `:wq` or `ZZ` puts the text back in the prompt, at the same place and in the same mode: after `Ctrl-G` while typing you go on typing, and after `:wq` you are in normal mode. `:w` puts it there and keeps the window open, and `:q!` drops your changes. Leaving the window keeps the text too. Follow mode goes on while you write.
 
 Only one window shows files, so anvim always knows which file you are looking at. A split, a picker's split action or `:diffsplit` opens the file in the code window instead. Help, quickfix, terminal and plugin windows open as usual. If you close the code window, the transcript or the prompt, anvim opens it again. `:q` in any of them quits anvim, also when other tabs are open.
 
@@ -57,7 +57,7 @@ All of LazyVim's keys and your own work as usual. anvim adds these. `<leader>` i
 | `Ctrl-X` | prompt | Unpin the selection |
 | `Ctrl-G` | prompt | Write the prompt in a large window. `Ctrl-G` there goes back |
 | `@`, `/` | prompt, insert mode | Complete a file, or a slash command at the start |
-| `i`, `a` | file buffer | Go to the prompt |
+| `i`, `a` | file buffer | Go to the prompt and type where you stopped |
 | `c` | file buffer, visual mode | Put a reference to the selected lines in the prompt |
 | `c{motion}`, `cc` | file buffer | Put a reference to the lines of the motion in the prompt |
 | `Ctrl-L` | file buffer, visual mode | Go to the prompt and keep the selection |
@@ -70,7 +70,8 @@ All of LazyVim's keys and your own work as usual. anvim adds these. `<leader>` i
 | `<leader>ks`, `:AnvimSessions` | anywhere | Resume a session of this directory |
 | `<leader>km`, `:AnvimModel` | anywhere | Choose Claude's model |
 | `:AnvimRestart` | anywhere | Start Claude again, in the same session |
-| `q`, `Esc`, `i` | transcript in read mode | Go back to the prompt |
+| `q`, `Esc` | transcript in read mode | Go back to the prompt |
+| `i` | transcript in read mode | Go back to the prompt and type |
 
 ## Sessions
 
@@ -96,7 +97,7 @@ Select lines in the code window, in any visual mode, and go to the prompt: `Ctrl
 
 While a selection is pinned, follow mode waits, so the code window keeps what you point at. The statusline says so, for example `⏸ pinned · Claude at stream.lua:40 +2`. Once the prompt is sent or the pin goes, the code window catches up with Claude, also with a file that Claude is still writing. `<leader>j` unpins and goes to Claude at once.
 
-References are text in the prompt, in the form `@path#L12-30`, and you can write several. In a file buffer, `c` puts one in the prompt and goes on typing after it: `c` in visual mode for the selection, `c{motion}` for the lines of a motion such as `cip` or `cj`, and `cc` for the current line or, with a count, more lines. Read-only buffers leave `c` free, so read it as "change this, Claude". `@` in the explorer references whole files. In the prompt, `@` completes files and directories, and `/` at the start completes slash commands. The transcript shows what went with each prompt, dimmed under it: `⎿  ⧉ stream.lua#L12-30`.
+References are text in the prompt, in the form `@path#L12-30`, and you can write several. In a file buffer, `c` puts one in the prompt and goes on typing after it: `c` in visual mode for the selection, `c{motion}` for the lines of a motion such as `cip` or `cj`, and `cc` for the current line or, with a count, more lines. Read-only buffers leave `c` free, so read it as "change this, Claude". `@` in the explorer references whole files and leaves the cursor after them, in normal mode. In the prompt, `@` completes files and directories, and `/` at the start completes slash commands. The transcript shows what went with each prompt, dimmed under it: `⎿  ⧉ stream.lua#L12-30`.
 
 `<leader>kt` opens Claude's trail: every file and range that Claude read, edited, wrote or showed you, and your own references, newest first, with a preview. `Enter` opens the place in the code window.
 

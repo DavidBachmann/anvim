@@ -31,7 +31,7 @@ test("V2j and <C-l> pin the lines with a footer chip, and follow mode waits unti
   await ui.waitFor("---@param byte_col integer");
   await anvim.type("V2j");
   await ui.input("<C-l>");
-  await anvim.waitWhere("input", "i");
+  await anvim.waitWhere("input", "n");
   await ui.waitFor("⧉ 3 lines selected");
   const code = await anvim.box("code");
   expect(cells(ui.lines()[code.row + 9]!, code.col, code.width)).toContain("---@param byte_col integer");
@@ -63,7 +63,7 @@ test("a narrow statusline keeps the pause sign and Claude's place in view", asyn
   await anvim.toCode("matchparen.lua", { lnum: 10, topline: 1 });
   await anvim.type("Vj");
   await ui.input("<C-l>");
-  await anvim.waitWhere("input", "i");
+  await anvim.waitWhere("input", "n");
   await ui.exec_lua(
     `require("anvim.sidecar").dispatch({ type = "tool_use", id = "un1", name = "Read", input = { file_path = ... } })`,
     join(anvim.dir, "other.lua"),
@@ -97,7 +97,7 @@ test("a Write that starts while a selection is pinned streams in view once <C-x>
   await ui.waitFor("---@param byte_col integer");
   await anvim.type("V2j");
   await ui.input("<C-l>");
-  await anvim.waitWhere("input", "i");
+  await anvim.waitWhere("input", "n");
   await ui.waitFor("⧉ 3 lines selected");
   const code = await anvim.box("code");
   const inCode = (text: string) =>

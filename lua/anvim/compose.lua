@@ -17,7 +17,7 @@ local CODE_OPTIONS =
 
 ---@type snacks.win?
 local win
----@type [integer, integer]? Where typing goes on in the prompt after the window closes.
+---@type { at: [integer, integer], typing: boolean }? Where the prompt's cursor goes after the window closes.
 local landing
 ---@type integer? The window before the prompt, for <C-w>p.
 local previous
@@ -37,18 +37,19 @@ local function save(buf)
   vim.bo[buf].modified = false
 end
 
--- Typing goes on in the prompt where it stopped in the compose window.
+-- The prompt gets the compose window's place and mode: typing goes on where
+-- it was, and normal mode stays normal.
 local function land()
-  local pos, prompt = landing, layout.wins.input
+  local to, prompt = landing, layout.wins.input
   landing = nil
-  if not pos or api.nvim_get_current_win() ~= prompt then
+  if not to or api.nvim_get_current_win() ~= prompt then
     return
   end
-  pos[1] = math.min(pos[1], api.nvim_buf_line_count(input.buf()))
-  if config.options.input.auto_insert then
-    input.resume({ at = pos })
+  local at = { math.min(to.at[1], api.nvim_buf_line_count(input.buf())), to.at[2] }
+  if to.typing then
+    input.resume({ at = at })
   else
-    api.nvim_win_set_cursor(prompt, pos)
+    api.nvim_win_set_cursor(prompt, at)
   end
 end
 
@@ -82,7 +83,11 @@ local function on_close(self)
   end
   -- After the cursor left, the mode is the other window's.
   local typing = api.nvim_get_current_win() == w and api.nvim_get_mode().mode:sub(1, 1) == "i"
-  landing = typing and api.nvim_win_get_cursor(w) or { input.insert_pos(w) }
+  if typing or not config.options.input.auto_insert then
+    landing = { at = api.nvim_win_get_cursor(w), typing = typing }
+  else
+    landing = { at = { input.insert_pos(w) }, typing = true }
+  end
   vim.schedule(land)
 end
 

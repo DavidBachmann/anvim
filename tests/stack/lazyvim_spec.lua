@@ -636,7 +636,7 @@ describe("LazyVim stack", function()
       helpers.tmp .. "/matchparen.lua"
     )
     keys("2GVjj<C-l>")
-    wait_where({ win = "input", mode = "i" }, "<C-l> from visual mode")
+    wait_where({ win = "input", mode = "n" }, "<C-l> from visual mode")
     local out = probe()
     assert.are.same({ 2, 4, "line" }, out.sel)
     assert(out.footer:find("⧉ 3 lines selected", 1, true), out.footer)
@@ -660,7 +660,7 @@ describe("LazyVim stack", function()
       pos.row,
       pos.col
     )
-    wait_where({ win = "input", mode = "i" }, "a click on the prompt from visual mode")
+    wait_where({ win = "input", mode = "n" }, "a click on the prompt from visual mode")
     assert.are.same({ 5, 6, "char" }, probe().sel)
     lua([[require("anvim.context").clear()]])
     keys("<Esc>")
@@ -689,7 +689,7 @@ describe("LazyVim stack", function()
           table.insert(_G.sent, msg)
         end
       ]])
-      keys("what is this?")
+      keys("Awhat is this?")
       wait(2000, [[return vim.api.nvim_get_current_line() == "what is this?"]], "the prompt was not typed")
       lua([[require("blink.cmp").hide()]])
       keys("<CR>")
@@ -716,7 +716,7 @@ describe("LazyVim stack", function()
     keys("10G")
     vim.wait(300)
     keys("Vj<C-l>")
-    wait_where({ win = "input", mode = "i" }, "<C-l> with a selection")
+    wait_where({ win = "input", mode = "n" }, "<C-l> with a selection")
     read("pin1")
     vim.wait(100)
     assert.are.same(file, code_file(), "follow mode left the pinned file")
@@ -740,7 +740,7 @@ describe("LazyVim stack", function()
     keys("10G")
     vim.wait(300)
     keys("Vj<C-l>")
-    wait_where({ win = "input", mode = "i" }, "<C-l> with a selection")
+    wait_where({ win = "input", mode = "n" }, "<C-l> with a selection")
     vim.wait(100)
     assert.are.same(file, code_file(), "entering the prompt took the pinned file away")
     sent = ask()
@@ -765,7 +765,7 @@ describe("LazyVim stack", function()
       fresh
     )
     keys("<C-l>")
-    wait_where({ win = "input", mode = "i" }, "<C-l>")
+    wait_where({ win = "input", mode = "n" }, "<C-l>")
     local out = lua(
       [[
       local buf = vim.fn.bufnr(...)
@@ -833,8 +833,9 @@ describe("LazyVim stack", function()
       [[return Snacks.picker.get({ source = "explorer" })[1]:current().file:find("matchparen.lua", 1, true) ~= nil]]
     )
     keys("@")
-    wait_where({ win = "input", mode = "i" }, "@ in the explorer")
+    wait_where({ win = "input", mode = "n" }, "@ in the explorer")
     assert.are.same("@matchparen.lua ", prompt())
+    assert.are.same({ 1, #"@matchparen.lua" }, lua([[return vim.api.nvim_win_get_cursor(0)]]), "on the space after it")
     lua([[vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "" })]])
     keys("<Esc>")
   end)
@@ -899,29 +900,45 @@ describe("LazyVim stack", function()
     ]])
       assert.are.same({ size = { 100, 30 }, border = true, above_tree = true, mode = "i", number = true }, look)
       keys("<Esc>osee @matchp")
-      wait(3000, [[return require("blink.cmp").is_menu_visible()]], "no menu after @")
+      wait(
+        3000,
+        [[
+          local cmp = require("blink.cmp")
+          local item = cmp.get_items()[1]
+          return cmp.is_menu_visible() and item ~= nil and item.label == "matchparen.lua"
+        ]],
+        "matchparen.lua is not the first item after @"
+      )
       keys("<CR>")
       wait(2000, [[return vim.api.nvim_get_current_line() == "see @matchparen.lua "]], "Enter did not accept the file")
       keys("<Esc>ggO/compa")
-      wait(3000, [[return require("blink.cmp").is_menu_visible()]], "no menu after /compa")
+      wait(
+        3000,
+        [[
+          local cmp = require("blink.cmp")
+          local item = cmp.get_items()[1]
+          return cmp.is_menu_visible() and item ~= nil and item.label == "/compact"
+        ]],
+        "/compact is not the first item"
+      )
       keys("<CR>")
       wait(2000, [[return vim.api.nvim_get_current_line() == "/compact "]], "Enter did not complete /compact")
       lua([[vim.wait(300)]])
       assert.are.same({}, lua([[return _G.sent]]), "Enter sent from the compose window")
       keys("<Esc>:wq<CR>")
-      wait_where({ win = "input", mode = "i" }, ":wq in the compose window")
+      wait_where({ win = "input", mode = "n" }, ":wq in the compose window")
       assert.are.same(
         { "/compact ", "first line", "see @matchparen.lua " },
         lua([[return vim.api.nvim_buf_get_lines(require("anvim.input").buf(), 0, -1, false)]])
       )
-      -- Leaving from normal mode: the prompt is in insert mode by the time the
-      -- window closes, and typing goes on where it stopped, not at the cursor.
+      -- Leaving from normal mode: the prompt gets the compose window's cursor,
+      -- in normal mode.
       keys("<C-g>")
       wait(2000, [[return require("anvim.compose").win() == vim.api.nvim_get_current_win()]], "<C-g> opened no window")
       keys("<Esc><C-w>h")
       wait(2000, [[return require("anvim.compose").win() == nil]], "<C-w>h left the window open")
-      wait_where({ win = "input", mode = "i" }, "<C-w>h from the compose window")
-      keys("now")
+      wait_where({ win = "input", mode = "n" }, "<C-w>h from the compose window")
+      keys("anow")
       wait(2000, [[return vim.api.nvim_get_current_line() == "/compact now"]], "typing went on elsewhere")
     end)
     lua([[
@@ -977,9 +994,9 @@ describe("LazyVim stack", function()
     keys("<C-h>")
     wait_where({ win = "code", mode = "n" }, "<C-h> from the prompt")
     keys("gg<C-l>")
-    wait_where({ win = "input", mode = "i" }, "<C-l> from the top row of the code window")
+    wait_where({ win = "input", mode = "n" }, "<C-l> from the top row of the code window")
     keys("<Esc><C-h>G<C-l>")
-    wait_where({ win = "input", mode = "i" }, "<C-l> from the bottom row of the code window")
+    wait_where({ win = "input", mode = "n" }, "<C-l> from the bottom row of the code window")
     keys("<Esc><C-k>")
     wait_where({ win = "input", mode = "n" }, "<C-k> from the prompt")
     keys("<C-w>k")
@@ -998,39 +1015,42 @@ describe("LazyVim stack", function()
     end
   end)
 
-  it("resumes typing in the prompt where it stopped, or where a click lands", function()
-    start()
-    local function prompt()
-      return lua([[return vim.api.nvim_buf_get_lines(require("anvim.input").buf(), 0, -1, false)[1] ]])
-    end
-    lua([[require("anvim.layout").focus_input()]])
-    wait_where({ win = "input", mode = "i" }, "the prompt")
-    keys("hello wor<Esc><C-h><C-l>ld")
-    wait(2000, [[return vim.api.nvim_get_current_line() == "hello world"]], "typing went on elsewhere: " .. prompt())
-    -- The prompt's text starts under the winbar and after "❯ ".
-    local pos = lua([[
+  it(
+    "resumes typing where it stopped with a in a file buffer, and a click on the prompt moves the cursor there",
+    function()
+      start()
+      local function prompt()
+        return lua([[return vim.api.nvim_buf_get_lines(require("anvim.input").buf(), 0, -1, false)[1] ]])
+      end
+      lua([[require("anvim.layout").focus_input()]])
+      wait_where({ win = "input", mode = "i" }, "the prompt")
+      keys("hello wor<Esc><C-h>ald")
+      wait(2000, [[return vim.api.nvim_get_current_line() == "hello world"]], "typing went on elsewhere: " .. prompt())
+      -- The prompt's text starts under the winbar and after "❯ ".
+      local pos = lua([[
       local pos = vim.fn.win_screenpos(require("anvim.layout").wins.input)
       return { row = pos[1], col = pos[2] - 1 + 2 + #"hello " }
     ]])
-    keys("<Esc><C-h>")
-    wait_where({ win = "code", mode = "n" }, "<C-h> from the prompt")
-    lua(
-      [[
+      keys("<Esc><C-h>")
+      wait_where({ win = "code", mode = "n" }, "<C-h> from the prompt")
+      lua(
+        [[
       vim.api.nvim_input_mouse("left", "press", "", 0, ...)
       vim.api.nvim_input_mouse("left", "release", "", 0, ...)
     ]],
-      pos.row,
-      pos.col
-    )
-    wait_where({ win = "input", mode = "i" }, "a click on the prompt")
-    keys("big ")
-    wait(
-      2000,
-      [[return vim.api.nvim_get_current_line() == "hello big world"]],
-      "the click inserted elsewhere: " .. prompt()
-    )
-    lua([[vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "" })]])
-  end)
+        pos.row,
+        pos.col
+      )
+      wait_where({ win = "input", mode = "n" }, "a click on the prompt")
+      keys("ibig ")
+      wait(
+        2000,
+        [[return vim.api.nvim_get_current_line() == "hello big world"]],
+        "the click inserted elsewhere: " .. prompt()
+      )
+      lua([[vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "" })]])
+    end
+  )
 
   it("folds splits from window keys, LazyVim keys and pickers back into the code window", function()
     start()
@@ -1150,7 +1170,7 @@ describe("LazyVim stack", function()
       keys("<leader>kr")
       wait_where({ win = "transcript", mode = "n" }, "<leader>kr")
       keys(key)
-      wait_where({ win = "input", mode = "i" }, key .. " in read mode")
+      wait_where({ win = "input", mode = key == "i" and "i" or "n" }, key .. " in read mode")
       keys("<Esc>")
       wait_where({ win = "input", mode = "n" }, "<Esc> in the prompt")
     end
@@ -1163,7 +1183,7 @@ describe("LazyVim stack", function()
     keys("<C-h>")
     wait_where({ win = "code", mode = "n" }, "<C-h> from read mode")
     keys("gg<C-l>")
-    wait_where({ win = "input", mode = "i" }, "leaving the transcript ended read mode")
+    wait_where({ win = "input", mode = "n" }, "leaving the transcript ended read mode")
     keys("<Esc>")
     local out = lua([[
       local maps = {}
@@ -1222,7 +1242,7 @@ describe("LazyVim stack", function()
     wait_where({ win = "code", mode = "n" }, ":only keeps the cursor in the code window")
     keys("<C-l><Esc><C-w>c")
     assert_layout("<C-w>c in the prompt")
-    wait_where({ win = "input", mode = "i" }, "<C-w>c in the prompt")
+    wait_where({ win = "input", mode = "n" }, "<C-w>c in the prompt")
     keys("<Esc><C-w>o")
     assert_layout("<C-w>o in the prompt")
     lua([[require("anvim.layout").focus_input()]])
@@ -1272,7 +1292,7 @@ describe("LazyVim stack", function()
       pos.row,
       pos.col
     )
-    wait_where({ win = "input", mode = "i" }, "a click in the transcript")
+    wait_where({ win = "input", mode = "n" }, "a click in the transcript")
     keys("<Esc>")
   end)
 
@@ -1303,7 +1323,7 @@ describe("LazyVim stack", function()
         assert.are.same({ tr.top + row, tr.top + row + 4 }, got, what)
       end
       keys("<Esc>q")
-      wait_where({ win = "input", mode = "i" }, "q after the drag")
+      wait_where({ win = "input", mode = "n" }, "q after the drag")
     end
     drag(2, "a drag from the top row")
     lua([[require("anvim.windows").scroll("<C-u>")]])
@@ -1553,7 +1573,7 @@ describe("LazyVim stack", function()
     keys("<Esc>:tabnew<CR>")
     wait(2000, [[return #vim.api.nvim_list_tabpages() == 2]], ":tabnew opened no tab")
     keys("gT")
-    wait_where({ win = "input", mode = "i" }, "gT goes back to the prompt")
+    wait_where({ win = "input", mode = "n" }, "gT goes back to the prompt")
     keys("<Esc>:q<CR>")
     chan = nil
     local code = vim.fn.jobwait({ job }, 5000)

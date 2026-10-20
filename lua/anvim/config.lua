@@ -24,8 +24,10 @@ M.defaults = {
     tree = { width = 24, max_width = 0.4 },
   },
   input = {
-    -- Start insert mode whenever the cursor enters the prompt, except at start.
-    auto_insert = true,
+    -- Start insert mode whenever the cursor enters the prompt, except at
+    -- start. Off, only insert commands start it, in the prompt or as i and a
+    -- in a file buffer.
+    auto_insert = false,
   },
   append_system_prompt = table.concat({
     "The user reads code in anvim, a read-only Neovim viewer, while you work.",

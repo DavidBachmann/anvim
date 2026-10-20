@@ -277,7 +277,7 @@ describe("windows", function()
     assert(vim.fn.line("w0", tr) > up, "<PageDown> from the prompt scrolls the transcript down")
   end)
 
-  it("keeps the prompt in normal mode while a request waits", function()
+  it("starts insert mode in the prompt only for insert commands, and not while a request waits", function()
     in_code()
     local state = require("anvim.state")
     -- Without a main loop, a pending insert does not show in the mode, so count the calls.
@@ -298,7 +298,8 @@ describe("windows", function()
       return calls
     end
     local ok, err = pcall(function()
-      assert(enter("<C-w>l") > 0, "entering the prompt starts insert mode")
+      assert.are.same(0, enter("<C-w>l"), "<C-w>l leaves the prompt in normal mode")
+      assert(enter("focus_input") > 0, "focus_input, as i and a in a file buffer, starts insert mode")
       state.waiting = "To answer: esc, then 1-3"
       assert.are.same(0, enter("<C-w>l"), "<C-w>l while a request waits")
       assert.are.same(0, enter("focus_input"), "focus_input while a request waits")

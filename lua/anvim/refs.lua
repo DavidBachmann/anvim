@@ -16,9 +16,11 @@ function M.format(path, first, last)
   return first and ref .. context.range(first, last) or ref
 end
 
--- Puts text where typing stopped in the prompt, apart from its neighbors,
--- and goes on typing after it.
-function M.insert(text)
+-- Puts text where typing stopped in the prompt, apart from its neighbors.
+-- With typing, typing goes on after it. Otherwise the cursor is on the space
+-- after it, in normal mode.
+---@param typing boolean?
+function M.insert(text, typing)
   local input = require("anvim.input")
   local win = require("anvim.layout").wins.input
   if not (win and api.nvim_win_is_valid(win)) then
@@ -35,8 +37,13 @@ function M.insert(text)
     text = text .. " "
   end
   api.nvim_buf_set_text(buf, row - 1, col, row - 1, col, { text })
-  api.nvim_set_current_win(win)
-  input.resume({ at = { row, col + after } })
+  if typing then
+    api.nvim_set_current_win(win)
+    input.resume({ at = { row, col + after } })
+  else
+    require("anvim.layout").focus_input({ insert = false })
+    api.nvim_win_set_cursor(win, { row, col + after - 1 })
+  end
 end
 
 -- Points Claude at lines of a file buffer. The reference replaces the pinned
@@ -48,7 +55,7 @@ function M.point(buf, first, last)
     return
   end
   context.clear()
-  M.insert(M.format(path, first, last))
+  M.insert(M.format(path, first, last), true)
 end
 
 function M.visual()

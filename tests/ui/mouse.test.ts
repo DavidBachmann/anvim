@@ -31,8 +31,8 @@ test("a click in the transcript lands in the prompt, and the wheel scrolls it wi
   let mark = ui.mark();
   await ui.inputMouse("left", "press", transcript.row + 5, transcript.col + 5);
   await ui.inputMouse("left", "release", transcript.row + 5, transcript.col + 5);
-  await anvim.waitWhere("input", "i");
-  await ui.waitFor(() => inBox(ui.cursor, input) && ui.mode === "insert");
+  await anvim.waitWhere("input", "n");
+  await ui.waitFor(() => inBox(ui.cursor, input) && ui.mode === "normal");
   expect(cursorIn(ui.frames(mark), transcript)).toEqual([]);
 
   await anvim.toCode();
@@ -84,7 +84,7 @@ test("a mouse drag in the transcript selects the dragged lines, at its top and n
     await ui.waitFor(() => [0, 1, 2, 3, 4].every((i) => selected(transcript.row + row + i)));
     expect(selected(transcript.row + row - 1) || selected(transcript.row + row + 5), `drag from row ${row}`).toBe(false);
     await ui.input("<Esc>q");
-    await anvim!.waitWhere("input", "i");
+    await anvim!.waitWhere("input", "n");
   };
 
   await drag(2);
