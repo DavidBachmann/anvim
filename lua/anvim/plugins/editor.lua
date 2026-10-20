@@ -71,6 +71,10 @@ return {
                 min_width = require("anvim.config").options.layout.tree.width,
               },
             },
+            -- The agents' dots on the files they write to.
+            format = function(item, picker)
+              return require("anvim.tree").format(item, picker)
+            end,
             actions = {
               anvim_reference = function(picker)
                 require("anvim.refs").files(vim.tbl_map(function(item)

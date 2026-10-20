@@ -33,13 +33,21 @@ local slots = {}
 -- The input of an Agent tool call that came before its agent_start.
 ---@type table<string, table>
 local starts = {}
+-- The main agent has no record of its own. Its run is the turn.
+local main = { slot = 0, files = {} }
 -- The file of each edit that waits for its result.
 ---@type table<string, { agent: anvim.Agent, path: string }>
 local edits = {}
 local order = 0
 
+-- The files that agents write to changed.
+local function files_changed()
+  api.nvim_exec_autocmds("User", { pattern = "AnvimAgentFiles", modeline = false })
+end
+
 local function changed()
   api.nvim_exec_autocmds("User", { pattern = "AnvimAgents", modeline = false })
+  files_changed()
 end
 
 ---@param slot integer?
@@ -199,6 +207,24 @@ local function edit_line(path, input)
   return 1
 end
 
+-- The path field of each edit tool.
+local edit_keys = { Edit = "file_path", Write = "file_path", NotebookEdit = "notebook_path" }
+
+local function start_edit(id, agent, path)
+  if type(path) == "string" and not (edits[id] and edits[id].path == path) then
+    edits[id] = { agent = agent, path = path }
+    files_changed()
+  end
+end
+
+-- Only the main agent's tool input streams. Its path comes before the rest
+-- of the edit.
+function M.tool_field(ev)
+  if ev.phase == "end" and edit_keys[ev.name] == ev.key then
+    start_edit(ev.id, main, ev.value)
+  end
+end
+
 function M.tool_use(ev)
   if ev.name == "Agent" or ev.name == "Task" then
     local agent = by_tool[ev.id]
@@ -208,31 +234,69 @@ function M.tool_use(ev)
       starts[ev.id] = ev.input
     end
   end
+  local input = type(ev.input) == "table" and ev.input or {}
+  local path = input.file_path or input.notebook_path
   local agent = M.of(ev)
   if not agent then
+    if edit_keys[ev.name] and not (ev.agent_id or ev.parent_id) then
+      start_edit(ev.id, main, path)
+    end
     return
   end
   agent.tools = agent.tools + 1
-  local input = type(ev.input) == "table" and ev.input or {}
-  local path = input.file_path or input.notebook_path
   if type(path) ~= "string" then
     return
   end
   if ev.name == "Read" then
     agent.place = { path = path, line = tonumber(input.offset) or 1 }
-  elseif ev.name == "Edit" or ev.name == "Write" or ev.name == "NotebookEdit" then
+  elseif edit_keys[ev.name] then
     agent.place = { path = path, line = ev.name == "Edit" and edit_line(path, input) or 1 }
-    edits[ev.id] = { agent = agent, path = path }
+    start_edit(ev.id, agent, path)
   end
 end
 
 -- A file counts as edited once the edit worked.
 function M.tool_result(ev)
   local edit = edits[ev.id]
+  if not edit then
+    return
+  end
   edits[ev.id] = nil
-  if edit and not ev.is_error and not vim.tbl_contains(edit.agent.files, edit.path) then
+  if not ev.is_error and not vim.tbl_contains(edit.agent.files, edit.path) then
     edit.agent.files[#edit.agent.files + 1] = edit.path
   end
+  files_changed()
+end
+
+-- The files that each agent with a slot writes to in its run: the edits that
+-- worked, and the ones on their way. Only running agents have slots. The
+-- slots of each file are in order.
+---@return table<string, integer[]>
+function M.marks()
+  local marks = {}
+  local function add(path, slot)
+    local list = marks[path] or {}
+    marks[path] = list
+    if not vim.tbl_contains(list, slot) then
+      list[#list + 1] = slot
+    end
+  end
+  for _, agent in ipairs(vim.list_extend({ main }, vim.tbl_values(agents))) do
+    if agent.slot then
+      for _, path in ipairs(agent.files) do
+        add(path, agent.slot)
+      end
+    end
+  end
+  for _, edit in pairs(edits) do
+    if edit.agent.slot then
+      add(edit.path, edit.agent.slot)
+    end
+  end
+  for _, list in pairs(marks) do
+    table.sort(list)
+  end
+  return marks
 end
 
 -- A foreground agent ends with the turn that started it, even when its end
@@ -246,21 +310,33 @@ function M.turn_end()
     end
   end
   starts = {}
+  -- The main agent's run ends with the turn.
+  local files = #main.files > 0
+  main.files = {}
   for id, edit in pairs(edits) do
-    if edit.agent.status ~= "running" then
+    if edit.agent == main then
+      files = true
+      edits[id] = nil
+    elseif edit.agent.status ~= "running" then
       edits[id] = nil
     end
   end
   if any then
     changed()
+  elseif files then
+    files_changed()
   end
 end
 
 function M.clear()
   local any = next(agents) ~= nil
+  local files = next(edits) ~= nil or #main.files > 0
   agents, by_tool, slots, starts, edits = {}, {}, {}, {}, {}
+  main.files = {}
   if any then
     changed()
+  elseif files then
+    files_changed()
   end
 end
 
@@ -268,6 +344,7 @@ function M.attach(sidecar)
   sidecar.on("agent_start", M.start)
   sidecar.on("agent_progress", M.progress)
   sidecar.on("agent_end", M.finish)
+  sidecar.on("tool_field", M.tool_field)
   sidecar.on("tool_use", M.tool_use)
   sidecar.on("tool_result", M.tool_result)
   sidecar.on("turn_end", M.turn_end)
