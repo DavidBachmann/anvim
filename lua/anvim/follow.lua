@@ -1,12 +1,12 @@
 -- Follow mode: while the cursor is in the prompt, the code window shows where
 -- Claude reads and writes. Elsewhere the user is in control, and the
 -- statusline says where Claude is.
-local layout = require('anvim.layout')
+local layout = require("anvim.layout")
 
 local M = {}
 
 local api = vim.api
-local ns = api.nvim_create_namespace('anvim.follow')
+local ns = api.nvim_create_namespace("anvim.follow")
 
 ---@type { path: string, line: integer }?
 M.agent = nil
@@ -24,8 +24,8 @@ function M.load(path)
 end
 
 local function reveal_in_tree(path)
-  local ok, snacks = pcall(require, 'snacks')
-  if ok and snacks.picker and snacks.picker.get({ source = 'explorer' })[1] then
+  local ok, snacks = pcall(require, "snacks")
+  if ok and snacks.picker and snacks.picker.get({ source = "explorer" })[1] then
     pcall(snacks.explorer.reveal, { file = path })
   end
 end
@@ -34,10 +34,10 @@ end
 function M.show(buf, line, col)
   local win = layout.code_win()
   if api.nvim_win_get_buf(win) ~= buf then
-    vim.bo[buf].buflisted = vim.bo[buf].buftype == ''
+    vim.bo[buf].buflisted = vim.bo[buf].buftype == ""
     api.nvim_win_set_buf(win, buf)
     local name = vim.b[buf].anvim_preview or api.nvim_buf_get_name(buf)
-    if name ~= '' then
+    if name ~= "" then
       reveal_in_tree(name)
     end
   end
@@ -54,7 +54,7 @@ function M.track(path, line, buf)
     M.show(buf or M.load(path), M.agent.line)
   else
     M.behind = M.behind + 1
-    vim.cmd('redrawstatus!')
+    vim.cmd("redrawstatus!")
   end
 end
 
@@ -64,7 +64,7 @@ function M.jump()
   if M.agent and vim.uv.fs_stat(M.agent.path) then
     M.show(M.load(M.agent.path), M.agent.line)
   end
-  vim.cmd('redrawstatus!')
+  vim.cmd("redrawstatus!")
 end
 
 ---@param rows integer[] 0-based rows
@@ -86,7 +86,7 @@ end
 
 local function on_read(ev)
   local path = ev.input.file_path
-  if type(path) ~= 'string' or not vim.uv.fs_stat(path) then
+  if type(path) ~= "string" or not vim.uv.fs_stat(path) then
     return
   end
   local first = tonumber(ev.input.offset) or 1
@@ -96,49 +96,49 @@ local function on_read(ev)
   end
   local win = layout.code_win()
   api.nvim_win_call(win, function()
-    vim.cmd('normal! zt')
+    vim.cmd("normal! zt")
   end)
   local buf = api.nvim_win_get_buf(win)
-  local last = math.min(first + (tonumber(ev.input.limit) or api.nvim_win_get_height(win)) - 1, vim.fn.line('w$', win))
+  local last = math.min(first + (tonumber(ev.input.limit) or api.nvim_win_get_height(win)) - 1, vim.fn.line("w$", win))
   local rows = {}
   for row = first - 1, last - 1 do
     rows[#rows + 1] = row
   end
-  M.flash(buf, rows, 'AnvimRead', 400)
+  M.flash(buf, rows, "AnvimRead", 400)
 end
 
 -- The code window's statusline segment.
 function M.status(win)
   if win ~= layout.wins.code then
-    return ''
+    return ""
   end
   if M.enabled() then
-    return '%#AnvimClaude#◉ following '
+    return "%#AnvimClaude#◉ following "
   end
   if not M.agent then
-    return ''
+    return ""
   end
-  local where = ('%s:%d'):format(require('anvim.transcript').relpath(M.agent.path), M.agent.line)
-  local behind = M.behind > 0 and (' +%d'):format(M.behind) or ''
-  return ('%%#AnvimClaude#⏺ Claude at %s%s %%#Comment#(<leader>j) '):format(where:gsub('%%', '%%%%'), behind)
+  local where = ("%s:%d"):format(require("anvim.transcript").relpath(M.agent.path), M.agent.line)
+  local behind = M.behind > 0 and (" +%d"):format(M.behind) or ""
+  return ("%%#AnvimClaude#⏺ Claude at %s%s %%#Comment#(<leader>j) "):format(where:gsub("%%", "%%%%"), behind)
 end
 
 function M.attach(sidecar)
-  sidecar.on('tool_use', function(ev)
-    if ev.name == 'Read' and not ev.parent_id then
+  sidecar.on("tool_use", function(ev)
+    if ev.name == "Read" and not ev.parent_id then
       on_read(ev)
     end
   end)
-  api.nvim_create_autocmd('WinEnter', {
-    group = api.nvim_create_augroup('anvim.follow', {}),
+  api.nvim_create_autocmd("WinEnter", {
+    group = api.nvim_create_augroup("anvim.follow", {}),
     callback = function()
       if M.enabled() and M.behind > 0 then
         M.jump()
       end
-      vim.cmd('redrawstatus!')
+      vim.cmd("redrawstatus!")
     end,
   })
-  vim.keymap.set('n', '<leader>j', M.jump, { desc = 'Jump to where Claude is' })
+  vim.keymap.set("n", "<leader>j", M.jump, { desc = "Jump to where Claude is" })
 end
 
 return M

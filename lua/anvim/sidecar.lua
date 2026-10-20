@@ -1,11 +1,11 @@
 -- Runs the Agent SDK sidecar and speaks its line protocol (sidecar/src/protocol.ts).
-local config = require('anvim.config')
+local config = require("anvim.config")
 
 local M = {}
 
-local root = vim.fs.dirname(vim.fs.dirname(vim.fs.dirname(debug.getinfo(1, 'S').source:sub(2))))
-M.dir = root .. '/sidecar'
-M.log_path = vim.fn.stdpath('log') .. '/anvim.log'
+local root = vim.fs.dirname(vim.fs.dirname(vim.fs.dirname(debug.getinfo(1, "S").source:sub(2))))
+M.dir = root .. "/sidecar"
+M.log_path = vim.fn.stdpath("log") .. "/anvim.log"
 
 ---@type vim.SystemObj?
 local proc
@@ -20,20 +20,20 @@ function M.on(type, fn)
 end
 
 function M.dispatch(ev)
-  for _, key in ipairs({ ev.type, '*' }) do
+  for _, key in ipairs({ ev.type, "*" }) do
     for _, fn in ipairs(handlers[key] or {}) do
       local ok, err = pcall(fn, ev)
       if not ok then
-        M.log(('handler for %s failed: %s'):format(ev.type, err))
+        M.log(("handler for %s failed: %s"):format(ev.type, err))
       end
     end
   end
 end
 
 function M.log(text)
-  local f = io.open(M.log_path, 'a')
+  local f = io.open(M.log_path, "a")
   if f then
-    f:write(os.date('%H:%M:%S '), text, '\n')
+    f:write(os.date("%H:%M:%S "), text, "\n")
     f:close()
   end
 end
@@ -43,20 +43,20 @@ local function command()
   if opts.sidecar_cmd then
     return opts.sidecar_cmd
   end
-  if not vim.uv.fs_stat(M.dir .. '/node_modules') then
-    vim.notify('anvim: installing sidecar dependencies...')
-    vim.system({ opts.bun, 'install' }, { cwd = M.dir }):wait()
+  if not vim.uv.fs_stat(M.dir .. "/node_modules") then
+    vim.notify("anvim: installing sidecar dependencies...")
+    vim.system({ opts.bun, "install" }, { cwd = M.dir }):wait()
   end
-  return { opts.bun, M.dir .. '/src/main.ts' }
+  return { opts.bun, M.dir .. "/src/main.ts" }
 end
 
 -- Splits stdout into lines and decodes them off the main loop. Dispatch is
 -- scheduled, so handlers may call any API.
 local function line_reader()
-  local pending = ''
+  local pending = ""
   return function(err, data)
     if err then
-      M.log('stdout error: ' .. err)
+      M.log("stdout error: " .. err)
     end
     if not data then
       return
@@ -64,18 +64,18 @@ local function line_reader()
     pending = pending .. data
     local events = {}
     while true do
-      local nl = pending:find('\n', 1, true)
+      local nl = pending:find("\n", 1, true)
       if not nl then
         break
       end
       local line = pending:sub(1, nl - 1)
       pending = pending:sub(nl + 1)
-      if line ~= '' then
+      if line ~= "" then
         local ok, ev = pcall(vim.json.decode, line, { luanil = { object = true, array = true } })
-        if ok and type(ev) == 'table' then
+        if ok and type(ev) == "table" then
           events[#events + 1] = ev
         else
-          M.log('bad event: ' .. line:sub(1, 200))
+          M.log("bad event: " .. line:sub(1, 200))
         end
       end
     end
@@ -106,7 +106,7 @@ function M.start(start)
   }, function(obj)
     vim.schedule(function()
       proc = nil
-      M.dispatch({ type = 'exit', code = obj.code })
+      M.dispatch({ type = "exit", code = obj.code })
     end)
   end)
   M.send(start)
@@ -114,7 +114,7 @@ end
 
 function M.send(msg)
   if proc then
-    proc:write(vim.json.encode(msg) .. '\n')
+    proc:write(vim.json.encode(msg) .. "\n")
   end
 end
 

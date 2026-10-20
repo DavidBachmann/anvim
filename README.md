@@ -59,7 +59,10 @@ Each prompt you send during a replay plays the next recorded turn.
 
 ```sh
 cd sidecar && bunx tsc --noEmit && bun test
-nvim --clean --headless -l test/run.lua
+scripts/test
+~/.local/share/nvim/mason/bin/stylua --check . && selene .
 ```
+
+`scripts/test` runs the Neovim specs in `tests/`. Its first run downloads the test plugins into `.tests/`, and later runs work offline. Run `:checkhealth anvim` when something does not start.
 
 `tools/screen/screen.ts` drives anvim headless and saves text, highlight and PNG snapshots of the real screen. See the header of that file for its steps. The log is at `~/.local/state/anvim/anvim.log`.

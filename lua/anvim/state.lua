@@ -2,7 +2,7 @@
 local M = {
   session_id = nil, ---@type string?
   model = nil, ---@type string?
-  permission_mode = 'default',
+  permission_mode = "default",
   cwd = vim.fn.getcwd(),
   branch = nil, ---@type string?
   busy = false,
@@ -11,7 +11,7 @@ local M = {
   last_turn = nil, ---@type { duration_ms: integer, cost_usd: number }?
   cost_usd = 0,
   ---@type 'starting'|'ready'|'exited'
-  process = 'starting',
+  process = "starting",
 }
 
 return M

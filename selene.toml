@@ -1,0 +1,6 @@
+std="vim"
+# .tests holds the test plugins, and selene does not read .gitignore.
+exclude = [".tests/*"]
+
+[lints]
+mixed_table="allow"

@@ -5,27 +5,27 @@ local M = {}
 local api = vim.api
 
 local function talk()
-  require('anvim.layout').focus_input()
+  require("anvim.layout").focus_input()
 end
 
 function M.lock(buf)
-  if api.nvim_buf_is_valid(buf) and vim.bo[buf].buftype == '' then
+  if api.nvim_buf_is_valid(buf) and vim.bo[buf].buftype == "" then
     vim.bo[buf].modifiable = false
-    for _, key in ipairs({ 'i', 'a' }) do
-      vim.keymap.set('n', key, talk, { buffer = buf, desc = 'Talk to Claude' })
+    for _, key in ipairs({ "i", "a" }) do
+      vim.keymap.set("n", key, talk, { buffer = buf, desc = "Talk to Claude" })
     end
   end
 end
 
 function M.reload()
-  vim.cmd('silent! checktime')
+  vim.cmd("silent! checktime")
 end
 
 function M.setup()
   vim.o.autoread = true
   vim.o.swapfile = false
-  api.nvim_create_autocmd({ 'BufReadPost', 'BufNewFile', 'BufWinEnter', 'BufEnter' }, {
-    group = api.nvim_create_augroup('anvim.readonly', {}),
+  api.nvim_create_autocmd({ "BufReadPost", "BufNewFile", "BufWinEnter", "BufEnter" }, {
+    group = api.nvim_create_augroup("anvim.readonly", {}),
     callback = function(ev)
       M.lock(ev.buf)
     end,
@@ -36,8 +36,8 @@ function M.setup()
 end
 
 function M.attach(sidecar)
-  sidecar.on('tool_result', M.reload)
-  sidecar.on('turn_end', M.reload)
+  sidecar.on("tool_result", M.reload)
+  sidecar.on("turn_end", M.reload)
 end
 
 return M

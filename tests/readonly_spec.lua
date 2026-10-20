@@ -1,0 +1,25 @@
+---@module "luassert"
+
+local helpers = require("helpers")
+local layout = require("anvim.layout")
+local readonly = require("anvim.readonly")
+
+describe("readonly", function()
+  it("keeps file buffers read-only and reloads them on change", function()
+    helpers.start()
+    local file = helpers.tmp .. "/readonly.lua"
+    vim.fn.writefile({ "local M = {}", "return M" }, file)
+    vim.api.nvim_win_call(layout.code_win(), function()
+      vim.cmd.edit(file)
+    end)
+    local buf = vim.fn.bufnr(file)
+    assert(not vim.bo[buf].modifiable, "file buffer is modifiable")
+    local ok = pcall(vim.api.nvim_buf_set_lines, buf, 0, 1, false, { "x" })
+    assert(not ok, "edit was allowed")
+    vim.fn.writefile({ "-- changed by Claude" }, file)
+    vim.wait(50)
+    readonly.reload()
+    assert.are.same({ "-- changed by Claude" }, vim.api.nvim_buf_get_lines(buf, 0, -1, false))
+    assert(not vim.bo[buf].modifiable, "reload made the buffer modifiable")
+  end)
+end)

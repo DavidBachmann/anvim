@@ -2,13 +2,13 @@
 -- Edit: the old text is struck through and the new text grows after it, in
 -- the real buffer. Write: the content grows in a preview buffer. When the tool
 -- result arrives, the buffer reloads from disk and the change flashes.
-local follow = require('anvim.follow')
-local sidecar = require('anvim.sidecar')
+local follow = require("anvim.follow")
+local sidecar = require("anvim.sidecar")
 
 local M = {}
 
 local api = vim.api
-local ns = api.nvim_create_namespace('anvim.stream')
+local ns = api.nvim_create_namespace("anvim.stream")
 
 local TICK_MS = 16
 local MIN_CHARS = 2
@@ -39,7 +39,7 @@ local previews = {}
 local timer
 local run
 
-local has_busy = vim.fn.exists('+busy') == 1
+local has_busy = vim.fn.exists("+busy") == 1
 
 local function set_busy(p, on)
   if has_busy and p.buf and api.nvim_buf_is_valid(p.buf) and p.busy ~= on then
@@ -61,13 +61,13 @@ end
 
 local function answer(p)
   for _, req in ipairs(p.waiting) do
-    sidecar.send({ type = 'preview_done', req = req })
+    sidecar.send({ type = "preview_done", req = req })
   end
   p.waiting = {}
 end
 
 local function caught_up(p)
-  return p.dead or (p.input_done and p.queue == '')
+  return p.dead or (p.input_done and p.queue == "")
 end
 
 local function clear_marks(p)
@@ -84,7 +84,7 @@ end
 
 local function kill(p)
   p.dead = true
-  p.queue = ''
+  p.queue = ""
   clear_marks(p)
   answer(p)
 end
@@ -100,13 +100,13 @@ local function position(lines, offset)
     row = i
   end
   -- Past the final newline: clamp to the end of the last line.
-  return math.max(row - 1, 0), #(lines[row] or '')
+  return math.max(row - 1, 0), #(lines[row] or "")
 end
 
 -- Strikes through old_string and puts the insert head right after it.
 local function place_edit(p, old)
   local lines = api.nvim_buf_get_lines(p.buf, 0, -1, false)
-  local s, e = (table.concat(lines, '\n') .. '\n'):find(old, 1, true)
+  local s, e = (table.concat(lines, "\n") .. "\n"):find(old, 1, true)
   if not s then
     kill(p)
     return
@@ -117,7 +117,7 @@ local function place_edit(p, old)
   -- Like a diff: removed lines, then added lines. Start the new text on its own line.
   if ecol > 0 then
     with_modifiable(p.buf, function()
-      api.nvim_buf_set_text(p.buf, erow, ecol, erow, ecol, { '', '' })
+      api.nvim_buf_set_text(p.buf, erow, ecol, erow, ecol, { "", "" })
     end)
     if ecol == #lines[erow + 1] then
       mark_end = { erow + 1, 0 }
@@ -128,7 +128,7 @@ local function place_edit(p, old)
     end_row = mark_end[1],
     end_col = mark_end[2],
     end_right_gravity = false,
-    hl_group = 'AnvimDelete',
+    hl_group = "AnvimDelete",
     hl_eol = true,
     priority = 200,
   })
@@ -143,7 +143,7 @@ local function begin_insert(p)
     end_col = col,
     right_gravity = false,
     end_right_gravity = true,
-    hl_group = 'AnvimInsert',
+    hl_group = "AnvimInsert",
     hl_eol = true,
     priority = 200,
   })
@@ -156,11 +156,11 @@ local function draw_cursor(p)
   local row, col = p.head[1], p.head[2]
   p.cursor = api.nvim_buf_set_extmark(p.buf, ns, row, col, {
     id = p.cursor,
-    virt_text = { { '▍', 'AnvimClaude' } },
-    virt_text_pos = 'inline',
+    virt_text = { { "▍", "AnvimClaude" } },
+    virt_text_pos = "inline",
     right_gravity = true,
   })
-  local win = require('anvim.layout').wins.code
+  local win = require("anvim.layout").wins.code
   if follow.enabled() and win and api.nvim_win_is_valid(win) and api.nvim_win_get_buf(win) == p.buf then
     api.nvim_win_set_cursor(win, { row + 1, col })
   end
@@ -171,7 +171,7 @@ local function insert(p, text)
     kill(p)
     return
   end
-  local parts = vim.split(text, '\n', { plain = true })
+  local parts = vim.split(text, "\n", { plain = true })
   local row, col = p.head[1], p.head[2]
   with_modifiable(p.buf, function()
     api.nvim_buf_set_text(p.buf, row, col, row, col, parts)
@@ -188,7 +188,7 @@ end
 -- Cuts at most n bytes off the front of s without splitting a UTF-8 character.
 local function take(s, n)
   if n >= #s then
-    return s, ''
+    return s, ""
   end
   while n < #s and bit.band(s:byte(n + 1), 0xC0) == 0x80 do
     n = n + 1
@@ -199,7 +199,7 @@ end
 local function step()
   local active = false
   for _, p in pairs(previews) do
-    if not p.dead and p.head and p.queue ~= '' then
+    if not p.dead and p.head and p.queue ~= "" then
       local n = math.max(MIN_CHARS, math.ceil(#p.queue / math.max(p.ticks, 1)))
       local chunk
       chunk, p.queue = take(p.queue, n)
@@ -209,7 +209,7 @@ local function step()
     if caught_up(p) then
       answer(p)
     else
-      active = active or (p.head ~= nil and p.queue ~= '')
+      active = active or (p.head ~= nil and p.queue ~= "")
     end
   end
   if not active and timer then
@@ -244,7 +244,7 @@ end
 
 local function open_write_preview(p)
   local buf = api.nvim_create_buf(false, true)
-  api.nvim_buf_set_name(buf, 'anvim://write/' .. p.path)
+  api.nvim_buf_set_name(buf, "anvim://write/" .. p.path)
   vim.b[buf].anvim_preview = p.path
   local ft = vim.filetype.match({ filename = p.path })
   if ft then
@@ -257,23 +257,23 @@ local function open_write_preview(p)
   follow.track(p.path, 1, buf)
 end
 
-local stream_keys = { Edit = 'new_string', Write = 'content' }
+local stream_keys = { Edit = "new_string", Write = "content" }
 
 function M.on_field(ev)
   local p = previews[ev.id]
   if not p or p.dead then
     return
   end
-  if ev.key == 'file_path' and ev.phase == 'end' then
+  if ev.key == "file_path" and ev.phase == "end" then
     p.path = ev.value
-    if p.name == 'Write' then
+    if p.name == "Write" then
       open_write_preview(p)
     elseif vim.uv.fs_stat(p.path) then
       p.buf = follow.load(p.path)
     else
       kill(p)
     end
-  elseif p.name == 'Edit' and ev.key == 'old_string' and ev.phase == 'end' then
+  elseif p.name == "Edit" and ev.key == "old_string" and ev.phase == "end" then
     if p.buf then
       place_edit(p, ev.value)
       if p.head then
@@ -281,9 +281,9 @@ function M.on_field(ev)
       end
     end
   elseif ev.key == stream_keys[p.name] then
-    if ev.phase == 'delta' then
+    if ev.phase == "delta" then
       on_delta(p, ev.text)
-    elseif ev.phase == 'end' then
+    elseif ev.phase == "end" then
       finish_input(p)
     end
   end
@@ -294,7 +294,7 @@ function M.on_start(ev)
     previews[ev.id] = {
       id = ev.id,
       name = ev.name,
-      queue = '',
+      queue = "",
       ticks = 4,
       gap = 250,
       input_done = false,
@@ -312,7 +312,7 @@ function M.on_await(ev)
     table.insert(p.waiting, ev.req)
     finish_input(p)
   else
-    sidecar.send({ type = 'preview_done', req = ev.req })
+    sidecar.send({ type = "preview_done", req = ev.req })
   end
 end
 
@@ -323,10 +323,10 @@ function M.added_rows(patch)
     local row = (hunk.newStart or 1) - 1
     for _, line in ipairs(hunk.lines or {}) do
       local c = line:sub(1, 1)
-      if c == '+' then
+      if c == "+" then
         rows[#rows + 1] = row
         row = row + 1
-      elseif c == ' ' then
+      elseif c == " " then
         row = row + 1
       end
     end
@@ -337,7 +337,7 @@ end
 local function reload(buf)
   if api.nvim_buf_is_valid(buf) and api.nvim_buf_is_loaded(buf) then
     api.nvim_buf_call(buf, function()
-      vim.cmd('silent! keepjumps edit!')
+      vim.cmd("silent! keepjumps edit!")
     end)
   end
 end
@@ -351,13 +351,13 @@ local function finish_write(p, ev)
     if showing then
       api.nvim_win_set_buf(showing, buf)
     end
-    local rows = M.added_rows(type(ev.result) == 'table' and ev.result.structuredPatch or nil)
+    local rows = M.added_rows(type(ev.result) == "table" and ev.result.structuredPatch or nil)
     if #rows == 0 then
       for row = 0, math.min(api.nvim_buf_line_count(buf), 500) - 1 do
         rows[#rows + 1] = row
       end
     end
-    follow.flash(buf, rows, 'AnvimInsert')
+    follow.flash(buf, rows, "AnvimInsert")
   end
   if preview and api.nvim_buf_is_valid(preview) then
     api.nvim_buf_delete(preview, { force = true })
@@ -372,12 +372,12 @@ function M.on_result(ev)
   previews[ev.id] = nil
   kill(p)
   set_busy(p, false)
-  if p.name == 'Write' and p.path then
+  if p.name == "Write" and p.path then
     finish_write(p, ev)
   elseif p.buf then
     reload(p.buf)
-    local rows = M.added_rows(type(ev.result) == 'table' and ev.result.structuredPatch or nil)
-    follow.flash(p.buf, rows, 'AnvimInsert')
+    local rows = M.added_rows(type(ev.result) == "table" and ev.result.structuredPatch or nil)
+    follow.flash(p.buf, rows, "AnvimInsert")
     if rows[1] and p.path then
       follow.track(p.path, rows[1] + 1)
     end
@@ -397,17 +397,17 @@ function M.idle(id)
 end
 
 function M.attach()
-  sidecar.on('tool_start', M.on_start)
-  sidecar.on('tool_field', M.on_field)
-  sidecar.on('tool_input_end', function(ev)
+  sidecar.on("tool_start", M.on_start)
+  sidecar.on("tool_field", M.on_field)
+  sidecar.on("tool_input_end", function(ev)
     local p = previews[ev.id]
     if p then
       finish_input(p)
     end
   end)
-  sidecar.on('await_preview', M.on_await)
-  sidecar.on('tool_result', M.on_result)
-  sidecar.on('turn_end', M.on_turn_end)
+  sidecar.on("await_preview", M.on_await)
+  sidecar.on("tool_result", M.on_result)
+  sidecar.on("turn_end", M.on_turn_end)
 end
 
 return M
