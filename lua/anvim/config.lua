@@ -6,6 +6,10 @@ M.defaults = {
   model = nil,
   ---@type 'default'|'acceptEdits'|'plan'|'bypassPermissions'
   permission_mode = "default",
+  ---@type string? A session id to resume at start, or "pick" to choose one.
+  resume = nil,
+  -- Resume the latest session in the working directory at start.
+  continue = false,
   bun = "bun",
   ---@type string[]? Replaces the sidecar command, e.g. to replay a recording.
   sidecar_cmd = nil,

@@ -32,6 +32,12 @@ local function setup_transcript_win(win)
   wo.breakindent = true
   wo.breakindentopt = "list:-1"
   wo.cursorline = false
+  -- Claude's markdown reads as Claude Code shows it: no ** or backticks, and
+  -- no fence lines. Blank lines in Claude's text hold two spaces, which
+  -- 'list' would mark.
+  wo.conceallevel = 2
+  wo.concealcursor = "nvc"
+  wo.list = false
   -- A drag puts the cursor where the mouse was pressed. With 'scrolloff', the
   -- view would scroll under the mouse there.
   wo.scrolloff = 0

@@ -27,17 +27,20 @@ function typeOf(line: string): string {
 }
 
 // Plays frames until (and including) the first one whose type is `until`.
+// The context usage that the sidecar sends after a turn ends belongs to it.
 async function play(until: string | null, inclusive: boolean): Promise<void> {
   let last: number | null = null;
+  let ended = false;
   while (cursor < frames.length) {
     const frame = frames[cursor]!;
     const type = typeOf(frame.line);
+    if (ended && type !== "context") return;
     if (type === until && !inclusive) return;
     if (last !== null) await Bun.sleep(Math.max(0, frame.at - last) / speed);
     last = frame.at;
     process.stdout.write(frame.line + "\n");
     cursor++;
-    if (type === until) return;
+    if (type === until) ended = true;
   }
 }
 

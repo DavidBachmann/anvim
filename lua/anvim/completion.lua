@@ -158,11 +158,19 @@ function M.file_items(list, token, row, at, cursor)
   return items
 end
 
+-- Whether a command's hint names an argument that it needs, such as
+-- `<instruction>`. Hints like `[name]` or `<optional ...>` need none.
+local function needs_argument(hint)
+  return type(hint) == "string" and hint ~= "" and not hint:match("^%[") and not hint:lower():find("optional")
+end
+
 function M.command_items(row, cursor)
   local items = {}
   for _, c in ipairs(M.commands) do
     local desc = c.description ~= "" and c.description or nil
     items[#items + 1] = {
+      -- Enter sends it, as in Claude Code, unless it needs an argument.
+      data = { anvim_command = true, send = not needs_argument(c.argument_hint) },
       label = "/" .. c.name,
       filterText = c.name,
       kind = KIND.command,

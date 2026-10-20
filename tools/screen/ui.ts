@@ -56,9 +56,10 @@ export class Ui {
   private constructor(opts: StartOptions) {
     this.xdg = resolve(opts.xdg);
     // The child must not see the user's anvim state, or a Neovim it runs in.
+    // Without the cmux variables, it posts no notifications to the user's terminal.
     const env: Record<string, string> = {};
     for (const [key, value] of Object.entries(process.env)) {
-      if (value !== undefined && !/^(XDG_|NVIM|LAZY_)/.test(key)) env[key] = value;
+      if (value !== undefined && !/^(XDG_|NVIM|LAZY_|CMUX_)/.test(key)) env[key] = value;
     }
     env.NVIM_APPNAME = "anvim";
     for (const name of ["config", "data", "state", "cache"]) {

@@ -19,13 +19,19 @@ export type Command =
       cwd: string;
       model?: string;
       permission_mode?: string;
+      // A session to go on with, or the latest one in cwd with `continue`.
       resume?: string;
+      continue?: boolean;
+      // Send the resumed session's messages as a history event first.
+      history?: boolean;
       append_system_prompt?: string;
     }
   | { type: "prompt"; text: string; context?: PromptContext }
   | { type: "interrupt" }
   | { type: "set_permission_mode"; mode: string }
   | { type: "set_model"; model?: string }
+  // Answered with a models event.
+  | { type: "list_models" }
   | { type: "preview_done"; req: number }
   // The answer to an editor_request: plain text for Claude, or an error.
   | { type: "editor_response"; req: number; result?: string; error?: string }
@@ -123,4 +129,16 @@ export type Event =
     }
   | { type: "status"; status: string | null; permission_mode?: string }
   | { type: "notice"; level: "info" | "warn" | "error"; text: string }
+  // A slash command's own output, such as the text of /cost.
+  | { type: "output"; text: string }
+  // /clear dropped the conversation. The init that follows has the new session id.
+  | { type: "reset" }
+  // Claude Code summarized the conversation to free context.
+  | { type: "compact"; trigger?: string; pre_tokens?: number; post_tokens?: number }
+  // How full the context window is, after each turn.
+  | { type: "context"; percent: number; tokens: number; max: number }
+  | { type: "models"; models: { value: string; name: string; description: string; resolved?: string }[] }
+  // A resumed session's past, sent before it starts. Its events draw the
+  // transcript as live ones do. A "user" event is a past prompt.
+  | { type: "history"; session_id: string; events: (Event | { type: "user"; text: string })[] }
   | { type: "exit"; code: number };

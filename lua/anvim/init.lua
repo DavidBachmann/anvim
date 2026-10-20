@@ -28,12 +28,15 @@ local highlights = {
   AnvimModeBypass = { link = "DiagnosticError" },
   AnvimInsert = { link = "DiffAdd" },
   AnvimRead = { link = "Visual" },
+  AnvimTodoActive = { bold = true },
 }
 
 local function set_highlights()
   for name, spec in pairs(highlights) do
     api.nvim_set_hl(0, name, vim.tbl_extend("force", spec, { default = true }))
   end
+  local comment = api.nvim_get_hl(0, { name = "Comment", link = false })
+  api.nvim_set_hl(0, "AnvimTodoDone", { fg = comment.fg, strikethrough = true, default = true })
   local del = api.nvim_get_hl(0, { name = "DiffDelete", link = false })
   api.nvim_set_hl(0, "AnvimDelete", { bg = del.bg, strikethrough = true, default = true })
   -- The blank row under the transcript takes the transcript's background.
@@ -62,6 +65,8 @@ local function wire()
   require("anvim.context").attach()
   require("anvim.trail").attach(sidecar)
   require("anvim.completion").attach(sidecar)
+  require("anvim.sessions").attach()
+  require("anvim.notify").attach(sidecar)
   sidecar.on("init", function(ev)
     state.session_id = ev.session_id
     state.model = ev.model
@@ -72,12 +77,14 @@ local function wire()
   sidecar.on("status", function(ev)
     if ev.permission_mode then
       state.permission_mode = ev.permission_mode
-      input.redraw()
     end
+    state.compacting = ev.status == "compacting"
+    input.redraw()
   end)
   sidecar.on("turn_end", refresh_branch)
-  sidecar.on("exit", function()
-    state.process = "exited"
+  sidecar.on("exit", function(ev)
+    state.process = ev.restart and "starting" or "exited"
+    state.compacting = false
   end)
 end
 
@@ -93,6 +100,15 @@ function M.setup(opts)
   api.nvim_create_user_command("Anvim", M.start, { desc = "Open the anvim layout and start Claude" })
   api.nvim_create_user_command("AnvimInterrupt", input.interrupt, { desc = "Interrupt Claude" })
   api.nvim_create_user_command("AnvimTranscript", windows.read, { desc = "Focus the transcript to yank and search" })
+  local sessions = require("anvim.sessions")
+  api.nvim_create_user_command("AnvimSessions", sessions.pick, { desc = "Resume a session of this directory" })
+  api.nvim_create_user_command("AnvimRestart", sessions.restart, { desc = "Restart Claude in this session" })
+  api.nvim_create_user_command("AnvimModel", sessions.pick_model, { desc = "Choose Claude's model" })
+  vim.keymap.set("n", "<leader>ks", sessions.pick, { desc = "Resume a session" })
+  vim.keymap.set("n", "<leader>km", sessions.pick_model, { desc = "Choose the model" })
+  vim.keymap.set("n", "<leader>ky", function()
+    sessions.yank()
+  end, { desc = "Yank Claude's last reply" })
 end
 
 local started = false
@@ -107,13 +123,16 @@ function M.start()
   state.permission_mode = config.options.permission_mode
   wire()
   refresh_branch()
-  sidecar.start({
-    type = "start",
-    cwd = state.cwd,
-    model = config.options.model,
-    permission_mode = config.options.permission_mode,
-    append_system_prompt = config.options.append_system_prompt,
-  })
+  local resume = config.options.resume
+  local sessions = require("anvim.sessions")
+  sidecar.start(sessions.start_command({
+    resume = resume ~= "pick" and resume or nil,
+    continue = config.options.continue or nil,
+    history = true,
+  }))
+  if resume == "pick" then
+    vim.schedule(sessions.pick)
+  end
   api.nvim_create_autocmd("VimLeavePre", { callback = sidecar.stop })
 end
 

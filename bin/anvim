@@ -1,13 +1,24 @@
 #!/bin/sh
-# Usage: anvim [--model <model>] [--mode <mode>] [dir] [nvim args...]
+# Usage: anvim [--model <model>] [--mode <mode>] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
 root=$(cd "$(dirname "$(realpath "$0")")/.." && pwd)
 
-# Take --model and --mode out of the arguments and keep the rest in order.
+is_session_id() {
+  case "$1" in
+    ????????-????-????-????-????????????) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Only flags resume a session, never a value inherited from another anvim.
+unset ANVIM_CONTINUE ANVIM_RESUME
+
+# Take anvim's own flags out of the arguments and keep the rest in order.
 n=$#
 while [ "$n" -gt 0 ]; do
   case "$1" in
     --model | --mode)
-      if [ $# -lt 2 ]; then
+      # $# also counts the arguments already moved to the end.
+      if [ "$n" -lt 2 ]; then
         echo "anvim: $1 needs a value, e.g. --model haiku or --mode default" >&2
         exit 2
       fi
@@ -22,6 +33,27 @@ while [ "$n" -gt 0 ]; do
       ;;
     --mode=*)
       ANVIM_MODE=${1#--mode=} mode=1
+      shift
+      n=$((n - 1))
+      ;;
+    -c | --continue)
+      ANVIM_CONTINUE=1
+      shift
+      n=$((n - 1))
+      ;;
+    # Without a session id, anvim opens the session picker.
+    -r | --resume)
+      ANVIM_RESUME=pick
+      shift
+      n=$((n - 1))
+      if [ "$n" -gt 0 ] && is_session_id "$1"; then
+        ANVIM_RESUME=$1
+        shift
+        n=$((n - 1))
+      fi
+      ;;
+    --resume=*)
+      ANVIM_RESUME=${1#--resume=}
       shift
       n=$((n - 1))
       ;;
@@ -42,6 +74,12 @@ if [ -n "$mode" ] || [ -n "$ANVIM_MODE" ]; then
       ;;
   esac
 fi
+if [ -n "$ANVIM_CONTINUE" ] && [ -n "$ANVIM_RESUME" ]; then
+  echo "anvim: use --continue or --resume, not both" >&2
+  exit 2
+fi
+[ -n "$ANVIM_CONTINUE" ] && export ANVIM_CONTINUE
+[ -n "$ANVIM_RESUME" ] && export ANVIM_RESUME
 
 if [ -d "$1" ]; then
   cd "$1" || exit 1

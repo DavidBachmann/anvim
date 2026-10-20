@@ -66,7 +66,8 @@ local function start()
   end
   local env = vim.fn.environ()
   for key in pairs(env) do
-    if key:match("^XDG_") or key:match("^LAZY_") or key:match("^NVIM") then
+    -- Without the cmux variables, the child posts no notifications.
+    if key:match("^XDG_") or key:match("^LAZY_") or key:match("^NVIM") or key:match("^CMUX_") then
       env[key] = nil
     end
   end
@@ -299,6 +300,35 @@ describe("LazyVim stack", function()
     )
   end)
 
+  it("answers the LSP editor tools with the lua_ls that LazyVim's lspconfig starts", function()
+    start()
+    wait(5000, [[return #vim.lsp.get_clients({ name = "lua_ls" }) > 0]], "lua_ls did not start")
+    lua([[
+      local sidecar = require("anvim.sidecar")
+      _G.answers, _G.send = {}, sidecar.send
+      sidecar.send = function(msg)
+        if msg.type == "editor_response" then
+          _G.answers[msg.req] = msg
+        else
+          _G.send(msg)
+        end
+      end
+      local ask = function(req, method, params)
+        sidecar.dispatch({ type = "editor_request", req = req, method = method, params = params })
+      end
+      ask(9001, "lsp_definition", { path = "matchparen.lua", line = 100, symbol = "char_at" })
+      ask(9002, "lsp_document_symbols", { path = "matchparen.lua" })
+    ]])
+    wait(15000, [[return _G.answers[9001] ~= nil and _G.answers[9002] ~= nil]], "no answers from the editor tools")
+    local answers = lua([[
+      require("anvim.sidecar").send = _G.send
+      return { _G.answers[9001], _G.answers[9002] }
+    ]])
+    assert.is_nil(answers[1].error, answers[1].error)
+    assert(answers[1].result:find("matchparen.lua:12", 1, true), answers[1].result)
+    assert(answers[2].result:find("highlight_matching_pair", 1, true), answers[2].result)
+  end)
+
   it("keeps the layout through terminal resizes with the prompt focused", function()
     start()
     lua([[require("anvim.layout").focus_input()]])
@@ -499,6 +529,86 @@ describe("LazyVim stack", function()
     assert.are.same(1, #sent)
     assert.are.same({ "prompt", word }, { sent[1].type, sent[1].text })
     assert(sent[1].context and sent[1].context.file, "the prompt has no editor context")
+
+    -- Enter on a slash command completes it and sends it, as in Claude Code.
+    -- A command that needs an argument is only completed.
+    lua([[
+      local sidecar = require("anvim.sidecar")
+      _G.sent = {}
+      sidecar.send = function(msg)
+        table.insert(_G.sent, msg)
+      end
+      sidecar.dispatch({ type = "commands", commands = {
+        { name = "compact", description = "Free up context", argument_hint = "<optional custom summarization instructions>" },
+        { name = "batch", description = "Plan a large change", argument_hint = "<instruction>" },
+      } })
+    ]])
+    wait(2000, [[return vim.api.nvim_get_mode().mode == "i" and vim.api.nvim_get_current_line() == ""]])
+    lua([[vim.api.nvim_input("/compa")]])
+    wait(3000, [[return require("blink.cmp").is_menu_visible()]], "no menu after /compa")
+    lua([[vim.api.nvim_input("<CR>")]])
+    wait(2000, [[return #_G.sent > 0]], "Enter on /compact did not send it")
+    sent = lua([[return _G.sent]])
+    assert.are.same({ "prompt", "/compact" }, { sent[1].type, sent[1].text })
+    wait(2000, [[return vim.api.nvim_get_current_line() == "" and not require("blink.cmp").is_menu_visible()]])
+    lua([[
+      require("anvim.input").set_busy(false)
+      vim.api.nvim_input("/bat")
+    ]])
+    wait(3000, [[return require("blink.cmp").is_menu_visible()]], "no menu after /bat")
+    lua([[vim.api.nvim_input("<CR>")]])
+    wait(2000, [[return vim.api.nvim_get_current_line() == "/batch "]], "Enter did not complete /batch")
+    lua([[vim.wait(300)]])
+    assert.are.same(1, #lua([[return _G.sent]]), "Enter sent /batch, which needs an argument")
+    lua([[
+      require("anvim.sidecar").send = _G.send
+      require("blink.cmp").hide()
+      vim.cmd.stopinsert()
+      vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
+      require("anvim.input").set_busy(false)
+    ]])
+  end)
+
+  it("<Up> moves in blink's menu while it is open, and goes back through past prompts otherwise", function()
+    start()
+    lua([[
+      local sidecar = require("anvim.sidecar")
+      local input = require("anvim.input")
+      _G.send = sidecar.send
+      sidecar.send = function() end
+      vim.cmd.stopinsert()
+      vim.api.nvim_set_current_win(require("anvim.layout").wins.input)
+      for _, text in ipairs({ "first past prompt", "second past prompt" }) do
+        vim.api.nvim_buf_set_lines(input.buf(), 0, -1, false, { text })
+        input.submit()
+      end
+      input.set_busy(false)
+      vim.api.nvim_buf_set_lines(input.buf(), 0, -1, false, { "matchpar" })
+    ]])
+    wait(2000, [[return vim.api.nvim_get_mode().mode == "n"]])
+    lua([[vim.api.nvim_input("A")]])
+    wait(2000, [[return vim.api.nvim_get_mode().mode == "i"]], "not in insert mode")
+    lua([[require("blink.cmp").show({ providers = { "buffer" } })]])
+    wait(3000, [[return require("blink.cmp").is_menu_visible()]], "the menu did not open")
+    lua([[vim.api.nvim_input("<Up>")]])
+    wait(2000, [[return require("blink.cmp").get_selected_item() ~= nil]], "<Up> selected no item")
+    local line = lua([[return vim.api.nvim_get_current_line()]])
+    assert(not line:find("past prompt"), "<Up> went to a past prompt while the menu was open: " .. line)
+    -- hide() closes the menu from a scheduled callback.
+    lua([[require("blink.cmp").hide()]])
+    wait(2000, [[return not require("blink.cmp").is_menu_visible()]], "the menu did not close")
+    lua([[
+      vim.api.nvim_buf_set_lines(0, 0, -1, false, { "my draft" })
+      vim.api.nvim_input("<Up>")
+    ]])
+    wait(2000, [[return vim.api.nvim_get_current_line() == "second past prompt"]], "<Up> did not go back")
+    lua([[vim.api.nvim_input("<Down>")]])
+    wait(2000, [[return vim.api.nvim_get_current_line() == "my draft"]], "<Down> did not bring the draft back")
+    lua([[
+      require("anvim.sidecar").send = _G.send
+      vim.cmd.stopinsert()
+      vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
+    ]])
   end)
 
   it("pins a visual selection for the prompt, until the cursor moves in the code window", function()
@@ -996,7 +1106,14 @@ describe("LazyVim stack", function()
       end
       return { maps = maps, groups = groups }
     ]])
-    assert.are.same({ kj = "Jump to where Claude is", kr = "Read the transcript", kt = "Claude's trail" }, out.maps)
+    assert.are.same({
+      kj = "Jump to where Claude is",
+      km = "Choose the model",
+      kr = "Read the transcript",
+      ks = "Resume a session",
+      kt = "Claude's trail",
+      ky = "Yank Claude's last reply",
+    }, out.maps)
     assert.are.same({ { desc = "claude", group = true } }, out.groups)
   end)
 

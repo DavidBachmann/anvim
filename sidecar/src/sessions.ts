@@ -1,0 +1,133 @@
+// Claude Code's saved sessions for a directory, read through the Agent SDK.
+// anvim never writes them. As a script, it prints the list for the picker:
+//   bun src/sessions.ts list <dir>
+import { getSessionInfo, getSessionMessages, listSessions, type SessionMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { Event } from "./protocol";
+import { commandOutput, resultText, truncate } from "./translate";
+
+export type SessionItem = {
+  id: string;
+  title: string;
+  modified: number;
+  created?: number;
+  size?: number;
+  branch?: string;
+  first_prompt?: string;
+};
+
+type HistoryEvent = Extract<Event, { type: "history" }>["events"][number];
+type AnyRecord = Record<string, any>;
+
+// Only this directory's own sessions: a session of another worktree would not
+// resume here.
+export async function list(cwd: string): Promise<SessionItem[]> {
+  const sessions = await listSessions({ dir: cwd, includeWorktrees: false });
+  return sessions.map((s) => ({
+    id: s.sessionId,
+    title: s.customTitle || s.summary || s.firstPrompt || "(no prompt)",
+    modified: s.lastModified,
+    created: s.createdAt,
+    size: s.fileSize,
+    branch: s.gitBranch,
+    first_prompt: s.firstPrompt,
+  }));
+}
+
+export async function latest(cwd: string): Promise<string | undefined> {
+  return (await listSessions({ dir: cwd, includeWorktrees: false, limit: 1 }))[0]?.sessionId;
+}
+
+export async function exists(id: string, cwd: string): Promise<boolean> {
+  return (await getSessionInfo(id, { dir: cwd })) !== undefined;
+}
+
+export async function history(id: string, cwd: string): Promise<HistoryEvent[]> {
+  return historyEvents(await getSessionMessages(id, { dir: cwd }));
+}
+
+// A prompt as the user typed it. Slash commands are saved as tags, and an
+// interrupt as Claude Code's own marker text.
+function prompt(content: string): HistoryEvent | undefined {
+  if (/^\[Request interrupted by user[^\]]*\]$/.test(content.trim())) {
+    return { type: "notice", level: "warn", text: "Interrupted by user" };
+  }
+  const output = commandOutput(content);
+  if (output !== undefined) return output === "" ? undefined : { type: "output", text: truncate(output) };
+  const name = content.match(/<command-name>(.*?)<\/command-name>/)?.[1];
+  if (name) {
+    // A session that /clear started begins with the /clear itself.
+    if (name === "/clear") return undefined;
+    const args = content.match(/<command-args>([\s\S]*?)<\/command-args>/)?.[1]?.trim();
+    return { type: "user", text: args ? `${name} ${args}` : name };
+  }
+  return content.trim() === "" ? undefined : { type: "user", text: content };
+}
+
+// Saved sessions keep no tool_use_result. A Read's line count is in its text.
+function readResult(text: string): unknown {
+  const lines = text.split("\n").filter((line) => /^\s*\d+\t/.test(line)).length;
+  return lines > 0 ? { file: { numLines: lines } } : undefined;
+}
+
+// The events that draw these messages, in the order they happened. Subagent
+// messages live in their own files, so they are not here.
+export function historyEvents(messages: SessionMessage[]): HistoryEvent[] {
+  const out: HistoryEvent[] = [];
+  const names = new Map<string, string>();
+  for (const m of messages) {
+    const raw = m as AnyRecord;
+    const content = (m.message as AnyRecord | undefined)?.content;
+    if (m.parent_tool_use_id != null) continue;
+    if (raw.isCompactSummary) {
+      out.push({ type: "compact" });
+      continue;
+    }
+    if (raw.is_meta || raw.isMeta) continue;
+    if (m.type === "assistant" && Array.isArray(content)) {
+      for (const block of content) {
+        if (block.type === "text" && block.text) {
+          out.push({ type: "text_start" }, { type: "text_delta", text: block.text }, { type: "text_stop" });
+        } else if (block.type === "tool_use") {
+          names.set(block.id, block.name);
+          out.push({ type: "tool_use", id: block.id, name: block.name, input: block.input ?? {}, parent_id: null });
+        }
+      }
+    } else if (m.type === "user") {
+      if (typeof content === "string") {
+        const ev = prompt(content);
+        if (ev) out.push(ev);
+      } else if (Array.isArray(content)) {
+        const texts: string[] = [];
+        for (const block of content) {
+          if (block.type === "tool_result") {
+            const text = resultText(block.content);
+            out.push({
+              type: "tool_result",
+              id: block.tool_use_id,
+              is_error: Boolean(block.is_error),
+              text: truncate(text),
+              result: names.get(block.tool_use_id) === "Read" ? readResult(text) : undefined,
+              parent_id: null,
+            });
+          } else if (block.type === "text" && block.text) {
+            texts.push(block.text);
+          } else if (block.type === "image") {
+            texts.push("[Image]");
+          }
+        }
+        const ev = texts.length ? prompt(texts.join("\n")) : undefined;
+        if (ev) out.push(ev);
+      }
+    }
+  }
+  return out;
+}
+
+if (import.meta.main) {
+  const [cmd, dir] = process.argv.slice(2);
+  if (cmd !== "list" || !dir) {
+    process.stderr.write("usage: sessions.ts list <dir>\n");
+    process.exit(2);
+  }
+  process.stdout.write(JSON.stringify(await list(dir)) + "\n");
+}

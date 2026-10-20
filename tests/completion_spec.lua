@@ -61,7 +61,8 @@ describe("completion", function()
       },
     })
     local items = by_label(complete("/re").items)
-    assert.are.same({ "/compact", "/review" }, vim.fn.sort(vim.tbl_keys(items)))
+    -- anvim runs /model and /resume itself, and adds them.
+    assert.are.same({ "/compact", "/model", "/resume", "/review" }, vim.fn.sort(vim.tbl_keys(items)))
     assert.are.same({
       newText = "/review ",
       range = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 3 } },

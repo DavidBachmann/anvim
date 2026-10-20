@@ -20,10 +20,11 @@ local footer_mark
 local spinner_timer
 local spinner_frames = { "·", "✢", "✳", "✶", "✻", "✽", "✻", "✶", "✳", "✢" }
 
+-- Each label, its highlight, and a short form for a narrow column.
 local mode_labels = {
-  acceptEdits = { "⏵⏵ accept edits on", "AnvimModeEdits" },
-  plan = { "⏸ plan mode on", "AnvimModePlan" },
-  bypassPermissions = { "⏵⏵ bypass permissions on", "AnvimModeBypass" },
+  acceptEdits = { "⏵⏵ accept edits on", "AnvimModeEdits", "⏵⏵ accept edits" },
+  plan = { "⏸ plan mode on", "AnvimModePlan", "⏸ plan" },
+  bypassPermissions = { "⏵⏵ bypass permissions on", "AnvimModeBypass", "⏵⏵ bypass" },
 }
 
 function M.buf()
@@ -75,6 +76,7 @@ function M.buf()
   vim.keymap.set({ "n", "i" }, "<LeftDrag>", function()
     return require("anvim.windows").drag_keys()
   end, { buffer = bufnr, expr = true, desc = "Select in the transcript" })
+  require("anvim.history").map(bufnr)
   local group = api.nvim_create_augroup("anvim.input", {})
   api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, { group = group, buffer = bufnr, callback = M.render })
   api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
@@ -159,8 +161,11 @@ function M.submit()
   if text == "" then
     return
   end
+  require("anvim.history").add(text)
   api.nvim_buf_set_lines(buf, 0, -1, false, { "" })
-  M.send(text)
+  if not require("anvim.sessions").command(text) then
+    M.send(text)
+  end
 end
 
 function M.send(text)
@@ -246,9 +251,14 @@ local function win_width(win)
   return win and api.nvim_win_is_valid(win) and api.nvim_win_get_width(win) or vim.o.columns
 end
 
+-- As in Claude Code, the todo item in progress names what Claude does.
 ---@return string verb, integer secs
 local function working()
-  local verb = state.thinking and "Thinking..." or "Working..."
+  local active = transcript.todo_active()
+  local verb = state.compacting and "Compacting..."
+    or active and (active:gsub("%.+$", "") .. "...")
+    or state.thinking and "Thinking..."
+    or "Working..."
   return verb, math.floor((vim.uv.now() - state.turn_started) / 1000)
 end
 
@@ -256,7 +266,8 @@ end
 function M.activity()
   local text, width = "", 0
   if state.process == "exited" then
-    text, width = "%#AnvimToolError#sidecar exited ", 15
+    local info = "sidecar exited · :AnvimRestart "
+    text, width = "%#AnvimToolError#" .. info, api.nvim_strwidth(info)
   elseif state.waiting then
     -- In a narrow column, keep the start of the hint, which says what to do.
     local hint, room = state.waiting, win_width(vim.g.statusline_winid) - 4
@@ -269,11 +280,18 @@ function M.activity()
     local frame = spinner_frames[math.floor(vim.uv.now() / 120) % #spinner_frames + 1]
     local verb, secs = working()
     local hint = ("(%ds · esc to interrupt)"):format(secs)
-    text = ("%%#AnvimClaude#%s %s %%#Comment#%s "):format(frame, verb, hint)
+    text = ("%%#AnvimClaude#%s %s %%#Comment#%s "):format(frame, (verb:gsub("%%", "%%%%")), hint)
     width = vim.fn.strdisplaywidth(("%s %s %s "):format(frame, verb, hint))
-  elseif state.last_turn then
-    local info = ("%.1fs · $%.2f "):format(state.last_turn.duration_ms / 1000, state.cost_usd)
-    text, width = "%#Comment#" .. info, vim.fn.strdisplaywidth(info)
+  elseif state.last_turn or state.context then
+    local parts = {}
+    if state.last_turn then
+      parts[1] = ("%.1fs · $%.2f"):format(state.last_turn.duration_ms / 1000, state.cost_usd)
+    end
+    if state.context and tonumber(state.context.percent) then
+      parts[#parts + 1] = ("%d%%%% context"):format(state.context.percent)
+    end
+    local info = table.concat(parts, " · ") .. " "
+    text, width = "%#Comment#" .. info, api.nvim_strwidth((info:gsub("%%%%", "%%")))
   end
   return text .. "%#WinSeparator#" .. ("─"):rep(math.max(0, win_width(vim.g.statusline_winid) - width))
 end
@@ -284,13 +302,13 @@ function M.working()
     return ""
   end
   local verb, secs = working()
-  return ("✻ %s %ds"):format((verb:gsub("%.+$", "")), secs)
+  return ("✻ %s %ds"):format((verb:gsub("%.+$", ""):gsub("%%", "%%%%")), secs)
 end
 
 -- The model on the left and the mode on the right. After the model, the chip
 -- says what the next prompt shows Claude. In a narrow column, the hint goes
--- first, then the branch, which the statusline shows too. Then the chip's
--- file name gets shorter, and last the chip goes.
+-- first, then the branch, which the statusline shows too. Then the mode gets
+-- its short label, the chip's file name gets shorter, and last the chip goes.
 ---@param width integer
 ---@return [string, string?][] chunks
 function M.footer(width)
@@ -312,6 +330,9 @@ function M.footer(width)
   end
   if free() < 0 then
     branch = ""
+  end
+  if mode and mode[3] and free() < 0 then
+    mode = { mode[3], mode[2] }
   end
   if chip and free() < 0 then
     chip = context.chip(w(chip[1]) + free())
@@ -385,7 +406,10 @@ function M.attach()
     M.set_busy(true)
   end)
   sidecar.on("turn_end", function(ev)
-    state.last_turn = { duration_ms = ev.duration_ms, cost_usd = ev.cost_usd }
+    -- A slash command such as /clear ends a turn that asked no model.
+    if (ev.num_turns or 0) > 0 then
+      state.last_turn = { duration_ms = ev.duration_ms, cost_usd = ev.cost_usd }
+    end
     state.cost_usd = ev.cost_usd
     M.set_busy(false)
   end)

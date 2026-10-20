@@ -17,6 +17,8 @@ type AnyRecord = Record<string, any>;
 export class Translator {
   private blocks = new Map<number, Block>();
   private inTurn = false;
+  // /compact prints "Compacted" after the compact boundary, which says more.
+  private compacted = false;
 
   translate(msg: SDKMessage): Event[] {
     const m = msg as AnyRecord;
@@ -29,6 +31,9 @@ export class Translator {
       case "system":
         this.system(m, out);
         break;
+      case "conversation_reset":
+        out.push({ type: "reset" });
+        break;
       case "stream_event":
         if (m.parent_tool_use_id == null) this.streamEvent(m.event, out);
         break;
@@ -40,6 +45,7 @@ export class Translator {
         break;
       case "result":
         this.inTurn = false;
+        this.compacted = false;
         this.blocks.clear();
         out.push({
           type: "turn_end",
@@ -72,6 +78,13 @@ export class Translator {
       out.push(commandsEvent(m.commands));
     } else if (m.subtype === "status") {
       out.push({ type: "status", status: m.status ?? null, permission_mode: m.permissionMode });
+      if (m.compact_result === "failed") {
+        out.push({ type: "notice", level: "error", text: `Compaction failed: ${m.compact_error ?? "no reason given"}` });
+      }
+    } else if (m.subtype === "compact_boundary") {
+      const meta = m.compact_metadata ?? {};
+      this.compacted = true;
+      out.push({ type: "compact", trigger: meta.trigger ?? "auto", pre_tokens: meta.pre_tokens, post_tokens: meta.post_tokens });
     } else if (m.subtype === "api_retry") {
       out.push({
         type: "notice",
@@ -136,6 +149,12 @@ export class Translator {
 
   private user(m: AnyRecord, out: Event[]): void {
     const content = m.message?.content;
+    if (typeof content === "string" && m.parent_tool_use_id == null) {
+      const text = commandOutput(content);
+      if (text !== undefined && !this.compacted && text !== "") out.push({ type: "output", text: truncate(text) });
+      if (text !== undefined) this.compacted = false;
+      return;
+    }
     if (!Array.isArray(content)) return;
     for (const block of content) {
       if (block.type !== "tool_result") continue;
@@ -162,7 +181,13 @@ export function commandsEvent(commands: SdkSlashCommand[]): Event {
   };
 }
 
-function resultText(content: unknown): string {
+// The text of a slash command's output message, or undefined for other text.
+export function commandOutput(content: string): string | undefined {
+  const match = content.match(/^<local-command-(?:stdout|stderr)>([\s\S]*)<\/local-command-(?:stdout|stderr)>$/);
+  return match ? match[1]!.trim() : undefined;
+}
+
+export function resultText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content
@@ -171,12 +196,12 @@ function resultText(content: unknown): string {
     .join("\n");
 }
 
-function truncate(s: string): string {
+export function truncate(s: string): string {
   return s.length > MAX_TEXT ? s.slice(0, MAX_TEXT) + "..." : s;
 }
 
 // Tool results can hold whole files. The plugin only needs the metadata.
-function trim(value: unknown): unknown {
+export function trim(value: unknown): unknown {
   if (typeof value === "string") return truncate(value);
   if (Array.isArray(value)) return value.map(trim);
   if (value && typeof value === "object") {

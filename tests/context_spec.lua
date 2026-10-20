@@ -82,6 +82,11 @@ describe("context", function()
     -- One mark that ends where the next line starts, so that 'hl_eol' covers the last line.
     assert.are.same({ { 1, 0, 4, 0, "AnvimSelection" } }, marks(buf))
     assert(footer():find("⧉ 3 lines selected", 1, true), footer())
+    -- In a narrow column, the mode label gets short, so that the chip stays.
+    local narrow = footer(55)
+    assert(narrow:find("⧉ 3 lines selected", 1, true), narrow)
+    assert(narrow:find("⏵⏵ bypass $"), narrow)
+    assert.are.same(55, api.nvim_strwidth(narrow), narrow)
 
     feed("2G0wvjl<Esc>")
     sel = context.selection()
@@ -242,26 +247,34 @@ describe("context", function()
     end
   end)
 
-  it("fits the chip into the footer: the hint goes first, then the branch, then the chip", function()
+  it("fits the chip into the footer: the hint goes first, then the branch, the long mode, then the chip", function()
     in_code()
     state.branch = "main"
     local w = api.nvim_strwidth
     for width, want in pairs({
-      [100] = { "git:(main)", "⧉ In context.lua", "(shift+tab to cycle)" },
-      [80] = { "git:(main)", "⧉ In context.lua" },
-      [62] = { "⧉ In context.lua" },
-      [58] = { "⧉ In contex..." },
-      [50] = {},
+      [100] = { "git:(main)", "⧉ In context.lua", "(shift+tab to cycle)", "⏵⏵ bypass permissions on" },
+      [80] = { "git:(main)", "⧉ In context.lua", "⏵⏵ bypass permissions on" },
+      [62] = { "⧉ In context.lua", "⏵⏵ bypass permissions on" },
+      [58] = { "⧉ In context.lua" },
+      [50] = { "⧉ In context.lua" },
+      [43] = { "⧉ In contex..." },
+      [30] = {},
     }) do
       local text = footer(width)
-      for _, part in ipairs({ "git:(main)", "⧉ In context.lua", "⧉ In contex...", "(shift+tab to cycle)" }) do
+      for _, part in ipairs({
+        "git:(main)",
+        "⧉ In context.lua",
+        "⧉ In contex...",
+        "(shift+tab to cycle)",
+        "⏵⏵ bypass permissions on",
+      }) do
         assert.are.same(
           vim.tbl_contains(want, part),
           text:find(part, 1, true) ~= nil,
           ("%q at %d: %s"):format(part, width, text)
         )
       end
-      assert(text:find("⏵⏵ bypass permissions on", 1, true), text)
+      assert(text:find("⏵⏵ bypass", 1, true), text)
       assert.are.same(width, w(text), text)
     end
     -- While Claude waits, the waiting text stays, and the chip goes if both do not fit.

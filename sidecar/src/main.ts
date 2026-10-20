@@ -11,6 +11,7 @@ import { createInterface } from "node:readline";
 import { contextHook, PendingContexts } from "./context";
 import { PermissionBridge } from "./permissions";
 import type { Command, Event } from "./protocol";
+import * as sessions from "./sessions";
 import { EditorBridge, editorServer, SERVER } from "./tools";
 import { commandsEvent, Translator } from "./translate";
 
@@ -79,6 +80,33 @@ const awaitPreview: HookCallback = async (_input, toolUseID, { signal }) => {
   return {};
 };
 
+// The session to resume, after its history went out. Claude Code fails to
+// start on an id it cannot find, so a missing one starts a new session.
+async function resumeTarget(cmd: Extract<Command, { type: "start" }>): Promise<string | undefined> {
+  let id = cmd.resume;
+  if (!id && cmd.continue) {
+    id = await sessions.latest(cmd.cwd);
+    if (!id) emit({ type: "notice", level: "info", text: "No earlier session in this directory, so this one is new." });
+  }
+  if (!id) return undefined;
+  if (!(await sessions.exists(id, cmd.cwd))) {
+    emit({ type: "notice", level: "warn", text: `No session ${id} in this directory, so this one is new.` });
+    return undefined;
+  }
+  if (cmd.history) emit({ type: "history", session_id: id, events: await sessions.history(id, cmd.cwd) });
+  return id;
+}
+
+// The summary detail answers from the last response's usage, without API calls.
+async function reportContext(): Promise<void> {
+  try {
+    const usage = await session?.getContextUsage({ detail: "summary" });
+    if (usage) emit({ type: "context", percent: usage.percentage, tokens: usage.totalTokens, max: usage.maxTokens });
+  } catch {
+    // Context usage is a nicety. The next turn tries again.
+  }
+}
+
 async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
   const mode = (cmd.permission_mode ?? "default") as PermissionMode;
   permissions.cwd = cmd.cwd;
@@ -86,7 +114,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
   const options: Options = {
     cwd: cmd.cwd,
     model: cmd.model,
-    resume: cmd.resume,
+    resume: await resumeTarget(cmd),
     permissionMode: mode,
     allowDangerouslySkipPermissions: mode === "bypassPermissions",
     includePartialMessages: true,
@@ -116,6 +144,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
       contexts.turnEnd();
     }
     for (const ev of translator.translate(msg)) emit(ev);
+    if (msg.type === "result") void reportContext();
   }
 }
 
@@ -144,6 +173,19 @@ async function handle(cmd: Command): Promise<void> {
     case "set_model":
       await session?.setModel(cmd.model);
       return;
+    case "list_models": {
+      const models = (await session?.supportedModels()) ?? [];
+      emit({
+        type: "models",
+        models: models.map((m) => ({
+          value: m.value,
+          name: m.displayName,
+          description: m.description,
+          resolved: m.resolvedModel,
+        })),
+      });
+      return;
+    }
     case "preview_done":
       previews.get(cmd.req)?.();
       return;
@@ -168,8 +210,12 @@ rl.on("line", (line) => {
   }
   handle(cmd).catch((err) => emit({ type: "notice", level: "error", text: String(err?.message ?? err) }));
 });
-rl.on("close", () => {
+// Bun runs no exit handlers on SIGTERM, so the SDK would leave Claude Code
+// running. A restart of a hung sidecar sends SIGTERM.
+function shutdown(): void {
   inbox.close();
   session?.close();
   process.exit(0);
-});
+}
+rl.on("close", shutdown);
+process.on("SIGTERM", shutdown);

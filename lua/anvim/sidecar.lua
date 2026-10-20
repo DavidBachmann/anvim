@@ -9,6 +9,10 @@ M.log_path = vim.fn.stdpath("log") .. "/anvim.log"
 
 ---@type vim.SystemObj?
 local proc
+---@type table? The start command for the next sidecar, once this one exits.
+local next_start
+-- Commands sent while a restart waits, for the new sidecar.
+local queued = {}
 ---@type table<string, fun(ev: table)[]>
 local handlers = {}
 
@@ -106,17 +110,52 @@ function M.start(start)
   }, function(obj)
     vim.schedule(function()
       proc = nil
+      local start_next = next_start
+      next_start = nil
       -- While Neovim quits, its buffers are unloaded and the handlers would fail.
       if vim.v.exiting == vim.NIL then
-        M.dispatch({ type = "exit", code = obj.code })
+        M.dispatch({ type = "exit", code = obj.code, restart = start_next ~= nil or nil })
+      end
+      if start_next then
+        M.start(start_next)
+        local msgs = queued
+        queued = {}
+        for _, msg in ipairs(msgs) do
+          M.send(msg)
+        end
       end
     end)
   end)
   M.send(start)
 end
 
+-- Stops the sidecar and starts a new one with `start`. A sidecar that hangs
+-- does not read its closed stdin, so it gets signals after a while.
+---@param start table
+function M.restart(start)
+  if not proc then
+    M.start(start)
+    return
+  end
+  next_start = start
+  local old = proc
+  pcall(old.write, old, nil)
+  vim.defer_fn(function()
+    if proc == old then
+      old:kill("sigterm")
+    end
+  end, 2000)
+  vim.defer_fn(function()
+    if proc == old then
+      old:kill("sigkill")
+    end
+  end, 4000)
+end
+
 function M.send(msg)
-  if proc then
+  if next_start then
+    queued[#queued + 1] = msg
+  elseif proc then
     proc:write(vim.json.encode(msg) .. "\n")
   end
 end
@@ -127,8 +166,9 @@ end
 
 -- Closing stdin lets the sidecar close its Claude Code process before it exits.
 function M.stop()
+  next_start, queued = nil, {}
   if proc then
-    proc:write(nil)
+    pcall(proc.write, proc, nil)
   end
 end
 

@@ -94,6 +94,17 @@ return {
     end,
   },
 
+  -- noice shows LSP progress at the bottom right, over the prompt's footer, for
+  -- seconds while a server loads. The bottom left is the explorer's.
+  {
+    "folke/noice.nvim",
+    optional = true,
+    opts = {
+      lsp = { progress = { view = "anvim_progress" } },
+      views = { anvim_progress = { view = "mini", align = "message-left", position = { col = 0 } } },
+    },
+  },
+
   {
     "folke/which-key.nvim",
     optional = true,

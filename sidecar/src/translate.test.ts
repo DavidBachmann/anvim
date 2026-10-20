@@ -72,6 +72,41 @@ describe("Translator", () => {
     ]);
   });
 
+  // The message order of a /compact and a /clear, as Claude Code 2.1.304 sends them.
+  test("compaction, its output, a /clear and a slash command's output", () => {
+    const local = (text: string) =>
+      msg({ type: "user", parent_tool_use_id: null, message: { role: "user", content: `<local-command-stdout>${text}</local-command-stdout>` } });
+    const result = msg({ type: "result", subtype: "success", is_error: false, duration_ms: 1, total_cost_usd: 0, num_turns: 0 });
+    const events = run([
+      msg({ type: "system", subtype: "status", status: "compacting" }),
+      msg({ type: "system", subtype: "status", status: null, compact_result: "success" }),
+      msg({ type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "manual", pre_tokens: 45065, post_tokens: 16912 } }),
+      msg({ type: "user", parent_tool_use_id: null, isSynthetic: true, message: { role: "user", content: "This session is being continued" } }),
+      local("Compacted "),
+      result,
+      msg({ type: "conversation_reset", new_conversation_id: "c1", trigger: "clear", session_id: "s1" }),
+      result,
+      local("Total cost: $0.01"),
+      result,
+    ]);
+    const end: Event = { type: "turn_end", subtype: "success", is_error: false, duration_ms: 1, cost_usd: 0, num_turns: 0 };
+    expect(events).toEqual([
+      { type: "status", status: "compacting", permission_mode: undefined },
+      { type: "status", status: null, permission_mode: undefined },
+      { type: "compact", trigger: "manual", pre_tokens: 45065, post_tokens: 16912 },
+      end,
+      { type: "reset" },
+      end,
+      { type: "output", text: "Total cost: $0.01" },
+      end,
+    ]);
+  });
+
+  test("a failed compaction is an error notice", () => {
+    const events = run([msg({ type: "system", subtype: "status", status: null, compact_result: "failed", compact_error: "too short" })]);
+    expect(events.at(-1)).toEqual({ type: "notice", level: "error", text: "Compaction failed: too short" });
+  });
+
   test("message_stop closes a cut tool call", () => {
     const events = run([
       se({ type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "t2", name: "Write" } }),
