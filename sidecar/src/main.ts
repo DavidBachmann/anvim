@@ -8,8 +8,9 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { appendFileSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { PermissionBridge } from "./permissions";
 import type { Command, Event } from "./protocol";
-import { EditorBridge, editorServer, isEditorTool, SERVER } from "./tools";
+import { EditorBridge, editorServer, SERVER } from "./tools";
 import { Translator } from "./translate";
 
 const record = process.env.ANVIM_RECORD;
@@ -53,6 +54,7 @@ class Inbox implements AsyncIterable<SDKUserMessage> {
 const inbox = new Inbox();
 let session: Query | null = null;
 const editor = new EditorBridge(emit);
+const permissions = new PermissionBridge(emit);
 
 const PREVIEW_TIMEOUT_MS = 3000;
 const previews = new Map<number, () => void>();
@@ -77,6 +79,8 @@ const awaitPreview: HookCallback = async (_input, toolUseID, { signal }) => {
 
 async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
   const mode = (cmd.permission_mode ?? "default") as PermissionMode;
+  permissions.cwd = cmd.cwd;
+  permissions.bypass = mode === "bypassPermissions";
   const options: Options = {
     cwd: cmd.cwd,
     model: cmd.model,
@@ -87,14 +91,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     hooks: { PreToolUse: [{ matcher: "Edit|Write|NotebookEdit", hooks: [awaitPreview] }] },
     systemPrompt: { type: "preset", preset: "claude_code", append: cmd.append_system_prompt },
     mcpServers: { [SERVER]: editorServer(editor) },
-    // Permission prompts are not wired to the editor yet.
-    canUseTool: async (toolName, input, { mcpServer }) =>
-      isEditorTool(mcpServer)
-        ? { behavior: "allow", updatedInput: input }
-        : {
-            behavior: "deny",
-            message: `anvim cannot show permission prompts yet, so ${toolName} was denied. Ask the user to switch permission mode.`,
-          },
+    canUseTool: permissions.canUseTool,
     stderr: (data) => process.stderr.write(data),
   };
   session = query({ prompt: inbox, options });
@@ -133,6 +130,9 @@ async function handle(cmd: Command): Promise<void> {
       return;
     case "editor_response":
       editor.respond(cmd);
+      return;
+    case "permission_response":
+      permissions.respond(cmd);
       return;
   }
 }

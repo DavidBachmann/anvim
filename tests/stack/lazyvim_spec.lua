@@ -841,7 +841,7 @@ describe("LazyVim stack", function()
   it("keeps the prompt in normal mode while a request waits", function()
     start()
     local pos = lua([[
-      require("anvim.state").waiting = true
+      require("anvim.state").waiting = "To answer: esc, then 1-3"
       vim.cmd.stopinsert()
       local pos = vim.fn.win_screenpos(require("anvim.layout").wins.input)
       return { row = pos[1], col = pos[2] + 3 }
@@ -863,6 +863,203 @@ describe("LazyVim stack", function()
     end)
     lua([[require("anvim.state").waiting = nil]])
     assert(ok, err)
+  end)
+
+  -- The permission cases press keys at a user's pace, so the 0.4 s guard is on.
+  local function capture()
+    lua([[
+      local sidecar = require("anvim.sidecar")
+      _G.sent, _G.send = {}, sidecar.send
+      sidecar.send = function(msg)
+        table.insert(_G.sent, msg)
+      end
+    ]])
+  end
+
+  local function release()
+    return lua([[
+      require("anvim.sidecar").send = _G.send
+      return _G.sent
+    ]])
+  end
+
+  local function ask(req, command)
+    lua(
+      [[
+      local req, command = ...
+      local sidecar, id, input = require("anvim.sidecar"), "pq" .. req, { command = command }
+      sidecar.dispatch({ type = "tool_start", id = id, name = "Bash" })
+      sidecar.dispatch({ type = "tool_use", id = id, name = "Bash", input = input })
+      sidecar.dispatch({ type = "permission_request", req = req, tool_use_id = id, tool = "Bash", input = input })
+    ]],
+      req,
+      command
+    )
+  end
+
+  local function answers()
+    return lua([[
+      return vim.tbl_filter(function(msg)
+        return msg.type ~= "preview_done"
+      end, _G.sent)
+    ]])
+  end
+
+  local function prompt()
+    return lua([[
+      local win = require("anvim.layout").wins.input
+      return {
+        lines = vim.api.nvim_buf_get_lines(require("anvim.input").buf(), 0, -1, false),
+        mode = vim.api.nvim_get_mode().mode,
+        col = vim.api.nvim_win_get_cursor(win)[2],
+        waiting = require("anvim.permission").waiting(),
+      }
+    ]])
+  end
+
+  -- One key at a time, as a user types.
+  local function type_keys(text, ms)
+    for char in text:gmatch(".") do
+      lua([[vim.api.nvim_input(...)]], char == "<" and "<lt>" or char)
+      vim.wait(ms)
+    end
+  end
+
+  it("shows a permission request in lualine and the winbar, and answers it from the prompt", function()
+    start()
+    capture()
+    lua([[
+      vim.cmd.stopinsert()
+      vim.api.nvim_set_current_win(require("anvim.layout").wins.code)
+    ]])
+    ask(77, "make")
+    local out = lua([[
+      local layout = require("anvim.layout")
+      local win = layout.wins.input
+      return {
+        code = vim.api.nvim_get_current_win() == layout.wins.code,
+        winbar = vim.api.nvim_eval_statusline(vim.wo[win].winbar, { winid = win, use_winbar = true }).str,
+      }
+    ]])
+    assert(out.code, "the request took focus")
+    assert(out.winbar:find("^⏺ To answer: esc, then 1%-2 or j/k and enter ─"), out.winbar)
+    local text = statusline()
+    assert(text:find("⏺ Claude is waiting", 1, true), text)
+    lua([[
+      vim.cmd.stopinsert()
+      vim.api.nvim_set_current_win(require("anvim.layout").wins.input)
+    ]])
+    vim.wait(500)
+    lua([[vim.api.nvim_input("1")]])
+    wait(2000, [[return #_G.sent > 0]], "no answer was sent")
+    assert.are.same({ { type = "permission_response", req = 77, behavior = "allow" } }, release())
+    lua([[require("anvim.sidecar").dispatch({ type = "tool_result", id = "pq77", is_error = false, text = "ok" })]])
+    assert(not statusline():find("Claude is waiting", 1, true), statusline())
+  end)
+
+  it("keeps typing when a request opens: prose, digits and enter never answer", function()
+    start()
+    capture()
+    lua([[
+      vim.cmd.stopinsert()
+      vim.api.nvim_set_current_win(require("anvim.layout").wins.input)
+      vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "" })
+    ]])
+    lua([[vim.api.nvim_input("i")]])
+    vim.wait(100)
+    type_keys("also fix ", 50)
+    ask(78, "rm -rf build")
+    type_keys("the test in step 2", 50)
+    lua([[require("blink.cmp").hide()]])
+    -- Past the guard, so only insert mode keeps enter from answering.
+    vim.wait(500)
+    lua([[vim.api.nvim_input("<CR>")]])
+    vim.wait(300)
+    local out = prompt()
+    assert.are.same({}, answers(), "typing answered or sent something")
+    assert(out.waiting, "the request is gone")
+    assert.are.same({ "also fix the test in step 2" }, out.lines)
+    assert.are.same("i", out.mode, "insert mode ended")
+    -- Esc leaves insert mode, and 1 answers once the guard has passed.
+    lua([[vim.api.nvim_input("<Esc>")]])
+    vim.wait(500)
+    lua([[vim.api.nvim_input("1")]])
+    wait(2000, [[return #_G.sent > 0]], "1 did not answer")
+    assert.are.same({ { type = "permission_response", req = 78, behavior = "allow" } }, answers())
+    vim.wait(100)
+    out = prompt()
+    assert.are.same({ "also fix the test in step 2" }, out.lines)
+    assert.are.same({ "i", #out.lines[1] }, { out.mode, out.col }, "typing goes on where it stopped")
+    release()
+    lua([[
+      require("anvim.sidecar").dispatch({ type = "tool_result", id = "pq78", is_error = false, text = "ok" })
+      vim.cmd.stopinsert()
+      vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "" })
+    ]])
+  end)
+
+  it("never answers while enter is held down", function()
+    start()
+    capture()
+    lua([[
+      vim.cmd.stopinsert()
+      vim.api.nvim_set_current_win(require("anvim.layout").wins.input)
+    ]])
+    lua([[vim.api.nvim_input("i")]])
+    vim.wait(50)
+    -- Key repeat at 30 Hz, and the request opens at 0.3 s.
+    local t0, opened = vim.uv.now(), false
+    while vim.uv.now() - t0 < 1200 do
+      if not opened and vim.uv.now() - t0 > 300 then
+        ask(79, "git push --force")
+        opened = true
+      end
+      lua([[vim.api.nvim_input("<CR>")]])
+      vim.wait(33)
+    end
+    vim.wait(200)
+    assert.are.same({}, answers())
+    assert(prompt().waiting, "the request is gone")
+    release()
+    lua([[
+      require("anvim.sidecar").dispatch({ type = "permission_cancel", req = 79 })
+      require("anvim.sidecar").dispatch({ type = "tool_result", id = "pq79", is_error = true, text = "cancelled" })
+      vim.cmd.stopinsert()
+    ]])
+  end)
+
+  it("takes no answer from esc and enter, the habit of sending a prompt", function()
+    start()
+    capture()
+    lua([[
+      vim.cmd.stopinsert()
+      vim.api.nvim_set_current_win(require("anvim.layout").wins.input)
+      vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "" })
+    ]])
+    lua([[vim.api.nvim_input("i")]])
+    vim.wait(100)
+    type_keys("ship it", 50)
+    ask(80, "make deploy")
+    vim.wait(1000)
+    lua([[require("blink.cmp").hide()]])
+    lua([[vim.api.nvim_input("<Esc>")]])
+    vim.wait(150)
+    lua([[vim.api.nvim_input("<CR>")]])
+    vim.wait(300)
+    assert.are.same({}, answers(), "esc and enter answered")
+    assert(prompt().waiting, "the request is gone")
+    -- Enter chooses after j or k.
+    lua([[vim.api.nvim_input("jk")]])
+    vim.wait(100)
+    lua([[vim.api.nvim_input("<CR>")]])
+    wait(2000, [[return #_G.sent > 0]], "j, k and enter did not answer")
+    assert.are.same({ { type = "permission_response", req = 80, behavior = "allow" } }, answers())
+    release()
+    lua([[
+      require("anvim.sidecar").dispatch({ type = "tool_result", id = "pq80", is_error = false, text = "ok" })
+      vim.cmd.stopinsert()
+      vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "" })
+    ]])
   end)
 
   it(":q in the prompt quits anvim with two tabs, cleanly, and leaves the main Neovim untouched", function()

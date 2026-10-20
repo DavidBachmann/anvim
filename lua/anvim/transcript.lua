@@ -9,9 +9,13 @@ local ns = api.nvim_create_namespace("anvim.transcript")
 
 ---@type integer?
 local bufnr
----@type table<string, { name: string, mark: integer, input: table?, done: boolean }>
+---@type table<string, { name: string, mark: integer, input: table?, done: boolean, outcome: string[]? }>
 local tools = {}
 local text_open = false
+-- The blocks that other modules own, by the id of the extmark on their first
+-- line. The buffer tells a block from a mark of a rebuilt transcript.
+---@type table<integer, { buf: integer, count: integer }>
+local blocks = {}
 
 local primary_arg = {
   Read = "file_path",
@@ -172,6 +176,8 @@ local function tool_label(name, input)
   return ("%s(%s)"):format(name, arg)
 end
 
+M.label = tool_label
+
 local function patch_counts(patch)
   local added, removed = 0, 0
   for _, hunk in ipairs(patch or {}) do
@@ -192,7 +198,9 @@ local function plural(n, word)
 end
 
 local function summarize(tool, ev)
-  if ev.is_error then
+  if tool.outcome then
+    return tool.outcome[1], tool.outcome[2]
+  elseif ev.is_error then
     return first_line(ev.text), "AnvimToolError"
   end
   local r = type(ev.result) == "table" and ev.result or {}
@@ -337,6 +345,113 @@ function M.notice(level, text)
   for i = 0, #lines - 1 do
     hl(row + i, 0, #lines[i + 1], group)
   end
+end
+
+-- Sets the result line of a tool before its result arrives, such as the
+-- user's answer to a permission prompt.
+function M.outcome(id, text, group)
+  if tools[id] then
+    tools[id].outcome = { text, group }
+  end
+end
+
+-- A block waits for the user, so it brings every view of the transcript to
+-- the end, even one that the user scrolled up. The window with the cursor, in
+-- read mode, follows only with `all`.
+function M.reveal(all)
+  scroll(all and vim.fn.win_findbuf(M.buf()) or follow_wins(false))
+end
+
+---@return integer? row 0-based row of the block's first line
+local function block_row(id)
+  local block = blocks[id]
+  if block and block.buf == M.buf() then
+    return api.nvim_buf_get_extmark_by_id(block.buf, ns, id, {})[1]
+  end
+end
+
+local function clear_block(id, row)
+  for _, mark in ipairs(api.nvim_buf_get_extmarks(M.buf(), ns, { row, 0 }, { row + blocks[id].count - 1, -1 }, {})) do
+    if mark[1] ~= id then
+      api.nvim_buf_del_extmark(M.buf(), ns, mark[1])
+    end
+  end
+end
+
+-- Appends lines as an item that the caller redraws or removes later, such as
+-- a permission prompt. Each mark is { row, col, end_col, group }, with rows
+-- counted from the block's first line.
+---@return integer id
+function M.block(lines, marks)
+  text_open = false
+  local row = append_item(lines)
+  local id = api.nvim_buf_set_extmark(M.buf(), ns, row, 0, { right_gravity = false })
+  blocks[id] = { buf = M.buf(), count = #lines }
+  for _, m in ipairs(marks or {}) do
+    hl(row + m[1], m[2], m[3], m[4])
+  end
+  M.reveal()
+  return id
+end
+
+-- Returns false when the block is gone, as after the transcript buffer was
+-- made again.
+---@return boolean
+function M.set_block(id, lines, marks)
+  local row = block_row(id)
+  if not row then
+    return false
+  end
+  clear_block(id, row)
+  with_modifiable(function(buf)
+    api.nvim_buf_set_lines(buf, row, row + blocks[id].count, false, lines)
+  end)
+  blocks[id].count = #lines
+  for _, m in ipairs(marks or {}) do
+    hl(row + m[1], m[2], m[3], m[4])
+  end
+  M.reveal()
+  return true
+end
+
+-- Whether a window shows the last line of the block, where its choices end.
+function M.block_visible(id)
+  local row = block_row(id)
+  if not row then
+    return false
+  end
+  local last = row + blocks[id].count
+  for _, win in ipairs(vim.fn.win_findbuf(M.buf())) do
+    if vim.fn.line("w0", win) <= last and last <= vim.fn.line("w$", win) then
+      return true
+    end
+  end
+  return false
+end
+
+-- Leaves a block's lines in the transcript as a plain item.
+function M.keep_block(id)
+  if block_row(id) then
+    api.nvim_buf_del_extmark(M.buf(), ns, id)
+  end
+  blocks[id] = nil
+end
+
+-- Removes a block and the blank line that separates it from its neighbor.
+function M.remove_block(id)
+  local row = block_row(id)
+  if row then
+    clear_block(id, row)
+    with_modifiable(function(buf)
+      local first, last = row - 1, row + blocks[id].count
+      if row == 0 then
+        first, last = 0, math.min(last + 1, api.nvim_buf_line_count(buf))
+      end
+      api.nvim_buf_set_lines(buf, first, last, false, {})
+    end)
+    api.nvim_buf_del_extmark(M.buf(), ns, id)
+  end
+  blocks[id] = nil
 end
 
 -- Tools that never got a result were cut off by an interrupt or an error.

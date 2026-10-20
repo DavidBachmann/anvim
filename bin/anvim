@@ -1,22 +1,27 @@
 #!/bin/sh
-# Usage: anvim [--model <model>] [dir] [nvim args...]
+# Usage: anvim [--model <model>] [--mode <mode>] [dir] [nvim args...]
 root=$(cd "$(dirname "$(realpath "$0")")/.." && pwd)
 
-# Take --model out of the arguments and keep the rest in order.
+# Take --model and --mode out of the arguments and keep the rest in order.
 n=$#
 while [ "$n" -gt 0 ]; do
   case "$1" in
-    --model)
+    --model | --mode)
       if [ $# -lt 2 ]; then
-        echo "anvim: --model needs a value, e.g. --model haiku" >&2
+        echo "anvim: $1 needs a value, e.g. --model haiku or --mode default" >&2
         exit 2
       fi
-      ANVIM_MODEL=$2
+      if [ "$1" = --model ]; then ANVIM_MODEL=$2; else ANVIM_MODE=$2 mode=1; fi
       shift 2
       n=$((n - 2))
       ;;
     --model=*)
       ANVIM_MODEL=${1#--model=}
+      shift
+      n=$((n - 1))
+      ;;
+    --mode=*)
+      ANVIM_MODE=${1#--mode=} mode=1
       shift
       n=$((n - 1))
       ;;
@@ -28,6 +33,15 @@ while [ "$n" -gt 0 ]; do
   esac
 done
 [ -n "$ANVIM_MODEL" ] && export ANVIM_MODEL
+if [ -n "$mode" ] || [ -n "$ANVIM_MODE" ]; then
+  case "$ANVIM_MODE" in
+    default | acceptEdits | plan | bypassPermissions) export ANVIM_MODE ;;
+    *)
+      echo "anvim: --mode must be default, acceptEdits, plan or bypassPermissions" >&2
+      exit 2
+      ;;
+  esac
+fi
 
 if [ -d "$1" ]; then
   cd "$1" || exit 1

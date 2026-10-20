@@ -10,6 +10,9 @@ local M = {
   turn_started = nil, ---@type integer? uv.now() at turn start
   last_turn = nil, ---@type { duration_ms: integer, cost_usd: number }?
   cost_usd = 0,
+  -- Set while a permission prompt waits for the user: the hint that says how
+  -- to answer.
+  waiting = nil, ---@type string?
   ---@type 'starting'|'ready'|'exited'
   process = "starting",
 }

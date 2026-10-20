@@ -17,11 +17,21 @@ return {
       })
       local follow = require("anvim.follow")
       local input = require("anvim.input")
+      local permission = require("anvim.permission")
       local components = {
+        {
+          function()
+            return "⏺ Claude is waiting"
+          end,
+          cond = function()
+            return permission.waiting() and not follow.enabled()
+          end,
+          color = claude_color,
+        },
         {
           input.working,
           cond = function()
-            return input.working() ~= ""
+            return input.working() ~= "" and not permission.waiting()
           end,
           color = claude_color,
         },

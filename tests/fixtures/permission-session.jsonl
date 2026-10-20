@@ -1,0 +1,59 @@
+1792461704404 {"type":"init","session_id":"00000000-0000-0000-0000-000000000000","model":"claude-haiku-5-5","cwd":"/ANVIM_FIXTURE","permission_mode":"default","version":"2.1.304","slash_commands":[]}
+1792461704407 {"type":"status","status":"requesting"}
+1792461705787 {"type":"turn_start"}
+1792461705788 {"type":"tool_start","id":"toolu_01Bwcd98Eykn3yNBA6nqBw8r","name":"Bash"}
+1792461705788 {"type":"tool_field","id":"toolu_01Bwcd98Eykn3yNBA6nqBw8r","name":"Bash","key":"command","phase":"start"}
+1792461705788 {"type":"tool_field","id":"toolu_01Bwcd98Eykn3yNBA6nqBw8r","name":"Bash","key":"command","phase":"delta","text":"find /ANVIM_FIXTURE -name matchparen.lua -not -path '*/node_modules/*'"}
+1792461706488 {"type":"tool_field","id":"toolu_01Bwcd98Eykn3yNBA6nqBw8r","name":"Bash","key":"command","phase":"end","value":"find /ANVIM_FIXTURE -name matchparen.lua -not -path '*/node_modules/*'"}
+1792461706488 {"type":"tool_field","id":"toolu_01Bwcd98Eykn3yNBA6nqBw8r","name":"Bash","key":"description","phase":"start"}
+1792461706488 {"type":"tool_field","id":"toolu_01Bwcd98Eykn3yNBA6nqBw8r","name":"Bash","key":"description","phase":"delta","text":"Loc"}
+1792461706489 {"type":"tool_field","id":"toolu_01Bwcd98Eykn3yNBA6nqBw8r","name":"Bash","key":"description","phase":"delta","text":"ate matchparen.lua"}
+1792461706489 {"type":"tool_field","id":"toolu_01Bwcd98Eykn3yNBA6nqBw8r","name":"Bash","key":"description","phase":"delta","text":" in"}
+1792461706489 {"type":"tool_field","id":"toolu_01Bwcd98Eykn3yNBA6nqBw8r","name":"Bash","key":"description","phase":"delta","text":" the project"}
+1792461706492 {"type":"tool_field","id":"toolu_01Bwcd98Eykn3yNBA6nqBw8r","name":"Bash","key":"description","phase":"end","value":"Locate matchparen.lua in the project"}
+1792461706501 {"type":"tool_use","id":"toolu_01Bwcd98Eykn3yNBA6nqBw8r","name":"Bash","input":{"command":"find /ANVIM_FIXTURE -name matchparen.lua -not -path '*/node_modules/*'","description":"Locate matchparen.lua in the project"},"parent_id":null}
+1792461706504 {"type":"tool_input_end","id":"toolu_01Bwcd98Eykn3yNBA6nqBw8r"}
+1792461707258 {"type":"tool_result","id":"toolu_01Bwcd98Eykn3yNBA6nqBw8r","is_error":false,"text":"/ANVIM_FIXTURE/matchparen.lua","result":{"stdout":"/ANVIM_FIXTURE/matchparen.lua","stderr":"","interrupted":false,"isImage":false,"noOutputExpected":false},"parent_id":null}
+1792461707261 {"type":"status","status":"requesting"}
+1792461708206 {"type":"tool_start","id":"toolu_01VcE4MY5AE4MnVsASpVdTPw","name":"Read"}
+1792461708219 {"type":"tool_field","id":"toolu_01VcE4MY5AE4MnVsASpVdTPw","name":"Read","key":"file_path","phase":"start"}
+1792461708219 {"type":"tool_field","id":"toolu_01VcE4MY5AE4MnVsASpVdTPw","name":"Read","key":"file_path","phase":"delta","text":"/ANVIM_FIXTURE/matchparen.lua"}
+1792461708564 {"type":"tool_field","id":"toolu_01VcE4MY5AE4MnVsASpVdTPw","name":"Read","key":"file_path","phase":"end","value":"/ANVIM_FIXTURE/matchparen.lua"}
+1792461708564 {"type":"tool_field","id":"toolu_01VcE4MY5AE4MnVsASpVdTPw","name":"Read","key":"limit","phase":"start"}
+1792461708630 {"type":"tool_field","id":"toolu_01VcE4MY5AE4MnVsASpVdTPw","name":"Read","key":"limit","phase":"end","value":3}
+1792461708631 {"type":"tool_use","id":"toolu_01VcE4MY5AE4MnVsASpVdTPw","name":"Read","input":{"file_path":"/ANVIM_FIXTURE/matchparen.lua","limit":3},"parent_id":null}
+1792461708633 {"type":"tool_input_end","id":"toolu_01VcE4MY5AE4MnVsASpVdTPw"}
+1792461708651 {"type":"tool_result","id":"toolu_01VcE4MY5AE4MnVsASpVdTPw","is_error":false,"text":"1\tlocal api = vim.api\n2\tlocal fn = vim.fn\n3\tlocal nvim_on = require('vim._core.util').nvim_on","result":{"type":"text","file":{"filePath":"/ANVIM_FIXTURE/matchparen.lua","content":"local api = vim.api\nlocal fn = vim.fn\nlocal nvim_on = require('vim._core.util').nvim_on","numLines":3,"startLine":1,"totalLines":319}},"parent_id":null}
+1792461708655 {"type":"status","status":"requesting"}
+1792461709587 {"type":"tool_start","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","name":"Edit"}
+1792461709760 {"type":"tool_field","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","name":"Edit","key":"file_path","phase":"start"}
+1792461709760 {"type":"tool_field","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","name":"Edit","key":"file_path","phase":"delta","text":"/ANVIM_FIXTURE/matchparen.lua"}
+1792461709979 {"type":"tool_field","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","name":"Edit","key":"file_path","phase":"end","value":"/ANVIM_FIXTURE/matchparen.lua"}
+1792461709979 {"type":"tool_field","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","name":"Edit","key":"old_string","phase":"start"}
+1792461709979 {"type":"tool_field","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","name":"Edit","key":"old_string","phase":"delta","text":"local api"}
+1792461710001 {"type":"tool_field","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","name":"Edit","key":"old_string","phase":"delta","text":" = vim.api\nlocal f"}
+1792461710021 {"type":"tool_field","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","name":"Edit","key":"old_string","phase":"delta","text":"n = vim.fn"}
+1792461710042 {"type":"tool_field","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","name":"Edit","key":"old_string","phase":"delta","text":"\n"}
+1792461710103 {"type":"tool_field","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","name":"Edit","key":"old_string","phase":"end","value":"local api = vim.api\nlocal fn = vim.fn\n"}
+1792461710103 {"type":"tool_field","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","name":"Edit","key":"new_string","phase":"start"}
+1792461710104 {"type":"tool_field","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","name":"Edit","key":"new_string","phase":"delta","text":"--"}
+1792461710123 {"type":"tool_field","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","name":"Edit","key":"new_string","phase":"delta","text":" Highlights the bracket that"}
+1792461710145 {"type":"tool_field","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","name":"Edit","key":"new_string","phase":"delta","text":" matches the one under the curs"}
+1792461710168 {"type":"tool_field","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","name":"Edit","key":"new_string","phase":"delta","text":"or.\nlocal api = vim"}
+1792461710185 {"type":"tool_field","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","name":"Edit","key":"new_string","phase":"delta","text":".api\nlocal fn = v"}
+1792461710207 {"type":"tool_field","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","name":"Edit","key":"new_string","phase":"delta","text":"im.fn\n"}
+1792461710249 {"type":"tool_field","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","name":"Edit","key":"new_string","phase":"end","value":"-- Highlights the bracket that matches the one under the cursor.\nlocal api = vim.api\nlocal fn = vim.fn\n"}
+1792461710250 {"type":"tool_use","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","name":"Edit","input":{"replace_all":false,"file_path":"/ANVIM_FIXTURE/matchparen.lua","old_string":"local api = vim.api\nlocal fn = vim.fn\n","new_string":"-- Highlights the bracket that matches the one under the cursor.\nlocal api = vim.api\nlocal fn = vim.fn\n"},"parent_id":null}
+1792461710251 {"type":"tool_input_end","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB"}
+1792461710254 {"type":"await_preview","req":1,"tool_use_id":"toolu_01ExW2UKX7yZuQXQA8wwggkB"}
+1792461710351 {"type":"permission_request","req":1,"tool_use_id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","tool":"Edit","input":{"file_path":"/ANVIM_FIXTURE/matchparen.lua","old_string":"local api = vim.api\nlocal fn = vim.fn\n","new_string":"-- Highlights the bracket that matches the one under the cursor.\nlocal api = vim.api\nlocal fn = vim.fn\n","replace_all":false},"remember":"Yes, allow all edits during this session","description":"matchparen.lua"}
+1792461711842 {"type":"tool_result","id":"toolu_01ExW2UKX7yZuQXQA8wwggkB","is_error":false,"text":"The file /ANVIM_FIXTURE/matchparen.lua has been updated successfully.","result":{"filePath":"/ANVIM_FIXTURE/matchparen.lua","oldString":"local api = vim.api\nlocal fn = vim.fn\n","newString":"-- Highlights the bracket that matches the one under the cursor.\nlocal api = vim.api\nlocal fn = vim.fn\n","structuredPatch":[{"oldStart":1,"oldLines":3,"newStart":1,"newLines":4,"lines":["+-- Highlights the bracket that matches the one under the cursor."," local api = vim.api"," local fn = vim.fn"," local nvim_on = require('vim._core.util').nvim_on"]}],"userModified":false,"replaceAll":false,"contentNotInModelContext":true},"parent_id":null}
+1792461711846 {"type":"status","status":"requesting"}
+1792461712827 {"type":"text_start"}
+1792461712827 {"type":"text_delta","text":"I added the comment line as the"}
+1792461712843 {"type":"text_delta","text":" first line of `matchparen"}
+1792461712889 {"type":"text_delta","text":".lua`."}
+1792461712895 {"type":"text_delta","text":" Nothing else chang"}
+1792461712916 {"type":"text_delta","text":"ed."}
+1792461712961 {"type":"text_stop"}
+1792461712966 {"type":"turn_end","subtype":"success","is_error":false,"duration_ms":8584,"cost_usd":0.00816689,"num_turns":4}

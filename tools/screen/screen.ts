@@ -1,7 +1,7 @@
 // Embeds anvim, attaches as a UI, and records exactly what Nvim draws: text,
 // highlight groups and colors, and the timing of every redraw.
 //
-// Usage: bun screen.ts [--cwd dir] [--size 200x50] [--replay file] [--model m] [--out dir] -- step...
+// Usage: bun screen.ts [--cwd dir] [--size 200x50] [--replay file] [--model m] [--mode m] [--out dir] -- step...
 // Steps:
 //   wait:<ms>          sleep
 //   waitfor:<text>     wait until the screen shows text (20 s timeout)
@@ -46,6 +46,7 @@ mkdirSync(out, { recursive: true });
 const env: Record<string, string> = { ...(process.env as Record<string, string>), NVIM_APPNAME: "anvim" };
 if (flag("--replay")) env.ANVIM_REPLAY = resolve(flag("--replay")!);
 if (flag("--model")) env.ANVIM_MODEL = flag("--model")!;
+if (flag("--mode")) env.ANVIM_MODE = flag("--mode")!;
 
 const nvim = Bun.spawn(["nvim", "--embed", "-u", join(root, "init.lua")], {
   cwd: resolve(flag("--cwd") ?? "."),

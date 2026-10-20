@@ -37,6 +37,12 @@ function M.start()
     sidecar_cmd = { "bun", M.root .. "/sidecar/src/replay.ts", recording, "50" },
   })
   anvim.start()
+  -- Under nvim -l the explorer's finder never finishes, and snacks shows its
+  -- picker anyway once 5 s have passed: at a random point in a later spec.
+  -- The specs do not use the tree.
+  for _, picker in ipairs(Snacks.picker.get({ source = "explorer", tab = false })) do
+    picker:close()
+  end
   vim.wait(100)
   start_win = vim.api.nvim_get_current_win()
   assert(

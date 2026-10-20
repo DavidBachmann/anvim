@@ -299,7 +299,7 @@ describe("windows", function()
     end
     local ok, err = pcall(function()
       assert(enter("<C-w>l") > 0, "entering the prompt starts insert mode")
-      state.waiting = true
+      state.waiting = "To answer: esc, then 1-3"
       assert.are.same(0, enter("<C-w>l"), "<C-w>l while a request waits")
       assert.are.same(0, enter("focus_input"), "focus_input while a request waits")
     end)

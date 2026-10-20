@@ -45,10 +45,18 @@ function M.buf()
   local map = function(modes, lhs, rhs, desc)
     vim.keymap.set(modes, lhs, rhs, { buffer = bufnr, desc = desc })
   end
-  map({ "i", "n" }, "<CR>", M.submit, "Send prompt")
+  -- While a permission prompt waits, these keys answer it.
+  local or_answer = function(key, fn)
+    return function()
+      if not require("anvim.permission").key(key) then
+        fn()
+      end
+    end
+  end
+  map({ "i", "n" }, "<CR>", or_answer("<CR>", M.submit), "Send prompt")
   map("i", "<S-CR>", "<CR>", "New line")
   map("i", "<M-CR>", "<CR>", "New line")
-  map("n", "<Esc>", M.interrupt, "Interrupt Claude")
+  map("n", "<Esc>", or_answer("<Esc>", M.interrupt), "Interrupt Claude")
   map({ "i", "n" }, "<C-c>", M.interrupt, "Interrupt Claude")
   map({ "i", "n" }, "<S-Tab>", M.cycle_mode, "Cycle permission mode")
   -- The transcript takes no focus, so the prompt scrolls it.
@@ -236,6 +244,14 @@ function M.activity()
   local text, width = "", 0
   if state.process == "exited" then
     text, width = "%#AnvimToolError#sidecar exited ", 15
+  elseif state.waiting then
+    -- In a narrow column, keep the start of the hint, which says what to do.
+    local hint, room = state.waiting, win_width(vim.g.statusline_winid) - 4
+    if api.nvim_strwidth(hint) > room then
+      hint = vim.fn.strcharpart(hint, 0, math.max(room - 3, 0)) .. "..."
+    end
+    text = ("%%#AnvimClaude#⏺ %s "):format((hint:gsub("%%", "%%%%")))
+    width = api.nvim_strwidth("⏺ " .. hint .. " ")
   elseif state.busy and state.turn_started then
     local frame = spinner_frames[math.floor(vim.uv.now() / 120) % #spinner_frames + 1]
     local verb, secs = working()
@@ -264,10 +280,11 @@ function M.footer(width)
   local branch = state.branch and ("git:(" .. state.branch .. ") ") or ""
   local model = M.model_label(state.model or config.options.model)
   local chunks = { { " anvim ", "AnvimClaude" }, { branch, "Comment" }, { model } }
-  local mode = mode_labels[state.permission_mode]
+  local mode = state.waiting and { "⏺ Claude is waiting for you", "AnvimClaude" }
+    or mode_labels[state.permission_mode]
   if mode then
     local left = vim.fn.strdisplaywidth(" anvim " .. branch .. model)
-    local hint = " (shift+tab to cycle)"
+    local hint = state.waiting and "" or " (shift+tab to cycle)"
     if left + 2 + vim.fn.strdisplaywidth(mode[1] .. hint .. " ") > width then
       hint = ""
     end

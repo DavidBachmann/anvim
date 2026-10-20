@@ -23,8 +23,9 @@ anvim installs no Neovim plugins. It boots your LazyVim setup with your extras, 
 ## Use
 
 ```sh
-anvim [--model <model>] [dir] [nvim args...]
+anvim [--model <model>] [--mode <mode>] [dir] [nvim args...]
 anvim --model haiku ~/dev/project
+anvim --mode default ~/dev/project              # approve tools as Claude asks
 ```
 
 The screen has three columns: your explorer, code, and Claude. Type in the prompt at the bottom right. While your cursor is in the prompt, the code window follows Claude. It opens the files Claude reads, and edits stream in with the old text struck through. Move the cursor anywhere else to take control. The statusline then shows where Claude is.
@@ -53,7 +54,21 @@ All of LazyVim's keys and your own work as usual. anvim adds these. `<leader>` i
 | `<leader>kr`, `:AnvimTranscript` | anywhere | Read the transcript: put the cursor in it to yank and search |
 | `q`, `Esc`, `i` | transcript in read mode | Go back to the prompt |
 
-anvim starts in bypass permissions mode. Permission prompts are not built yet, so in the other modes Claude cannot run tools that need approval.
+## Permissions
+
+anvim starts in bypass permissions mode, so Claude runs every tool without asking. Start it with `--mode default` to approve tools as Claude asks for them, or with `--mode acceptEdits` or `--mode plan`. `Shift-Tab` in the prompt cycles default, accept edits and plan mode, plus bypass when anvim started in it.
+
+When Claude needs your yes, the request appears at the bottom of the Claude column, as in Claude Code. An edit streams into the code window before the request opens, so you see the change before you answer. If you say no, the buffer shows the file on disk again. Claude's questions and its plan, when it wants to leave plan mode, appear the same way. If your cursor is outside the prompt, anvim leaves it there, posts a notification and shows "⏺ Claude is waiting" in the statusline. A request brings the transcript to its end, even if you scrolled it up. In read mode the transcript stays where you read, and it goes to the request when you leave read mode. `Esc` there takes you back to the prompt and answers nothing. A choice key never answers a request that is out of view: it brings the request into view instead.
+
+| Key | In the prompt in normal mode, while Claude waits |
+| --- | --- |
+| `1` to `9` | Choose that option |
+| `j`, `k`, then `Enter` | Move to an option and choose it |
+| `Esc` | No |
+
+While a request waits, normal mode in the prompt is for choosing. Typing your prompt never answers: if you are typing when a request opens, you keep typing, digits are text, and `Enter` keeps your prompt without sending it or answering. Press `Esc`, then choose. `Enter` chooses only after `j` or `k`, so `Esc` and `Enter`, the habit of sending a prompt, does nothing. A choice also does nothing within 0.4 s of the request opening or of the last character you typed. Going to the prompt while Claude waits leaves you in normal mode. After you answer, the prompt goes back to insert mode where you stopped typing, if you were typing.
+
+"No, and tell Claude what to do differently", "No, keep planning" and a question's "Other" take typed text. `Enter` sends it, and `Esc` twice goes back to the options. Your draft prompt comes back afterwards. If Claude Code names a path outside the working directory, the request shows it. "Yes, and don't ask again" names the rules that Claude Code suggests, such as `Bash(npm test:*)`, and applies them all. Claude Code saves project rules in the project's `.claude/settings.local.json`. Plan approval offers Claude Code's choices: accept edits or manual approval, with bypass in place of accept edits when anvim started in bypass mode. The plan stays in the transcript. A multi-select question has a Submit option after its choices.
 
 ## Record and replay
 
