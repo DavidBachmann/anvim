@@ -133,10 +133,17 @@ local function open_tree()
   end
 end
 
-function M.focus_input()
+---@param opts? { insert: boolean? } With insert false, the prompt stays in normal mode.
+function M.focus_input(opts)
   if valid(M.wins.input) then
     api.nvim_set_current_win(M.wins.input)
-    input.resume()
+    if opts and opts.insert == false then
+      -- Entering the prompt asked for insert mode, which starts only after
+      -- this callback. Cancel it.
+      vim.cmd.stopinsert()
+    else
+      input.resume()
+    end
   end
 end
 
@@ -194,7 +201,10 @@ function M.open()
   M.repair()
   api.nvim_set_current_win(M.wins.code)
   open_tree()
-  vim.schedule(M.focus_input)
+  -- In normal mode, the first keys can be window keys and <leader> maps.
+  vim.schedule(function()
+    M.focus_input({ insert = false })
+  end)
 end
 
 function M.setup()

@@ -128,9 +128,24 @@ test("<C-l> and <C-w>l from the code window reach the prompt, and no frame shows
   }
 });
 
+test("anvim starts in the prompt in normal mode, so the first keys can move", async () => {
+  anvim = await start();
+  const { ui } = anvim;
+  // The explorer and the sidecar finish starting after this. They must not
+  // start insert mode.
+  await Bun.sleep(1000);
+  expect(await anvim.where()).toEqual({ win: "input", mode: "n" });
+  expect(ui.frames().filter((f) => f.mode === "insert").length).toBe(0);
+  await ui.input("<C-h>");
+  await anvim.waitWhere("code", "n");
+  await ui.input("<C-l>");
+  await anvim.waitWhere("input", "i");
+});
+
 test("a terminal resize with the prompt focused keeps the layout", async () => {
   anvim = await start();
   const { ui } = anvim;
+  await anvim.insert();
   const tree = await anvim.box("tree");
   const winwidth = await ui.exec_lua<number>(`return vim.o.winwidth`);
   for (const [cols, rows] of [

@@ -24,7 +24,7 @@ M.defaults = {
     tree = { width = 24, max_width = 0.4 },
   },
   input = {
-    -- Start insert mode whenever the cursor enters the prompt.
+    -- Start insert mode whenever the cursor enters the prompt, except at start.
     auto_insert = true,
   },
   append_system_prompt = table.concat({

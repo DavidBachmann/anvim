@@ -100,6 +100,7 @@ test("enter held down in insert mode never answers", async () => {
   anvim = await start();
   const { ui } = anvim;
   await anvim.capture();
+  await anvim.insert();
   // Key repeat at 30 Hz, and the request opens at 0.3 s.
   const t0 = Date.now();
   let opened = false;
@@ -121,6 +122,7 @@ test("1 right after the last typed character does not answer, and 1 after a paus
   anvim = await start();
   const { ui } = anvim;
   await anvim.capture();
+  await anvim.insert();
   await anvim.type("draft text");
   await ask(7, "make");
   await ui.waitFor("Do you want to proceed?");

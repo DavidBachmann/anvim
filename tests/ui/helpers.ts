@@ -143,6 +143,12 @@ export class Anvim {
     `);
   }
 
+  // Starts typing in the prompt, which anvim opens in normal mode.
+  async insert() {
+    await this.ui.input("i");
+    await this.waitWhere("input", "i");
+  }
+
   // Types text one key at a time, at a user's pace.
   async type(text: string, ms = 50) {
     for (const char of text) {
@@ -198,7 +204,7 @@ export async function start(opts: StartOptions = {}): Promise<Anvim> {
     await ui.waitFor(() =>
       ui.exec_lua(`return package.loaded["anvim.state"] ~= nil and require("anvim.state").process == "ready"`),
     );
-    await anvim.waitWhere("input", "i");
+    await anvim.waitWhere("input", "n");
     return anvim;
   } catch (err) {
     await started?.close();
