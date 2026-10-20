@@ -1,5 +1,7 @@
 -- The session's subagents, by agent_id. Running agents get slots 1 to 4, the
 -- lowest free slot first, and each slot has a color. The main agent is slot 0.
+local bashread = require("anvim.bashread")
+
 local M = {}
 
 local api = vim.api
@@ -264,12 +266,11 @@ function M.tool_use(ev)
     return
   end
   agent.tools = agent.tools + 1
-  if type(path) ~= "string" then
-    return
-  end
-  if ev.name == "Read" then
-    agent.place = { path = path, line = tonumber(input.offset) or 1 }
-  elseif edit_keys[ev.name] then
+  local reads = bashread.reads(ev)
+  local read = reads[#reads]
+  if read then
+    agent.place = { path = read.path, line = read.first or 1 }
+  elseif type(path) == "string" and edit_keys[ev.name] then
     agent.place = { path = path, line = ev.name == "Edit" and M.edit_line(path, input) or 1 }
     start_edit(ev.id, agent, path)
   end

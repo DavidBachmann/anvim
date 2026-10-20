@@ -1,5 +1,6 @@
 -- Claude's trail: the files and ranges that Claude read, edited, wrote and
 -- showed, and the user's own references, in a picker with the newest first.
+local bashread = require("anvim.bashread")
 local context = require("anvim.context")
 local state = require("anvim.state")
 
@@ -56,9 +57,10 @@ end
 
 function M.tool_use(ev)
   local input = type(ev.input) == "table" and ev.input or {}
-  if ev.name == "Read" then
-    local first, limit = tonumber(input.offset), tonumber(input.limit)
-    add("Read", input.file_path, first, first and limit and first + limit - 1)
+  if ev.name == "Read" or ev.name == "Bash" then
+    for _, read in ipairs(bashread.reads(ev)) do
+      add("Read", read.path, read.first, read.last)
+    end
   elseif ev.name == "Edit" or ev.name == "Write" then
     edits[ev.id] = add(ev.name, input.file_path)
   elseif ev.name == "NotebookEdit" then

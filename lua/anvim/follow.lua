@@ -4,6 +4,7 @@
 -- window keeps what the user points at until the next prompt. Follow mode
 -- follows one agent: the main agent, or the subagent that the user focused.
 local agents = require("anvim.agents")
+local bashread = require("anvim.bashread")
 local input = require("anvim.input")
 local layout = require("anvim.layout")
 
@@ -11,6 +12,14 @@ local M = {}
 
 local api = vim.api
 local ns = api.nvim_create_namespace("anvim.follow")
+
+-- A Bash call can read several files. While following, the code window shows
+-- them one by one. Each file stays STEP_MS, twice the time of a Read's flash,
+-- so the eye finds the file and its range before the next one comes. Four
+-- files take 2.4 s, and a call that reads more shows its first three and its
+-- last.
+local STEP_MS = 800
+local MAX_STEPS = 4
 
 ---@class anvim.Place
 ---@field path string
@@ -24,6 +33,21 @@ local places = {}
 -- The subagent Writes of files that do not exist yet, by tool id.
 ---@type table<string, { agent: string, path: string }>
 local writes = {}
+-- The greps of Bash calls that wait for their hits, by tool id.
+---@type table<string, { agent: string?, spec: anvim.Grep }>
+local greps = {}
+-- The reads of Bash calls that the code window has yet to show, by agent key.
+---@type table<string, { reads: anvim.Step[], timer: uv.uv_timer_t }>
+local steps = {}
+-- The tool calls that wait for their result, with their agent's key. A
+-- call that starts while another waits belongs to its batch, which Claude
+-- sent at once.
+---@type table<string, string>
+local waiting = {}
+-- Whether each of the main agent's calls started in a batch. Its tool_use
+-- comes after its input streamed, and a result of the batch can come first.
+---@type table<string, boolean>
+local batched = {}
 
 ---@type string? The agent_id of the agent that follow mode follows. nil is the main agent.
 M.focus = nil
@@ -103,14 +127,12 @@ function M.show(buf, line, col)
   api.nvim_win_set_cursor(win, { line, col or 0 })
 end
 
--- Records an agent's place, and moves the code window there when following that agent.
----@param buf integer? A buffer to show instead of the file itself, such as a Write preview.
----@param id string? The agent's agent_id. nil is the main agent.
-function M.track(path, line, buf, id)
+---@param quiet boolean? Only record the place.
+local function move(path, line, buf, id, quiet)
   local old = places[id or ""]
   local place = { path = path, line = line or 1, buf = buf, behind = old and old.behind or 0 }
   places[id or ""] = place
-  if M.shows(id) then
+  if M.shows(id) and not quiet then
     place.behind = 0
     M.show(buf or M.load(path), place.line)
   else
@@ -119,6 +141,25 @@ function M.track(path, line, buf, id)
       input.redraw()
     end
   end
+end
+
+local function stop_steps(key)
+  local s = steps[key]
+  steps[key] = nil
+  if s and not s.timer:is_closing() then
+    s.timer:stop()
+    s.timer:close()
+  end
+  return s
+end
+
+-- Records an agent's place, and moves the code window there when following
+-- that agent. A newer move ends the steps through a Bash call's reads.
+---@param buf integer? A buffer to show instead of the file itself, such as a Write preview.
+---@param id string? The agent's agent_id. nil is the main agent.
+function M.track(path, line, buf, id)
+  stop_steps(id or "")
+  move(path, line, buf, id)
 end
 
 -- The focused agent's place: the buffer that it writes into while that
@@ -188,6 +229,7 @@ local function on_agents()
   for key in pairs(places) do
     if key ~= "" and not agents.get(key) then
       places[key] = nil
+      stop_steps(key)
     end
   end
   local agent = M.focus and agents.get(M.focus)
@@ -210,7 +252,10 @@ end
 
 -- A new session starts with no places and no focus.
 function M.forget()
-  places, writes, M.focus, focus_name = {}, {}, nil, nil
+  for key in pairs(steps) do
+    stop_steps(key)
+  end
+  places, writes, greps, waiting, batched, M.focus, focus_name = {}, {}, {}, {}, {}, nil, nil
 end
 
 ---@param rows integer[] 0-based rows
@@ -230,28 +275,132 @@ function M.flash(buf, rows, group, ms)
   end, ms or 1200)
 end
 
----@param id string? The agent's agent_id. nil is the main agent.
-local function on_read(ev, id)
-  local path = ev.input.file_path
-  if type(path) ~= "string" or not vim.uv.fs_stat(path) then
-    return
-  end
-  local first = tonumber(ev.input.offset) or 1
-  M.track(path, first, nil, id)
-  if not M.shows(id) then
-    return
-  end
+-- Scrolls the cursor line, where a move put it, to the top of the code
+-- window, and flashes the `lines` that show.
+---@param lines integer[] 1-based
+local function flash_view(lines)
   local win = layout.code_win()
   api.nvim_win_call(win, function()
     vim.cmd("normal! zt")
   end)
-  local buf = api.nvim_win_get_buf(win)
-  local last = math.min(first + (tonumber(ev.input.limit) or api.nvim_win_get_height(win)) - 1, vim.fn.line("w$", win))
+  local top, bottom = vim.fn.line("w0", win), vim.fn.line("w$", win)
   local rows = {}
-  for row = first - 1, last - 1 do
-    rows[#rows + 1] = row
+  for _, line in ipairs(lines) do
+    if line >= top and line <= bottom then
+      rows[#rows + 1] = line - 1
+    end
   end
-  M.flash(buf, rows, "AnvimRead", 400)
+  M.flash(api.nvim_win_get_buf(win), rows, "AnvimRead", 400)
+end
+
+---@class anvim.Step: anvim.Read
+---@field lines integer[]? The lines to flash instead of the range, such as a grep's hits.
+
+---@param read anvim.Step
+---@param id string? The agent's agent_id. nil is the main agent.
+local function on_read(read, id)
+  if not vim.uv.fs_stat(read.path) then
+    return
+  end
+  local first = read.first or 1
+  move(read.path, first, nil, id)
+  if M.shows(id) and read.lines then
+    flash_view(read.lines)
+  elseif M.shows(id) then
+    local lines = {}
+    for line = first, math.min(read.last or math.huge, first + api.nvim_win_get_height(layout.code_win()) - 1) do
+      lines[#lines + 1] = line
+    end
+    flash_view(lines)
+  end
+end
+
+-- The first n - 1 steps and the last one.
+local function trim(list, n)
+  if #list > n then
+    return vim.list_extend(vim.list_slice(list, 1, n - 1), { list[#list] })
+  end
+  return list
+end
+
+-- The rest of the steps count at once, so the agent's place is the last of
+-- them. While following, the code window catches up from the event loop,
+-- unless a newer move came first.
+---@param id string?
+local function finish_steps(id)
+  local s = stop_steps(id or "")
+  local last = s and s.reads[#s.reads]
+  if last then
+    move(last.path, last.first or 1, nil, id, true)
+    vim.schedule(M.resume)
+  end
+end
+
+local function step(id)
+  local s = steps[id or ""]
+  if not M.shows(id) then
+    finish_steps(id)
+    return
+  end
+  local read = table.remove(s.reads, 1)
+  if #s.reads == 0 then
+    stop_steps(id or "")
+  end
+  on_read(read, id)
+end
+
+-- Each read counts as a Read. While following, the code window steps
+-- through them, and the reads of a call in the same batch wait for their
+-- turn.
+---@param reads anvim.Step[]
+---@param id string?
+local function on_reads(reads, id)
+  local s = steps[id or ""]
+  if s then
+    s.reads = trim(vim.list_extend(s.reads, reads), MAX_STEPS - 1)
+    return
+  elseif not M.shows(id) or #reads < 2 then
+    for _, read in ipairs(reads) do
+      on_read(read, id)
+    end
+    return
+  end
+  reads = trim(reads, MAX_STEPS)
+  on_read(reads[1], id)
+  s = { reads = vim.list_slice(reads, 2), timer = assert(vim.uv.new_timer()) }
+  steps[id or ""] = s
+  s.timer:start(
+    STEP_MS,
+    STEP_MS,
+    vim.schedule_wrap(function()
+      -- A tick that waited in the queue may belong to steps that ended.
+      if steps[id or ""] == s then
+        step(id)
+      end
+    end)
+  )
+end
+
+-- A grep's first hit shows, and the hits in its file flash where they show.
+---@param hits anvim.Hit[]
+---@param id string?
+local function on_hits(hits, id)
+  local lines = {}
+  for _, hit in ipairs(hits) do
+    if hit.path == hits[1].path then
+      lines[#lines + 1] = hit.line
+    end
+  end
+  on_reads({ { path = hits[1].path, first = hits[1].line, lines = lines } }, id)
+end
+
+local function busy(key)
+  for _, k in pairs(waiting) do
+    if k == key then
+      return true
+    end
+  end
+  return false
 end
 
 -- A subagent's edits arrive whole, so its place is the edit's line. A Write of
@@ -367,30 +516,92 @@ function M.pick()
   })
 end
 
+-- A background agent works on after the turn.
+local function runs_on(id)
+  local agent = id and agents.get(id)
+  return agent and agent.background and agent.status == "running"
+end
+
 function M.attach(sidecar)
   sidecar.on("tool_use", function(ev)
     local agent = agents.of(ev)
-    if agent and ev.name == "Read" then
-      on_read(ev, agent.id)
+    if not agent and (ev.agent_id or ev.parent_id) then
+      return
+    end
+    local id = agent and agent.id
+    -- A call after the results of the last batch moves on, so the rest of
+    -- the steps count now.
+    local batch = batched[ev.id]
+    batched[ev.id] = nil
+    if batch == nil then
+      batch = busy(id or "")
+    end
+    if not batch then
+      finish_steps(id)
+    end
+    waiting[ev.id] = id or ""
+    if ev.name == "Read" or ev.name == "Bash" then
+      on_reads(bashread.reads(ev), id)
+      local spec = bashread.grep_of(ev)
+      greps[ev.id] = spec and { agent = id, spec = spec }
     elseif agent and edit_tools[ev.name] then
       on_agent_edit(agent, ev)
-    elseif ev.name == "Read" and not ev.parent_id then
-      on_read(ev)
     end
   end)
+  -- The main agent's next call streams before its tool_use comes.
+  sidecar.on("tool_start", function(ev)
+    batched[ev.id] = busy("")
+    if not batched[ev.id] then
+      finish_steps(nil)
+    end
+  end)
+  -- The next sidecar knows none of these calls.
+  sidecar.on("exit", function()
+    for key in pairs(steps) do
+      stop_steps(key)
+    end
+    waiting, greps, batched = {}, {}, {}
+  end)
   sidecar.on("tool_result", function(ev)
+    waiting[ev.id] = nil
     local write = writes[ev.id]
     writes[ev.id] = nil
     if write and not ev.is_error and vim.uv.fs_stat(write.path) and agents.get(write.agent) then
       M.track(write.path, 1, nil, write.agent)
     end
+    local grep = greps[ev.id]
+    greps[ev.id] = nil
+    if grep and (not grep.agent or agents.get(grep.agent)) then
+      -- A live result has the output without the errors. A subagent's has
+      -- only the text.
+      local result = type(ev.result) == "table" and ev.result or {}
+      local text = type(result.stdout) == "string" and result.stdout or ev.text
+      local hits = type(text) == "string" and bashread.hits(grep.spec, text) or {}
+      if hits[1] then
+        on_hits(hits, grep.agent)
+      end
+    end
   end)
-  -- A background agent works on after the turn.
   sidecar.on("turn_end", function()
     for id, write in pairs(writes) do
-      local agent = agents.get(write.agent)
-      if not (agent and agent.background and agent.status == "running") then
+      if not runs_on(write.agent) then
         writes[id] = nil
+      end
+    end
+    for id, grep in pairs(greps) do
+      if not runs_on(grep.agent) then
+        greps[id] = nil
+      end
+    end
+    batched = {}
+    for id, key in pairs(waiting) do
+      if not runs_on(key) then
+        waiting[id] = nil
+      end
+    end
+    for key in pairs(steps) do
+      if not runs_on(key) then
+        finish_steps(key ~= "" and key or nil)
       end
     end
   end)

@@ -94,7 +94,7 @@ anvim -c ~/dev/project                          # go on with the latest session 
 anvim --resume ~/dev/project                    # pick a session to go on with
 ```
 
-The screen has three columns: the explorer, code, and Claude. The explorer is 24 columns wide. While it has focus, it widens over the code window to fit its names, and the code window stays where it is. anvim starts with the cursor in the prompt at the bottom right, in normal mode, so your first keys can move around. Press `i` to type. While your cursor is in the prompt, the code window follows Claude. It opens the files Claude reads, and edits stream in with the old text struck through. Move the cursor anywhere else to take control. The statusline then shows where Claude is.
+The screen has three columns: the explorer, code, and Claude. The explorer is 24 columns wide. While it has focus, it widens over the code window to fit its names, and the code window stays where it is. anvim starts with the cursor in the prompt at the bottom right, in normal mode, so your first keys can move around. Press `i` to type. While your cursor is in the prompt, the code window follows Claude. It opens the files Claude reads, and edits stream in with the old text struck through. Claude often reads with Bash, so `cat`, `head`, `tail`, `sed -n` and `nl` open their files too, and a `grep -n` opens at its first hit. Move the cursor anywhere else to take control. The statusline then shows where Claude is.
 
 File buffers are read-only. `:w` does nothing but say so, and format on save never runs. Claude makes every change, and buffers reload when files change on disk. Markdown and text files wrap, with no spell checking.
 

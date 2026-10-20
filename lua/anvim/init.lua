@@ -67,6 +67,7 @@ local function refresh_branch()
 end
 
 local function wire()
+  require("anvim.bashread").attach(sidecar)
   require("anvim.agents").attach(sidecar)
   transcript.attach(sidecar)
   input.attach()
