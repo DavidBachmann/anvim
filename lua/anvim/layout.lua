@@ -38,6 +38,7 @@ local function setup_transcript_win(win)
   wo.conceallevel = 2
   wo.concealcursor = "nvc"
   wo.list = false
+  wo.spell = false
   -- A drag puts the cursor where the mouse was pressed. With 'scrolloff', the
   -- view would scroll under the mouse there.
   wo.scrolloff = 0

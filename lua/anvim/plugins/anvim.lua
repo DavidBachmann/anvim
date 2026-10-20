@@ -25,6 +25,26 @@ local function resize_splits()
   })
 end
 
+-- A read-only viewer cannot fix a typo. LazyVim's text filetypes still wrap,
+-- but get no spell checking.
+local function wrap_text()
+  vim.api.nvim_create_autocmd("FileType", {
+    group = vim.api.nvim_create_augroup("lazyvim_wrap_spell", { clear = true }),
+    pattern = { "text", "plaintex", "typst", "gitcommit", "markdown" },
+    callback = function()
+      vim.opt_local.wrap = true
+    end,
+  })
+end
+
+-- Replaces LazyVim's autocmds, now and when LazyVim loads them later.
+local function lazyvim_autocmds()
+  wrap_text()
+  if vim.fn.has("nvim-0.13") == 0 then
+    resize_splits()
+  end
+end
+
 return {
   {
     dir = root,
@@ -40,14 +60,12 @@ return {
     config = function(_, opts)
       local anvim = require("anvim")
       anvim.setup(opts)
-      if vim.fn.has("nvim-0.13") == 0 then
-        resize_splits()
-        vim.api.nvim_create_autocmd("User", {
-          group = vim.api.nvim_create_augroup("anvim.lazyvim", {}),
-          pattern = "LazyVimAutocmds",
-          callback = resize_splits,
-        })
-      end
+      lazyvim_autocmds()
+      vim.api.nvim_create_autocmd("User", {
+        group = vim.api.nvim_create_augroup("anvim.lazyvim", {}),
+        pattern = "LazyVimAutocmds",
+        callback = lazyvim_autocmds,
+      })
       if vim.v.vim_did_enter == 1 then
         anvim.start()
       else

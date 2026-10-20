@@ -467,6 +467,33 @@ describe("LazyVim stack", function()
     assert.are.same(stat.mtime, vim.uv.fs_stat(file).mtime, "the file was written")
   end)
 
+  it("wraps markdown in the code window without spell checking, and no window checks spelling", function()
+    start()
+    local file = helpers.tmp .. "/notes.md"
+    vim.fn.writefile({ "# Notes", "", "Some txet with a typo." }, file)
+    local out = lua(
+      [[
+      local layout = require("anvim.layout")
+      local code = layout.code_win()
+      local before = vim.api.nvim_win_get_buf(code)
+      vim.api.nvim_set_current_win(code)
+      vim.cmd.edit(...)
+      local out = { ft = vim.bo.filetype, wrap = vim.wo.wrap }
+      for role, win in pairs(layout.wins) do
+        out[role] = vim.wo[win].spell
+      end
+      -- The next cases expect the file that the code window showed.
+      local notes = vim.api.nvim_get_current_buf()
+      vim.api.nvim_win_set_buf(code, before)
+      vim.api.nvim_buf_delete(notes, { force = true })
+      layout.focus_input({ insert = false })
+      return out
+    ]],
+      file
+    )
+    assert.are.same({ ft = "markdown", wrap = true, code = false, input = false, transcript = false }, out)
+  end)
+
   it("pins a buffer in hbac and turns its diagnostics off while a preview runs", function()
     start()
     local file = helpers.tmp .. "/pinned.lua"

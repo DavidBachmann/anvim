@@ -116,6 +116,7 @@ function M.setup_win(win)
   wo.linebreak = true
   -- A reference ends in a space, which 'list' would mark.
   wo.list = false
+  wo.spell = false
   wo.winfixheight = true
   wo.winfixbuf = true
   M.render()
