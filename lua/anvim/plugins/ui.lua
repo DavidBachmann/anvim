@@ -15,7 +15,7 @@ return {
     opts = function(_, opts)
       vim.api.nvim_create_autocmd("User", {
         group = vim.api.nvim_create_augroup("anvim.lualine", {}),
-        pattern = "AnvimStatus",
+        pattern = { "AnvimStatus", "AnvimAgents" },
         callback = function()
           require("lualine").refresh({ place = { "statusline" } })
         end,
@@ -47,7 +47,9 @@ return {
           cond = function()
             return follow.status() ~= ""
           end,
-          color = claude_color,
+          color = function()
+            return { fg = Snacks.util.color(follow.group()) }
+          end,
           separator = "",
         },
         {
@@ -55,7 +57,7 @@ return {
             return "(<leader>j)"
           end,
           cond = function()
-            return follow.agent ~= nil and not follow.following() and not narrow()
+            return follow.place() ~= nil and not follow.following() and not narrow()
           end,
           color = function()
             return { fg = Snacks.util.color("Comment") }

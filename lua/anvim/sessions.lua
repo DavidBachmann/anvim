@@ -37,8 +37,7 @@ end
 -- What belongs to one session. A new session starts with none of it.
 local function forget()
   state.session_id, state.last_turn, state.cost_usd, state.context, state.turns = nil, nil, 0, nil, 0
-  local follow = require("anvim.follow")
-  follow.agent, follow.behind = nil, 0
+  require("anvim.follow").forget()
 end
 
 -- Draws a resumed session's past with the same functions as live events.

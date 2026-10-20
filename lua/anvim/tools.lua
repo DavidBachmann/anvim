@@ -179,9 +179,11 @@ local function show_user(params, done)
     api.nvim_buf_set_extmark(buf, ns, first - 1, 0, { virt_lines = virt, virt_lines_above = true })
   end
   local where = ("%s#L%d%s"):format(relpath(path), first, last > first and ("-%d"):format(last) or "")
-  if follow.following() then
+  if follow.shows() then
     reveal(layout.code_win(), first, last, #virt)
     done(("Showed %s to the user."):format(where))
+  elseif follow.focus then
+    done(("Marked %s. The user follows a subagent, so their view did not move."):format(where))
   else
     done(("Marked %s. The user is reading elsewhere, and the statusline points them to it."):format(where))
   end

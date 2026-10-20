@@ -204,7 +204,7 @@ local function draw_cursor(p)
     right_gravity = true,
   })
   local win = require("anvim.layout").wins.code
-  if follow.following() and win and api.nvim_win_is_valid(win) and api.nvim_win_get_buf(win) == p.buf then
+  if follow.shows() and win and api.nvim_win_is_valid(win) and api.nvim_win_get_buf(win) == p.buf then
     api.nvim_win_set_cursor(win, { row + 1, col })
   end
 end

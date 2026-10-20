@@ -52,7 +52,7 @@ local function footer(width)
   end
   local dots, text = {}, {}
   for _, chunk in ipairs(chunks) do
-    if chunk[1] == "●" then
+    if chunk[1] == "⏺" then
       dots[#dots + 1] = chunk[2]
     end
     text[#text + 1] = chunk[1]
@@ -146,7 +146,7 @@ describe("agents", function()
     assert.are.same("AnvimAgent3", bullet("^⏺ Agent%(Edit gamma%.js header%)"))
     assert.are.same({ "AnvimAgent1", "AnvimAgent2", "AnvimAgent3" }, footer())
     local _, text = footer(120)
-    assert(text:find("  ●●● 3 agents", 1, true), text)
+    assert(text:find("  ⏺⏺⏺ 3 agents", 1, true), text)
 
     sidecar.dispatch(events[i])
     assert.are.same({ { beta, 2 }, { gamma, 3 } }, slots(), "beta and gamma keep their slots")
@@ -176,7 +176,7 @@ describe("agents", function()
     assert.are.same("Comment", agents.group(agents.get("a5").slot))
     local dots, text = footer(120)
     assert.are.same(4, #dots)
-    assert(text:find("●●●● 5 agents", 1, true), text)
+    assert(text:find("⏺⏺⏺⏺ 5 agents", 1, true), text)
     finish("a2")
     assert.are.same(2, agents.get("a5").slot, "the waiting agent gets the freed slot")
     finish("a1")
@@ -379,8 +379,8 @@ describe("agents", function()
     local parts = {
       "git:(main)",
       "(shift+tab to cycle)",
-      "●● 2 agents",
-      "●●",
+      "⏺⏺ 2 agents",
+      "⏺⏺",
       "⧉ In agents_footer.lua",
       "⧉ In agents_f...",
       "⏵⏵ bypass permissions on",
@@ -389,15 +389,15 @@ describe("agents", function()
       [120] = {
         "git:(main)",
         "(shift+tab to cycle)",
-        "●● 2 agents",
-        "●●",
+        "⏺⏺ 2 agents",
+        "⏺⏺",
         "⧉ In agents_footer.lua",
         "⏵⏵ bypass permissions on",
       },
-      [95] = { "git:(main)", "●● 2 agents", "●●", "⧉ In agents_footer.lua", "⏵⏵ bypass permissions on" },
-      [85] = { "●● 2 agents", "●●", "⧉ In agents_footer.lua", "⏵⏵ bypass permissions on" },
-      [75] = { "●●", "⧉ In agents_footer.lua", "⏵⏵ bypass permissions on" },
-      [60] = { "●●", "⧉ In agents_footer.lua" },
+      [95] = { "git:(main)", "⏺⏺ 2 agents", "⏺⏺", "⧉ In agents_footer.lua", "⏵⏵ bypass permissions on" },
+      [85] = { "⏺⏺ 2 agents", "⏺⏺", "⧉ In agents_footer.lua", "⏵⏵ bypass permissions on" },
+      [75] = { "⏺⏺", "⧉ In agents_footer.lua", "⏵⏵ bypass permissions on" },
+      [60] = { "⏺⏺", "⧉ In agents_footer.lua" },
       [51] = { "⧉ In agents_footer.lua" },
       [45] = { "⧉ In agents_f..." },
       [40] = {},
@@ -410,7 +410,7 @@ describe("agents", function()
           ("%q at %d: %s"):format(part, width, text)
         )
       end
-      assert.are.same(vim.tbl_contains(want, "●●") and { "AnvimAgent1", "AnvimAgent2" } or {}, dots, text)
+      assert.are.same(vim.tbl_contains(want, "⏺⏺") and { "AnvimAgent1", "AnvimAgent2" } or {}, dots, text)
       assert(text:find("⏵⏵ bypass", 1, true), text)
       assert.are.same(width, api.nvim_strwidth(text), text)
     end

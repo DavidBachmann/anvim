@@ -392,6 +392,113 @@ describe("LazyVim stack", function()
     lua([[require("anvim.layout").focus_input()]])
   end)
 
+  it("focuses an agent with <leader>k1 and the picker, and lualine names it in its color", function()
+    start()
+    -- A file of its own: a cursor that this case moves would make a later 2G scroll.
+    local file = helpers.tmp .. "/focus_stack.lua"
+    local lines = {}
+    for i = 1, 40 do
+      lines[i] = ("local line%d = %d"):format(i, i)
+    end
+    vim.fn.writefile(lines, file)
+    -- Running agents would show in the next cases' footers.
+    local ok, err = pcall(function()
+      lua(
+        [[
+        require("anvim.layout").focus_input()
+        vim.cmd.stopinsert()
+        local sidecar = require("anvim.sidecar")
+        for _, id in ipairs({ "s1", "s2" }) do
+          sidecar.dispatch({
+            type = "agent_start",
+            agent_id = id,
+            tool_use_id = "tu_" .. id,
+            description = "Stack " .. id,
+            subagent_type = id == "s2" and "Explore" or "general-purpose",
+            depth = 1,
+            background = false,
+          })
+        end
+        local read = { file_path = ..., offset = 30 }
+        sidecar.dispatch({ type = "tool_use", id = "s2r", name = "Read", input = read, parent_id = "tu_s2", agent_id = "s2" })
+      ]],
+        file
+      )
+      -- lualine's own refreshes, from its timer and its autocmds, name a trigger.
+      lua([[
+        local lualine = require("lualine")
+        local refresh = lualine.refresh
+        _G.anvim_refreshes = 0
+        lualine.refresh = function(opts)
+          _G.anvim_refreshes = _G.anvim_refreshes + ((opts or {}).trigger and 0 or 1)
+          return refresh(opts)
+        end
+        _G.anvim_lualine_refresh = refresh
+      ]])
+      keys("<leader>k1")
+      wait(3000, [[return require("anvim.follow").focus == "s1"]], "<leader>k1 took no focus")
+      local refreshes = lua([[
+        require("lualine").refresh = _G.anvim_lualine_refresh
+        return _G.anvim_refreshes
+      ]])
+      assert(refreshes > 0, "lualine did not refresh on the focus")
+      -- lualine colors the follow status with the agent's color, in a group of its own.
+      local out = lua([[
+        require("lualine").refresh({ force = true, place = { "statusline" } })
+        local win = vim.api.nvim_get_current_win()
+        local line = vim.api.nvim_eval_statusline(vim.wo[win].statusline, { winid = win, highlights = true })
+        local at = line.str:find("◉ following Agent 1", 1, true)
+        local group
+        for _, h in ipairs(line.highlights) do
+          if at and h.start < at then
+            group = h.groups[#h.groups]
+          end
+        end
+        local function fg(name)
+          return vim.api.nvim_get_hl(0, { name = name, link = false }).fg
+        end
+        return { str = line.str, fg = group and fg(group), want = fg("AnvimAgent1"), claude = fg("AnvimClaude") }
+      ]])
+      assert(out.str:find("◉ following Agent 1", 1, true), out.str)
+      assert.are.same(out.want, out.fg)
+      assert.are_not.same(out.claude, out.fg)
+      keys("<leader>ka")
+      wait(
+        3000,
+        [[
+        local picker = Snacks.picker.get({ source = "anvim_agents" })[1]
+        return picker ~= nil and #picker:items() == 3
+      ]],
+        "<leader>ka opened no picker"
+      )
+      keys("Explore")
+      wait(
+        3000,
+        [[
+        local picker = Snacks.picker.get({ source = "anvim_agents" })[1]
+        local item = picker and picker:current()
+        return item ~= nil and item.agent_id == "s2"
+      ]],
+        "the picker did not filter to Explore 2"
+      )
+      keys("<CR>")
+      wait_where({ win = "input", mode = "n" }, "<CR> in the agents picker")
+      wait(3000, [[return require("anvim.follow").focus == "s2"]], "the picker took no focus")
+      out = lua([[
+        local win = require("anvim.layout").wins.code
+        return { name = vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(win)), line = vim.api.nvim_win_get_cursor(win)[1] }
+      ]])
+      assert.are.same({ name = file, line = 30 }, out)
+      assert(statusline():find("◉ following Explore 2", 1, true), statusline())
+    end)
+    lua([[
+      require("anvim.agents").clear()
+      require("anvim.layout").focus_input({ insert = false })
+    ]])
+    assert(ok, err)
+    assert(statusline():find("◉ following", 1, true), statusline())
+  end)
+
   it("puts the activity line in the winbar and the footer under the prompt", function()
     start()
     local out = lua([[
@@ -1229,7 +1336,13 @@ describe("LazyVim stack", function()
       return { maps = maps, groups = groups }
     ]])
     assert.are.same({
-      kj = "Jump to where Claude is",
+      k0 = "Focus the main agent",
+      k1 = "Focus agent 1",
+      k2 = "Focus agent 2",
+      k3 = "Focus agent 3",
+      k4 = "Focus agent 4",
+      ka = "Pick an agent to focus",
+      kj = "Jump to where Claude or the focused agent is",
       km = "Choose the model",
       kr = "Read the transcript",
       ks = "Resume a session",

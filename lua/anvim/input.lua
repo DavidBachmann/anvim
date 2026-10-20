@@ -313,10 +313,11 @@ end
 
 -- The model on the left and the mode on the right. After the model, the chip
 -- says what the next prompt shows Claude, and a dot in each running agent's
--- color follows, with their count. In a narrow column, the hint goes first,
--- then the branch, which the statusline shows too, then the agents' count.
--- Then the mode gets its short label and the dots go. The chip, which says
--- what Claude gets, goes last: first its file name gets shorter.
+-- color follows, with their count. The focused agent's dot is ◉. In a narrow
+-- column, the hint goes first, then the branch, which the statusline shows
+-- too, then the agents' count. Then the mode gets its short label and the
+-- dots go. The chip, which says what Claude gets, goes last: first its file
+-- name gets shorter.
 ---@param width integer
 ---@return [string, string?][] chunks
 function M.footer(width)
@@ -330,10 +331,11 @@ function M.footer(width)
   local chip = context.chip()
   local agents = require("anvim.agents")
   local running = agents.running()
+  local focus = require("anvim.follow").focus
   local dots = {} ---@type [string, string][]
   for _, agent in ipairs(running) do
     if agent.slot then
-      dots[#dots + 1] = { "●", agents.group(agent.slot) }
+      dots[#dots + 1] = { agent.id == focus and "◉" or "⏺", agents.group(agent.slot) }
     end
   end
   local count = #dots > 0 and (" %d agent%s"):format(#running, #running == 1 and "" or "s") or ""
@@ -341,7 +343,7 @@ function M.footer(width)
   local function free()
     local right = mode and 2 + w(mode[1] .. hint .. " ") or 0
     local left = w(" anvim " .. branch .. model) + (chip and w("  " .. chip[1]) or 0)
-    left = left + (#dots > 0 and 2 + #dots * w("●") + w(count) or 0)
+    left = left + (#dots > 0 and 2 + #dots * w("⏺") + w(count) or 0)
     return width - left - right
   end
   if free() < 0 then

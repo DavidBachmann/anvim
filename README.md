@@ -63,7 +63,10 @@ All of LazyVim's keys and your own work as usual. anvim adds these. `<leader>` i
 | `Ctrl-L` | file buffer, visual mode | Go to the prompt and keep the selection |
 | `Ctrl-W l`, `Ctrl-L` | explorer | Go to the code window |
 | `@` | explorer | Put a reference to the file in the prompt |
-| `<leader>j`, `<leader>kj` | anywhere | Jump to where Claude is |
+| `<leader>j`, `<leader>kj` | anywhere | Jump to where Claude, or the focused subagent, is |
+| `<leader>k1` to `<leader>k4` | anywhere | Focus the subagent with that number, so follow mode follows it |
+| `<leader>k0` | anywhere | Focus Claude, the main agent, again |
+| `<leader>ka` | anywhere | Pick an agent to focus, with its place in the preview |
 | `<leader>kt`, `:AnvimTrail` | anywhere | Pick a place from Claude's trail |
 | `<leader>kr`, `:AnvimTranscript` | anywhere | Read the transcript: put the cursor in it to yank and search |
 | `<leader>ky` | anywhere | Yank Claude's last reply to the clipboard |
@@ -87,7 +90,11 @@ When Claude is done, or needs your answer, while the terminal does not have focu
 
 Claude's replies render their markdown, as in Claude Code: bold, inline code and links show without their markers, and code blocks have syntax colors. Tool lines, their results and your prompts show as they are, so a command such as `grep '**' *.lua` keeps its stars. Paths under the working directory show short: `Bash(find . -name '*.lua')`.
 
-Claude's todo list stays at the end of the transcript, under the newest output, while it has open items. Claude Code keeps it with TodoWrite, or with TaskCreate and TaskUpdate. For its newest models, it offers these tools only when `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` is set. The item in progress is bold, and the spinner names it. Once every item is done, the list stays in the transcript where it was. A subagent shows its last three tool calls under its line while it works, and then a summary such as `Done (12 tool uses · 24.1k tokens · 1m 2s)`. Up to four running subagents get a color each, and the bullet of a subagent's line has that color until it is done. The footer has a dot in each running subagent's color, and their count: `●●● 3 agents`. In the explorer, a dot in an agent's color marks each file it writes to, and each closed folder above it, while it runs. Claude's own dots last until its turn ends. A compaction shows as a notice with the tokens before and after. When Claude is idle, the line above the prompt shows the last turn's time and cost, and how full the context window is.
+Claude's todo list stays at the end of the transcript, under the newest output, while it has open items. Claude Code keeps it with TodoWrite, or with TaskCreate and TaskUpdate. For its newest models, it offers these tools only when `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` is set. The item in progress is bold, and the spinner names it. Once every item is done, the list stays in the transcript where it was. A subagent shows its last three tool calls under its line while it works, and then a summary such as `Done (12 tool uses · 24.1k tokens · 1m 2s)`. Up to four running subagents get a color each, and the bullet of a subagent's line has that color until it is done. The footer has a dot in each running subagent's color, and their count: `⏺⏺⏺ 3 agents`. In the explorer, a dot in an agent's color marks each file it writes to, and each closed folder above it, while it runs. Claude's own dots last until its turn ends. A compaction shows as a notice with the tokens before and after. When Claude is idle, the line above the prompt shows the last turn's time and cost, and how full the context window is.
+
+## Subagents
+
+Follow mode follows one agent at a time, at first Claude itself. A running subagent has a number from 1 to 4, and anvim names it by its type and that number, such as `Explore 2`. `<leader>k2` focuses it, and `<leader>k0` focuses Claude again. `<leader>ka` lists Claude and the running subagents, with what each one does, its tool uses and its place, which the preview shows. While a subagent has focus, the code window goes where that subagent reads and edits, and the other agents' moves leave it alone. The statusline says `◉ following Explore 2` in the agent's color, the agent's dot in the footer is `◉`, and its line in the transcript ends in `◉ focused`. When the subagent ends, focus goes back to Claude, and the transcript says so. A permission request from a subagent names it in its color, such as `Edit file · Explore 2 (Find x)`.
 
 ## Pointing
 

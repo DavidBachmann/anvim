@@ -9,6 +9,7 @@ local api = vim.api
 local ns = api.nvim_create_namespace("anvim.transcript")
 -- Where Claude's text blocks start and end.
 local ns_text = api.nvim_create_namespace("anvim.transcript.text")
+local ns_focus = api.nvim_create_namespace("anvim.transcript.focus")
 
 ---@class anvim.Tool
 ---@field id string
@@ -601,13 +602,26 @@ function M.tool_use(ev)
   set_tool_line(tool, tool_label(ev.name, ev.input), pending(tool))
 end
 
--- Agents started, ended or changed slots.
+-- Agents started, ended or changed slots, or the focus moved. The focused
+-- agent's line says so at its end. Its mark keeps its row when the line is
+-- set again, because it stays left of inserted text.
 local function paint_agents()
   for _, tool in pairs(tools) do
     local row = (tool.name == "Agent" or tool.name == "Task") and tool.mark and not tool.done and tool_row(tool)
     if row then
       tool.mark = hl(row, 0, #"⏺", pending(tool), { id = tool.mark })
     end
+  end
+  api.nvim_buf_clear_namespace(M.buf(), ns_focus, 0, -1)
+  local agent = require("anvim.follow").focused()
+  local tool = agent and tools[agent.tool_use_id]
+  local row = tool and tool.mark and tool_row(tool)
+  if row then
+    api.nvim_buf_set_extmark(M.buf(), ns_focus, row, 0, {
+      virt_text = { { "◉ focused", agents.group(agent.slot) } },
+      virt_text_pos = "eol",
+      right_gravity = false,
+    })
   end
 end
 
@@ -952,6 +966,7 @@ function M.clear()
   tasks = { order = {}, by_id = {} }
   api.nvim_buf_clear_namespace(buf, ns, 0, -1)
   api.nvim_buf_clear_namespace(buf, ns_text, 0, -1)
+  api.nvim_buf_clear_namespace(buf, ns_focus, 0, -1)
   with_modifiable(function()
     api.nvim_buf_set_lines(buf, 0, -1, false, {})
   end)

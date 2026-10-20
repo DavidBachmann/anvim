@@ -4,6 +4,7 @@
 -- in the prompt chooses until the user answers. Insert mode never answers, so
 -- a user who is typing keeps typing. Requests that arrive meanwhile wait their
 -- turn.
+local agents = require("anvim.agents")
 local input = require("anvim.input")
 local layout = require("anvim.layout")
 local sidecar = require("anvim.sidecar")
@@ -226,11 +227,24 @@ local function inside_cwd(path)
   return false
 end
 
+-- The header's first line. A subagent's request names the agent, in its color.
+local function add_title(b, title, ev)
+  local agent = ev.agent_id and agents.get(ev.agent_id)
+  if not agent then
+    b.add("  " .. title .. (ev.agent_id and " (subagent)" or ""), "AnvimAsk", 2)
+    return
+  end
+  local who = agents.name(agent) .. (agent.description ~= "" and (" (%s)"):format(agent.description) or "")
+  local line = ("  %s · %s"):format(title, who)
+  b.add(line)
+  b.marks[#b.marks + 1] = { #b.lines - 1, 2, 2 + #title, "AnvimAsk" }
+  b.marks[#b.marks + 1] = { #b.lines - 1, #line - #who, #line, agents.group(agent.slot) }
+end
+
 local function add_header(b, r)
   local ev = r.ev
-  local subagent = ev.agent_id and " (subagent)" or ""
   if r.kind == "plan" then
-    b.add("  Ready to code?" .. subagent, "AnvimAsk", 2)
+    add_title(b, "Ready to code?", ev)
     b.add("  Here is Claude's plan:")
     add_plan(b, r)
     b.add("  Would you like to proceed?")
@@ -243,13 +257,13 @@ local function add_header(b, r)
     end
     local q = list[r.q]
     local count = #list > 1 and (" (%d of %d)"):format(r.q, #list) or ""
-    b.add(("  ☐ %s%s%s"):format(q.header or "Question", count, subagent), "AnvimAsk", 2)
+    add_title(b, ("☐ %s%s"):format(q.header or "Question", count), ev)
     b.add("  " .. q.question)
     return
   end
   local tool, inp = ev.tool, ev.input
   local mcp_server, mcp_tool = tool:match("^mcp__(.-)__(.+)$")
-  b.add("  " .. (titles[tool] or ev.title or (mcp_server and "Tool use" or tool)) .. subagent, "AnvimAsk", 2)
+  add_title(b, titles[tool] or ev.title or (mcp_server and "Tool use" or tool), ev)
   local path = type(inp.file_path) == "string" and inp.file_path or inp.notebook_path
   if tool == "Bash" and type(inp.command) == "string" then
     for _, line in ipairs(vim.split(inp.command, "\n", { plain = true })) do

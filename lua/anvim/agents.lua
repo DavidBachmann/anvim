@@ -45,7 +45,8 @@ local function files_changed()
   api.nvim_exec_autocmds("User", { pattern = "AnvimAgentFiles", modeline = false })
 end
 
-local function changed()
+-- Agents started, ended or changed slots, or the focus moved.
+function M.changed()
   api.nvim_exec_autocmds("User", { pattern = "AnvimAgents", modeline = false })
   files_changed()
 end
@@ -62,6 +63,19 @@ end
 ---@return anvim.Agent?
 function M.get(id)
   return agents[id]
+end
+
+---@return anvim.Agent?
+function M.in_slot(slot)
+  return slots[slot]
+end
+
+-- As its tool line names it, by its type, and then its slot: Explore 2.
+---@param agent anvim.Agent
+---@return string
+function M.name(agent)
+  local name = agent.type and agent.type ~= "" and agent.type ~= "general-purpose" and agent.type or "Agent"
+  return agent.slot and ("%s %d"):format(name, agent.slot) or name
 end
 
 ---@param id string The id of the Agent tool call that started the agent.
@@ -161,7 +175,7 @@ function M.start(ev)
   agents[agent.id], by_tool[agent.tool_use_id] = agent, agent
   fill(agent, starts[agent.tool_use_id])
   starts[agent.tool_use_id] = nil
-  changed()
+  M.changed()
 end
 
 function M.progress(ev)
@@ -181,12 +195,12 @@ function M.finish(ev)
   local was = agent.status
   stop(agent, ev.status or "completed")
   if was == "running" then
-    changed()
+    M.changed()
   end
 end
 
 -- The line of an edit, from the file as it is before the edit or after it.
-local function edit_line(path, input)
+function M.edit_line(path, input)
   local buf = vim.fn.bufnr(path)
   local ok, lines
   if buf > 0 and api.nvim_buf_is_loaded(buf) then
@@ -250,7 +264,7 @@ function M.tool_use(ev)
   if ev.name == "Read" then
     agent.place = { path = path, line = tonumber(input.offset) or 1 }
   elseif edit_keys[ev.name] then
-    agent.place = { path = path, line = ev.name == "Edit" and edit_line(path, input) or 1 }
+    agent.place = { path = path, line = ev.name == "Edit" and M.edit_line(path, input) or 1 }
     start_edit(ev.id, agent, path)
   end
 end
@@ -322,7 +336,7 @@ function M.turn_end()
     end
   end
   if any then
-    changed()
+    M.changed()
   elseif files then
     files_changed()
   end
@@ -334,7 +348,7 @@ function M.clear()
   agents, by_tool, slots, starts, edits = {}, {}, {}, {}, {}
   main.files = {}
   if any then
-    changed()
+    M.changed()
   elseif files then
     files_changed()
   end
