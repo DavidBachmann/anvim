@@ -29,7 +29,7 @@ function M.start()
     return start_win
   end
   vim.cmd.cd(M.tmp)
-  -- As in LazyVim. Without a UI, the mode message would go to the test output.
+  -- As in anvim's options. Without a UI, the mode message would go to the test output.
   vim.o.showmode = false
   require("anvim.history").dir = M.tmp .. "/history"
   local anvim = require("anvim")

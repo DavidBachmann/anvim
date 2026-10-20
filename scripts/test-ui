@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Runs tests/ui: each test embeds anvim with the user's LazyVim, attaches as a
-# UI and replays a fixture. File arguments run only those files.
+# Runs tests/ui: each test embeds anvim with the plugins in .tests/anvim,
+# attaches as a UI and replays a fixture. File arguments run only those files.
 
 cd "$(dirname "$0")/.." || exit 1
+scripts/test-deps || exit 1
 paths=0
 for arg in "$@"; do
   [ -e "$arg" ] && paths=1

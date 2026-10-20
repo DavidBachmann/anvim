@@ -3,7 +3,8 @@
 //
 // Usage: bun screen.ts [--cwd dir] [--size 200x50] [--replay file] [--model m] [--mode m] [--out dir] [--xdg dir] -- step...
 // anvim's state, cache, data and config dirs go in --xdg, by default a new temp
-// dir. The tool prints the path of anvim's log at the end.
+// dir. Its plugins come from .tests/anvim, which scripts/test-deps fills on the
+// first run. The tool prints the path of anvim's log at the end.
 // Steps:
 //   wait:<ms>          sleep
 //   waitfor:<text>     wait until the screen shows text (20 s timeout)
@@ -17,7 +18,7 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Ui } from "./ui.ts";
+import { root, Ui } from "./ui.ts";
 
 const args = process.argv.slice(2);
 const split = args.indexOf("--");
@@ -37,6 +38,8 @@ if (flag("--model")) env.ANVIM_MODEL = flag("--model")!;
 if (flag("--mode")) env.ANVIM_MODE = flag("--mode")!;
 
 const xdg = resolve(flag("--xdg") ?? mkdtempSync(join(tmpdir(), "anvim-screen-")));
+// The plugins come from .tests/anvim, as in the UI tests.
+if (Bun.spawnSync([join(root, "scripts/test-deps")], { stdout: "inherit", stderr: "inherit" }).exitCode !== 0) process.exit(1);
 const ui = await Ui.start({ cwd: resolve(flag("--cwd") ?? "."), cols, rows, xdg, env });
 
 async function record(ms: number) {

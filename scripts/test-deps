@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Fills .tests/anvim, the install dir that the stack and UI tests boot from:
+# lazy.nvim and the plugins at the lockfile's commits, and mason's
+# lua-language-server at a fixed version. The first run needs the network.
+# Once the dir matches the lockfile and the version, it does nothing.
+
+cd "$(dirname "$0")/.." || exit 1
+dir=$PWD/.tests/anvim
+mason=lua-language-server@3.19.2
+stamp=$dir/stamp
+if { cat lazy-lock.json; echo "$mason"; } | cmp -s - "$stamp" && [ -x "$dir/mason/bin/lua-language-server" ]; then
+  exit 0
+fi
+
+echo "Installing the test plugins into $dir"
+tmp=$(mktemp -d)
+# lazy.nvim rewrites the lockfile after an install or a restore, and drops the
+# plugins of personal specs from it. The tests must not change it.
+cp lazy-lock.json "$tmp/lock.json"
+trap 'cp "$tmp/lock.json" lazy-lock.json; rm -rf "$tmp"' EXIT
+mkdir -p "$dir/site"
+# The -c commands run before VimEnter, so anvim never starts its sidecar.
+# Plain `Lazy install` would clone the newest commits, so this installs from
+# the lockfile.
+env -u NVIM -u NVIM_LISTEN_ADDRESS \
+  NVIM_APPNAME=anvim ANVIM_INSTALL_DIR="$dir" ANVIM_NO_INSTALL=1 \
+  XDG_CONFIG_HOME="$tmp/config" XDG_DATA_HOME="$tmp/data" XDG_STATE_HOME="$tmp/state" XDG_CACHE_HOME="$tmp/cache" \
+  nvim --headless -u init.lua \
+  -c 'lua require("lazy").install({ wait = true, lockfile = true, show = false })' \
+  -c 'lua require("lazy").restore({ wait = true, show = false })' \
+  -c 'MasonUpdate' \
+  -c "MasonInstall --quiet $mason" \
+  -c "lua vim.fn.writefile(vim.tbl_map(function(p) return p.name end, require('lazy').plugins()), '$tmp/names')" \
+  -c 'qa' || exit 1
+echo
+# A failed clone or checkout does not change Neovim's exit code.
+while IFS= read -r name; do
+  [ "$name" = anvim ] && continue
+  commit=$(sed -n "s/^ *\"$name\": {.*\"commit\": \"\\([0-9a-f]*\\)\".*/\\1/p" "$tmp/lock.json")
+  head=$(git -C "$dir/lazy/$name" rev-parse HEAD 2>/dev/null)
+  if [ -z "$commit" ] || [ "$head" != "$commit" ]; then
+    echo "test-deps: $name is at ${head:-no commit}, and the lockfile has ${commit:-none}" >&2
+    exit 1
+  fi
+done <"$tmp/names"
+{ cat "$tmp/lock.json"; echo "$mason"; } >"$stamp"

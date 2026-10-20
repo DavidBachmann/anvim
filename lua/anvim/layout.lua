@@ -42,7 +42,7 @@ local function setup_transcript_win(win)
   -- A drag puts the cursor where the mouse was pressed. With 'scrolloff', the
   -- view would scroll under the mouse there.
   wo.scrolloff = 0
-  -- LazyVim turns on 'smoothscroll', which can leave a wrapped line half
+  -- anvim turns on 'smoothscroll', which can leave a wrapped line half
   -- scrolled at the top, marked "<<<".
   wo.smoothscroll = false
   wo.winfixwidth = true
@@ -126,7 +126,7 @@ function M.code_closing(buf)
   tree_width = tree and api.nvim_win_get_width(tree)
 end
 
--- The user's own explorer, with their layout, but without taking focus.
+-- The explorer, with anvim's layout, but without taking focus.
 local function open_tree()
   local ok, snacks = pcall(require, "snacks")
   if ok then

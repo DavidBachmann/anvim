@@ -16,7 +16,8 @@ local ns = api.nvim_create_namespace("anvim.tools")
 M.attach_ms = 5000
 M.budget_ms = 9000
 -- A wait ends early when a buffer has no language server at all, attached or
--- starting, for this long. LazyVim starts its servers a moment after a load.
+-- starting, for this long. lspconfig loads on the first file and starts its
+-- servers a moment after.
 local START_MS = 1000
 local MAX_ITEMS = 50
 local MAX_HOVER_LINES = 40

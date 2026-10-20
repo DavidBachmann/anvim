@@ -33,6 +33,9 @@ export type StartOptions = {
   rows?: number;
   // anvim gets its state, cache, data and config dirs here.
   xdg: string;
+  // The plugins and mason packages, which scripts/test-deps installs. anvim
+  // installs nothing at start.
+  install?: string;
   env?: Record<string, string>;
 };
 
@@ -62,6 +65,8 @@ export class Ui {
       if (value !== undefined && !/^(XDG_|NVIM|LAZY_|CMUX_)/.test(key)) env[key] = value;
     }
     env.NVIM_APPNAME = "anvim";
+    env.ANVIM_INSTALL_DIR = resolve(opts.install ?? join(root, ".tests/anvim"));
+    env.ANVIM_NO_INSTALL = "1";
     for (const name of ["config", "data", "state", "cache"]) {
       const dir = join(this.xdg, name);
       mkdirSync(dir, { recursive: true });

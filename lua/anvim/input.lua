@@ -41,8 +41,6 @@ function M.buf()
   vim.treesitter.language.register("markdown", "anvim_input")
   vim.bo[bufnr].filetype = "anvim_input"
   pcall(vim.treesitter.start, bufnr, "markdown")
-  -- A chat prompt reads better without auto-closed quotes and brackets.
-  vim.b[bufnr].minipairs_disable = true
   local map = function(modes, lhs, rhs, desc)
     vim.keymap.set(modes, lhs, rhs, { buffer = bufnr, desc = desc })
   end

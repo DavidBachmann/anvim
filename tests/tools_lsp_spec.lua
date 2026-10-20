@@ -1,9 +1,9 @@
 ---@module "luassert"
 
--- The LSP tools against a real lua_ls from mason.
+-- The LSP tools against a real lua_ls, from the mason dir that scripts/test-deps fills.
 local helpers = require("helpers")
 
-local lua_ls = vim.fn.expand("~/.local/share/nvim/mason/bin/lua-language-server")
+local lua_ls = helpers.root .. "/.tests/anvim/mason/bin/lua-language-server"
 local dir = helpers.tmp .. "/lsp"
 -- Outside the cwd, like a real install. Without these flags lua_ls writes its
 -- log and its stdlib files into mason's install dir.
@@ -41,7 +41,7 @@ local function setup()
     return
   end
   ready = true
-  assert(vim.fn.executable(lua_ls) == 1, "the LSP specs need lua-language-server from mason at " .. lua_ls)
+  assert(vim.fn.executable(lua_ls) == 1, "the LSP specs need lua-language-server at " .. lua_ls)
   vim.fn.mkdir(dir, "p")
   vim.fn.writefile(lib, dir .. "/lib.lua")
   vim.fn.writefile({ "local M = {}", "M.oops = undefined_global", "return M" }, dir .. "/broken.lua")

@@ -87,7 +87,8 @@ function M.map(buf)
     vim.keymap.set(mode, lhs, rhs, vim.tbl_extend("force", { buffer = buf, desc = desc }, opts or {}))
   end
   map("x", "c", "<Esc><Cmd>lua require('anvim.refs').visual()<CR>", "Point Claude at the selection")
-  -- nowait: mini.surround's global `cs` would make `c` wait for 'timeoutlen'.
+  -- nowait: a global map such as a personal spec's `cs` would make `c` wait
+  -- for 'timeoutlen'.
   map("n", "c", function()
     vim.o.operatorfunc = OPFUNC
     return "g@"
@@ -97,7 +98,7 @@ function M.map(buf)
   map("o", "c", function()
     return vim.v.operator == "g@" and vim.o.operatorfunc == OPFUNC and "_" or "c"
   end, "Current line", { expr = true })
-  -- LazyVim maps <C-l> in normal mode only.
+  -- The global <C-l> is for normal mode only.
   map("x", "<C-l>", "<C-w>l", "Go to the prompt with the selection")
 end
 

@@ -54,11 +54,6 @@ test("the focused tree widens again when a folder opens", async () => {
   anvim = await start({ files: { [`sub/${deep}`]: "return {}\n" } });
   const { ui } = anvim;
   await anvim.toCode();
-  // The user's config fires FileType again 100 ms after lspconfig loads. From
-  // the tree, that fails in the list's buffer, and the error's popup would
-  // widen the tree here too.
-  await ui.waitFor(() => ui.exec_lua(`return require("lazy.core.config").plugins["nvim-lspconfig"]._.loaded ~= nil`));
-  await Bun.sleep(300);
   const tree = await anvim.box("tree");
   await ui.input("<C-w>h");
   await anvim.waitWhere("snacks_picker_list", "n");
@@ -202,10 +197,6 @@ test("the focused tree widens to fit the dots, in the frame that shows them", as
   anvim = await start({ files: { [LONG]: "return {}\n", "short.lua": "return 1\n" } });
   const { ui, dir } = anvim;
   await anvim.toCode();
-  // The user's config fires FileType again 100 ms after lspconfig loads, and
-  // the error's popup from the tree's buffer would widen the tree.
-  await ui.waitFor(() => ui.exec_lua(`return require("lazy.core.config").plugins["nvim-lspconfig"]._.loaded ~= nil`));
-  await Bun.sleep(300);
   const tree = await anvim.box("tree");
   await ui.input("<C-w>h");
   await anvim.waitWhere("snacks_picker_list", "n");

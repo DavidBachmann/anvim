@@ -5,7 +5,10 @@ A read-only Neovim for watching Claude Code work. You read and point; Claude wri
 ## Requirements
 
 - Neovim 0.12 or newer
-- [LazyVim](https://www.lazyvim.org), with its config at `~/.config/nvim` and its plugins installed in `~/.local/share/nvim/lazy`
+- git, curl, tar and a C compiler, to install the plugins and build treesitter parsers
+- Node.js with npm, for the TypeScript and JSON language servers
+- [ripgrep](https://github.com/BurntSushi/ripgrep), for grep
+- A [Nerd Font](https://www.nerdfonts.com) in the terminal, for the icons
 - [Bun](https://bun.sh)
 - Claude Code, logged in (`claude /login`)
 - Google Chrome, only for the screen tool
@@ -18,7 +21,24 @@ From the repo root:
 ln -s "$PWD/bin/anvim" ~/.local/bin/anvim
 ```
 
-anvim installs no Neovim plugins. It boots your LazyVim setup with your extras, plugins, keys, LSP servers and colorscheme, and adds anvim on top. Treesitter parsers and mason tools come from your main Neovim too, so install and update them there. anvim keeps its own state, undo history and logs in `~/.local/state/anvim`. At startup it never writes your plugins, your lockfile or `lazyvim.json`. `:Lazy update` inside anvim does update the shared plugins and lockfile, as it does in your main Neovim. The first launch installs the sidecar's packages with Bun.
+anvim brings its own Neovim config, with lazy.nvim and a small set of plugins. The first start installs them into `~/.local/share/anvim`, at the commits in the repo's `lazy-lock.json`. Then, in the background, it installs treesitter parsers, and with mason the language servers for Lua, TypeScript and JSON. anvim reads and writes nothing under your main Neovim's `~/.config/nvim` and `~/.local/share/nvim`, so the two never share a plugin or a file. Its state, undo history and logs are in `~/.local/state/anvim`. `:Lazy update` updates anvim's plugins and the repo's lockfile. The first launch also installs the sidecar's packages with Bun.
+
+Your own specs go in `~/.config/anvim/lua/plugins/*.lua`. They load after anvim's, as lazy.nvim specs, and lazy.nvim adds their plugins to the repo's lockfile. Without a colorscheme of your own, anvim uses tokyonight. To bring one:
+
+```lua
+-- ~/.config/anvim/lua/plugins/colorscheme.lua
+return {
+  {
+    "rose-pine/neovim",
+    name = "rose-pine",
+    lazy = false,
+    priority = 1000,
+    config = function()
+      vim.cmd.colorscheme("rose-pine")
+    end,
+  },
+}
+```
 
 ## Use
 
@@ -30,7 +50,7 @@ anvim -c ~/dev/project                          # go on with the latest session 
 anvim --resume ~/dev/project                    # pick a session to go on with
 ```
 
-The screen has three columns: your explorer, code, and Claude. The explorer is 24 columns wide. While it has focus, it widens over the code window to fit its names, and the code window stays where it is. anvim starts with the cursor in the prompt at the bottom right, in normal mode, so your first keys can move around. Press `i` to type. While your cursor is in the prompt, the code window follows Claude. It opens the files Claude reads, and edits stream in with the old text struck through. Move the cursor anywhere else to take control. The statusline then shows where Claude is.
+The screen has three columns: the explorer, code, and Claude. The explorer is 24 columns wide. While it has focus, it widens over the code window to fit its names, and the code window stays where it is. anvim starts with the cursor in the prompt at the bottom right, in normal mode, so your first keys can move around. Press `i` to type. While your cursor is in the prompt, the code window follows Claude. It opens the files Claude reads, and edits stream in with the old text struck through. Move the cursor anywhere else to take control. The statusline then shows where Claude is.
 
 File buffers are read-only. `:w` does nothing but say so, and format on save never runs. Claude makes every change, and buffers reload when files change on disk. Markdown and text files wrap, with no spell checking.
 
@@ -42,7 +62,32 @@ Only one window shows files, so anvim always knows which file you are looking at
 
 Claude can also use your editor. It points at code with `show_user`, which marks a range and puts a short note above it until your next prompt. It asks the language servers that run in anvim for diagnostics, definitions, references, hover text and symbols, so it greps less. These tools work in every permission mode, so they read only files inside the directory that anvim opened. `show_user` can point at any file, because its answer holds no file text.
 
-All of LazyVim's keys and your own work as usual. anvim adds these. `<leader>` is Space.
+The keys for reading sit where LazyVim puts them, so a LazyVim user finds them at once. Keys that edit, such as code actions, rename, comments and window splits, are left out. In the explorer, the keys that add, delete, rename, copy, move and paste files do nothing, and so does `Ctrl-C`, which would change the working directory. In the git logs, `Enter` goes to the commit's diff and never checks out. Git status and the diff picker stage with `Tab`, but cannot restore. `<leader>` is Space.
+
+| Key | Action |
+| --- | --- |
+| `Ctrl-H`, `Ctrl-J`, `Ctrl-K`, `Ctrl-L` | Go to the window on the left, below, above or on the right |
+| `Shift-H`, `Shift-L` | Previous and next buffer |
+| `Esc` | Clear the search highlight |
+| `j`, `k` | Move by screen line in wrapped text, by line with a count |
+| `<leader><space>`, `<leader>/`, `<leader>,` | Find files, grep, buffers |
+| `<leader>fr` | Recent files |
+| `<leader>e` | Go to the explorer |
+| `<leader>sw` | Grep the word under the cursor, or the selection |
+| `<leader>ss`, `<leader>sS` | Symbols of the file, of the workspace |
+| `<leader>sd`, `<leader>sD` | Diagnostics of the workspace, of the file |
+| `<leader>sh` | Help pages |
+| `<leader>gs`, `<leader>gd` | Git status, git diff by hunk |
+| `<leader>gl`, `<leader>gf`, `<leader>gb` | Git log, the file's history, the line's history |
+| `]h`, `[h`, `]H`, `[H` | Next, previous, last and first hunk |
+| `<leader>ghp`, `<leader>ghb` | Preview the hunk, blame the line |
+| `gd`, `gr`, `gI`, `gy`, `gD` | Definition, references, implementation, type definition, declaration, in a buffer with a language server |
+| `K` | Hover |
+| `]d`, `[d` | Next and previous diagnostic |
+| `]]`, `[[` | Next and previous reference to the word under the cursor, in a buffer with a language server |
+| `<leader>uw`, `<leader>ud` | Toggle wrap, toggle diagnostics |
+
+anvim adds these:
 
 | Key | Where | Action |
 | --- | --- | --- |
@@ -144,10 +189,10 @@ cd sidecar && bunx tsc --noEmit && bun test
 scripts/test
 scripts/test-stack
 scripts/test-ui
-~/.local/share/nvim/mason/bin/stylua --check . && selene .
+stylua --check . && selene .
 cd tools/screen && bunx tsc --noEmit
 ```
 
-`scripts/test` runs the Neovim specs in `tests/`. Its first run downloads the test plugins into `.tests/`, and later runs work offline. `scripts/test-stack` boots the real `init.lua` with your LazyVim config in a child Neovim, with temporary state dirs, and checks that your main Neovim stays unchanged. `scripts/test-ui` embeds anvim with a UI attached and checks the frames it draws: splits that fold back, the cursor after a close, mouse drags, resizes, permission prompts typed at a user's pace, and a selection pinned while Claude reads elsewhere. Run `:checkhealth anvim` when something does not start.
+Each test script first runs `scripts/test-deps`. It installs anvim's plugins at the lockfile's commits, and mason's lua-language-server, into `.tests/anvim`. Its first run needs the network, and later runs work offline. `scripts/test` runs the Neovim specs in `tests/`, with test plugins of its own in `.tests/`. `scripts/test-stack` boots the real `init.lua` in a child Neovim, with the plugins from `.tests/anvim` and temporary state dirs. It checks that anvim installs and writes nothing there, nor in your main Neovim's dirs. `scripts/test-ui` embeds anvim with a UI attached and checks the frames it draws: splits that fold back, the cursor after a close, mouse drags, resizes, permission prompts typed at a user's pace, and a selection pinned while Claude reads elsewhere. Run `:checkhealth anvim` when something does not start.
 
-`tools/screen/screen.ts` drives anvim headless and saves text, highlight and PNG snapshots of the real screen. See the header of that file for its steps. It shares its UI client, `tools/screen/ui.ts`, with the UI tests. The log is at `~/.local/state/anvim/anvim.log`. A screen tool run keeps its own in a temp dir, and prints its path.
+`tools/screen/screen.ts` drives anvim headless and saves text, highlight and PNG snapshots of the real screen. It boots the plugins in `.tests/anvim`, as the UI tests do. See the header of that file for its steps. It shares its UI client, `tools/screen/ui.ts`, with the UI tests. The log is at `~/.local/state/anvim/anvim.log`. A screen tool run keeps its own in a temp dir, and prints its path.

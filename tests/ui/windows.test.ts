@@ -32,7 +32,7 @@ const codeWin = () => anvim!.ui.exec_lua<number>(`return require("anvim.layout")
 test("closing the code window with the explorer open reopens it, with the widths and the cursor", async () => {
   anvim = await start();
   const { ui } = anvim;
-  for (const keys of [":close<CR>", "<C-w>c", "<Space>wd"]) {
+  for (const keys of [":close<CR>", "<C-w>c"]) {
     await anvim.toCode();
     await ui.waitFor("local api = vim.api");
     const tree = await anvim.box("tree");
@@ -58,7 +58,7 @@ test("closing the code window with the explorer open reopens it, with the widths
 test("no frame shows the tree over the closed code window's columns", async () => {
   anvim = await start();
   const { ui } = anvim;
-  for (const keys of [":close<CR>", "<C-w>c", "<Space>wd"]) {
+  for (const keys of [":close<CR>", "<C-w>c"]) {
     await anvim.toCode();
     await ui.waitFor("local api = vim.api");
     const tree = await anvim.box("tree");
@@ -91,7 +91,7 @@ test("splits in the code window fold back before a frame shows them, at the same
     return _G.anvim_wins_made > ... and n == 1 and vim.api.nvim_get_current_win() == code
       and { line = vim.api.nvim_win_get_cursor(code)[1], top = vim.fn.line("w0", code) }
   `;
-  for (const keys of ["<C-w>s", "<C-w>v", "<Space>-", "<Space>|"]) {
+  for (const keys of ["<C-w>s", "<C-w>v", ":split<CR>", ":vsplit<CR>"]) {
     await anvim.toCode("matchparen.lua", { lnum: 20, topline: 10 });
     const box = await anvim.box("code");
     const made = await ui.exec_lua<number>(`return _G.anvim_wins_made`);
@@ -149,7 +149,6 @@ test("a terminal resize with the prompt focused keeps the layout", async () => {
   const { ui } = anvim;
   await anvim.insert();
   const tree = await anvim.box("tree");
-  const winwidth = await ui.exec_lua<number>(`return vim.o.winwidth`);
   for (const [cols, rows] of [
     [160, 40],
     [120, 30],
@@ -159,9 +158,8 @@ test("a terminal resize with the prompt focused keeps the layout", async () => {
     const size = `${cols}x${rows}`;
     await ui.resize(cols, rows);
     await ui.waitFor(() => ui.grid.length === rows && ui.grid[0]!.length === cols);
-    // The Claude column keeps its share. anvim runs LazyVim's equalize from the
-    // code window, and Neovim keeps 'winwidth' columns for the current window.
-    const claude = Math.min(Math.floor(cols * 0.36), cols - tree.width - 2 - winwidth);
+    // The Claude column keeps its share, and the code window takes the rest.
+    const claude = Math.floor(cols * 0.36);
     const want = {
       prompts: 1,
       cmdheight: 0,

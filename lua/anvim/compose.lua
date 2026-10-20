@@ -100,10 +100,10 @@ function M.close()
 end
 
 -- A float copies the options of the window it opens from, here the prompt.
--- So it takes the numbers and columns of the code window, which has the
--- user's own, and wraps prose. As in the prompt, a reference ends in a space,
--- which 'list' would mark. With 'winfixbuf', <C-o> and :edit cannot put
--- another buffer in the window.
+-- So it takes the numbers and columns of the code window instead, and wraps
+-- prose. As in the prompt, a reference ends in a space, which 'list' would
+-- mark. With 'winfixbuf', <C-o> and :edit cannot put another buffer in the
+-- window.
 local function window_options()
   local wo = {
     winbar = "",
@@ -158,7 +158,6 @@ function M.open()
   api.nvim_buf_set_name(buf, NAME)
   api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modified = false
-  vim.b[buf].minipairs_disable = true
   api.nvim_create_autocmd("BufWriteCmd", {
     buffer = buf,
     callback = function()

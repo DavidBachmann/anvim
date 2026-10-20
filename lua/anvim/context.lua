@@ -17,13 +17,13 @@ local MAX_TEXT = 2048
 -- A block gets one highlight per line, for this many lines.
 local MAX_BLOCK = 500
 -- After these keys the cursor follows the view, but the user did not move it.
--- <C-e> is left out: it opens the harpoon menu.
 local scroll_keys = {}
 for _, key in ipairs({
   "<ScrollWheelUp>",
   "<ScrollWheelDown>",
   "<ScrollWheelLeft>",
   "<ScrollWheelRight>",
+  "<C-e>",
   "<C-y>",
   "<C-d>",
   "<C-u>",

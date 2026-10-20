@@ -54,7 +54,7 @@ return {
 
   -- The explorer's list is a float, and from a float <C-w>l goes to the
   -- previous window, which can be the prompt. To its right is the code window.
-  -- LazyVim's <C-l> remaps to <C-w>l but does not reach this key, so map it too.
+  -- The global <C-l> remaps to <C-w>l but does not reach this key, so map it too.
   -- `@` puts a reference to the files under the cursor or selected in the prompt.
   {
     "folke/snacks.nvim",
@@ -63,12 +63,23 @@ return {
       picker = {
         sources = {
           explorer = {
-            -- Narrow, to leave the columns to the code. With focus, the tree
-            -- widens over the code window to fit its rows.
+            -- snacks takes a layout that has a [1] as it is, and merges no
+            -- preset into it. So this one has the list only, without the input
+            -- window of the sidebar preset. Narrow, to leave the columns to the
+            -- code. With focus, the tree widens over the code window to fit
+            -- its rows.
             layout = {
+              preset = "sidebar",
+              preview = false,
               layout = {
+                backdrop = false,
                 width = require("anvim.config").options.layout.tree.width,
                 min_width = require("anvim.config").options.layout.tree.width,
+                height = 0,
+                position = "left",
+                border = "none",
+                box = "vertical",
+                { win = "list", border = "none" },
               },
             },
             -- The agents' dots on the files they write to.
@@ -88,44 +99,32 @@ return {
                   ["<c-w>l"] = to_code,
                   ["<c-l>"] = to_code,
                   ["@"] = { "anvim_reference", desc = "Point Claude at the file" },
+                  -- Claude changes the files. These keys add, delete, rename,
+                  -- copy, move and paste them.
+                  a = false,
+                  d = false,
+                  r = false,
+                  c = false,
+                  m = false,
+                  p = false,
+                  -- <c-c> changes the cwd, and anvim's relative paths need it
+                  -- to stay.
+                  ["<c-c>"] = false,
                 },
               },
             },
           },
+          -- The logs confirm with git_checkout, which checks out the commit,
+          -- or the file as it was there, without a prompt. Enter goes to the
+          -- commit in the preview instead.
+          git_log = { confirm = "focus_preview" },
+          git_log_file = { confirm = "focus_preview" },
+          git_log_line = { confirm = "focus_preview" },
+          -- <c-r> restores files and hunks. <Tab> stays: it only stages.
+          git_status = { win = { input = { keys = { ["<c-r>"] = false } } } },
+          git_diff = { win = { input = { keys = { ["<c-r>"] = false } } } },
         },
       },
     },
-  },
-
-  -- hbac closes old buffers when new ones open. It must not close one that
-  -- Claude is streaming into.
-  {
-    "axkirillov/hbac.nvim",
-    optional = true,
-    init = function()
-      local group = vim.api.nvim_create_augroup("anvim.hbac", {})
-      vim.api.nvim_create_autocmd("User", {
-        group = group,
-        pattern = "AnvimPreviewStart",
-        callback = function(ev)
-          local buf = ev.data.buf
-          if package.loaded["hbac"] and not require("hbac.state").is_pinned(buf) then
-            require("hbac.state").set_pin(buf, true)
-            vim.b[buf].anvim_hbac_pin = true
-          end
-        end,
-      })
-      vim.api.nvim_create_autocmd("User", {
-        group = group,
-        pattern = "AnvimPreviewEnd",
-        callback = function(ev)
-          local buf = ev.data.buf
-          if vim.b[buf].anvim_hbac_pin then
-            vim.b[buf].anvim_hbac_pin = nil
-            require("hbac.state").set_pin(buf, false)
-          end
-        end,
-      })
-    end,
   },
 }

@@ -28,7 +28,8 @@ const codeRows = (lines: string[], box: Box) => {
 };
 
 // The new text that a frame shows under the old line, without the cursor.
-// LazyVim's 'listchars' show a space before the cursor as a trailing "-".
+// anvim sets 'list', and the default 'listchars' show a space before the
+// cursor as a trailing "-".
 const typed = (lines: string[], box: Box) => {
   const rows = codeRows(lines, box);
   const at = rows.indexOf(OLD[2]!);

@@ -87,11 +87,12 @@ test("Claude's markdown renders, while tool lines keep their markers", async () 
   expect(r.some((line) => line.includes("```") || line.includes("**Line"))).toBe(false);
   const col = box.col + [...r[count]!].indexOf("L");
   expect(hlNames(box.row + count, col)).toContain("@markup.strong");
-  // The code block has Lua colors.
+  // The code block has Lua colors. A colorscheme can link the capture to Keyword.
   const code = r.findIndex((line) => line.trim() === "function M.trim(s)");
   expect(code).toBeGreaterThan(-1);
   const fnCol = box.col + [...r[code]!].indexOf("f");
-  expect(hlNames(box.row + code, fnCol)).toContain("Keyword");
+  const fnNames = hlNames(box.row + code, fnCol);
+  expect(fnNames.some((name) => name === "Keyword" || name.startsWith("@keyword")), fnNames.join("+")).toBe(true);
   // A tool line and its result are not markdown.
   expect(r).toContain("  ⎿  a.lua:3: `x` **y** __init__");
   const tool = r.findIndex((line) => line.startsWith("⏺ Bash(grep"));

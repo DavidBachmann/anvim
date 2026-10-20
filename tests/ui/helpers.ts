@@ -1,5 +1,5 @@
-// Starts anvim for one test: the real init.lua with the user's LazyVim, on a
-// temp copy of the fixture project, with temp Neovim dirs and a replay sidecar.
+// Starts anvim for one test: the real init.lua with the plugins in .tests/anvim,
+// on a temp copy of the fixture project, with temp Neovim dirs and a replay sidecar.
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";

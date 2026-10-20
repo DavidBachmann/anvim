@@ -151,9 +151,10 @@ describe("context", function()
   it("keeps the pin until the cursor moves, and not for scrolling or leaving the window", function()
     local buf = in_code()
     feed("2GVj<Esc>")
-    for _, key in ipairs({ "<C-d>", "<C-u>", "<C-f>", "<C-b>", "<C-y>" }) do
+    -- A new cursor line after each key, so that every key must count as a scroll.
+    for i, key in ipairs({ "<C-d>", "<C-u>", "<C-f>", "<C-b>", "<C-y>", "<C-e>" }) do
       feed(key)
-      api.nvim_win_set_cursor(0, { 6, 0 })
+      api.nvim_win_set_cursor(0, { 5 + i, 0 })
       api.nvim_exec_autocmds("CursorMoved", {})
       assert(context.selection(), key .. " dropped the pin")
     end

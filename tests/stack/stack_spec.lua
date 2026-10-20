@@ -1,13 +1,15 @@
 ---@module "luassert"
 
--- Boots the real init.lua with the user's LazyVim config in a child Neovim,
--- as bin/anvim does. Its state, cache, config and data dirs are temporary.
--- Plugins, parsers and tools come from the main Neovim and must stay unchanged.
+-- Boots the real init.lua in a child Neovim, as bin/anvim does. Its state,
+-- cache, config and data dirs are temporary. Its plugins and mason packages
+-- come from .tests/anvim, which scripts/test-deps fills, and must stay
+-- unchanged. So must the main Neovim's dirs.
 local helpers = require("helpers")
 
 local home = assert(vim.env.HOME)
 local nvim_config = home .. "/.config/nvim"
 local nvim_data = home .. "/.local/share/nvim"
+local install = helpers.root .. "/.tests/anvim"
 local xdg = helpers.tmp .. "/xdg"
 
 ---@type integer?
@@ -29,9 +31,20 @@ local function shared_paths()
     nvim_data .. "/mason/bin",
     nvim_data .. "/mason/packages",
     nvim_data .. "/mason/registries/github/mason-org/mason-registry/registry.json",
+    helpers.root .. "/lazy-lock.json",
+    install .. "/lazy",
+    install .. "/site",
+    install .. "/site/parser",
+    install .. "/mason",
+    install .. "/mason/bin",
+    install .. "/mason/packages",
   }
-  for name in vim.fs.dir(nvim_data .. "/lazy") do
-    paths[#paths + 1] = nvim_data .. "/lazy/" .. name
+  for _, dir in ipairs({ nvim_data .. "/lazy", install .. "/lazy" }) do
+    if vim.uv.fs_stat(dir) then
+      for name in vim.fs.dir(dir) do
+        paths[#paths + 1] = dir .. "/" .. name
+      end
+    end
   end
   return paths
 end
@@ -75,6 +88,8 @@ local function start()
   for _, name in ipairs({ "config", "data", "state", "cache" }) do
     env[("XDG_%s_HOME"):format(name:upper())] = xdg .. "/" .. name
   end
+  env.ANVIM_INSTALL_DIR = install
+  env.ANVIM_NO_INSTALL = "1"
   env.ANVIM_REPLAY = helpers.recording
   env.ANVIM_REPLAY_SPEED = "50"
   env.ANVIM_MODEL = "haiku"
@@ -134,7 +149,7 @@ local function statusline()
 end
 
 -- Types keys in the child. Its main loop runs them after this call returns,
--- through which-key and LazyVim's maps, as for a user.
+-- through which-key and anvim's maps, as for a user.
 local function keys(k)
   lua([[vim.api.nvim_feedkeys(vim.keycode(...), "t", false)]], k)
 end
@@ -210,12 +225,13 @@ local function assert_layout(what)
   assert.are.same(width, out.code.width, what .. ": the code window takes the rest of the width")
 end
 
-describe("LazyVim stack", function()
-  it("opens the layout in the user's LazyVim", function()
+describe("stack", function()
+  it("opens the layout without LazyVim or the main Neovim's dirs", function()
     start()
     local info = lua([[
       local layout = require("anvim.layout")
       local ret = { tree = false, laststatus = vim.o.laststatus, lazyvim = package.loaded["lazyvim.config"] ~= nil }
+      ret.rtp = vim.opt.rtp:get()
       for role, win in pairs(layout.wins) do
         local buf = vim.api.nvim_win_get_buf(win)
         ret[role] = { ft = vim.bo[buf].filetype, spell = vim.wo[win].spell, ts = vim.treesitter.highlighter.active[buf] ~= nil }
@@ -225,7 +241,11 @@ describe("LazyVim stack", function()
       end
       return ret
     ]])
-    assert(info.lazyvim, "LazyVim is not loaded")
+    assert(not info.lazyvim, "LazyVim is loaded")
+    for _, dir in ipairs(info.rtp) do
+      assert(not vim.startswith(dir, nvim_config), dir)
+      assert(not vim.startswith(dir, nvim_data), dir)
+    end
     assert.are.same(3, info.laststatus)
     assert(info.tree, "the explorer is not open")
     assert.are.same({ ft = "anvim_transcript", spell = false, ts = true }, info.transcript)
@@ -233,19 +253,9 @@ describe("LazyVim stack", function()
     assert(info.code, "code window missing")
   end)
 
-  it("reads the user's extras from a copy of lazyvim.json, and passes ANVIM_MODEL on", function()
+  it("passes ANVIM_MODEL on", function()
     start()
-    local out = lua([[
-      return {
-        json = vim.g.lazyvim_json,
-        extras = require("lazyvim.config").json.data.extras,
-        model = require("anvim.config").options.model,
-      }
-    ]])
-    assert.are.same(xdg .. "/state/anvim/lazyvim.json", out.json)
-    local user = vim.json.decode(table.concat(vim.fn.readfile(nvim_config .. "/lazyvim.json"), "\n"))
-    assert.are.same(user.extras, out.extras)
-    assert.are.same("haiku", out.model)
+    assert.are.same("haiku", lua([[return require("anvim.config").options.model]]))
   end)
 
   it("starts without errors", function()
@@ -286,9 +296,10 @@ describe("LazyVim stack", function()
     assert.are.same({ helpers.tmp .. "/matchparen.lua" }, out.listed, "only files get a bufferline tab")
   end)
 
-  it("keeps lua-language-server's logs out of the shared mason dir", function()
+  it("starts mason's lua-language-server, with its logs out of the mason package", function()
     start()
     wait(5000, [[return #vim.lsp.get_clients({ name = "lua_ls" }) > 0]], "lua_ls did not start")
+    assert.are.same(install .. "/mason/bin/lua-language-server", lua([[return vim.fn.exepath("lua-language-server")]]))
     local cmd = lua([[return vim.lsp.get_clients({ name = "lua_ls" })[1].config.cmd]])
     assert(vim.tbl_contains(cmd, "--logpath=" .. xdg .. "/state/anvim/lua_ls"), vim.inspect(cmd))
     assert(vim.tbl_contains(cmd, "--metapath=" .. xdg .. "/cache/anvim/lua_ls/meta"), vim.inspect(cmd))
@@ -300,7 +311,7 @@ describe("LazyVim stack", function()
     )
   end)
 
-  it("answers the LSP editor tools with the lua_ls that LazyVim's lspconfig starts", function()
+  it("answers the LSP editor tools with the lua_ls that anvim's lspconfig and mason start", function()
     start()
     wait(5000, [[return #vim.lsp.get_clients({ name = "lua_ls" }) > 0]], "lua_ls did not start")
     lua([[
@@ -363,18 +374,37 @@ describe("LazyVim stack", function()
     end
   end)
 
-  it("uses the main Neovim's parsers and tools", function()
+  it("takes plugins and mason packages from the install dir, and installs parsers there", function()
     start()
     local out = lua([[
+      local plugins = {}
+      for _, plugin in ipairs(require("lazy").plugins()) do
+        plugins[plugin.name] = plugin.dir
+      end
       return {
-        parser = vim.api.nvim_get_runtime_file("parser/tsx.so", false)[1],
+        root = require("lazy.core.config").options.root,
+        plugins = plugins,
+        parser_dir = require("nvim-treesitter.config").get_install_dir("parser"),
+        parsers = vim.api.nvim_get_runtime_file("parser/*.so", true),
+        rtp = vim.opt.rtp:get(),
         ts = vim.treesitter.highlighter.active[vim.api.nvim_win_get_buf(require("anvim.layout").wins.code)] ~= nil,
         mason = package.loaded["mason"] and require("mason.settings").current.install_root_dir,
       }
     ]])
-    assert.are.same(nvim_data .. "/site/parser/tsx.so", out.parser)
+    assert.are.same(install .. "/lazy", out.root)
+    for name, dir in pairs(out.plugins) do
+      if name ~= "anvim" then
+        assert.are.same(install .. "/lazy/" .. name, dir)
+      end
+    end
+    assert.are.same(install .. "/site/parser", out.parser_dir)
+    assert(vim.tbl_contains(out.rtp, install .. "/site"), "the install dir's parsers are not on the runtimepath")
+    -- Neovim's own parsers, as test-deps installs none.
+    for _, parser in ipairs(out.parsers) do
+      assert(not vim.startswith(parser, nvim_data), parser)
+    end
     assert(out.ts, "no treesitter highlighting in the code window")
-    assert.are.same(nvim_data .. "/mason", out.mason)
+    assert.are.same(install .. "/mason", out.mason)
   end)
 
   it("shows the follow status in lualine from any window", function()
@@ -601,7 +631,7 @@ describe("LazyVim stack", function()
     assert.are.same({ ft = "markdown", wrap = true, code = false, input = false, transcript = false }, out)
   end)
 
-  it("pins a buffer in hbac and turns its diagnostics off while a preview runs", function()
+  it("turns a buffer's diagnostics off while a preview runs", function()
     start()
     local file = helpers.tmp .. "/pinned.lua"
     vim.fn.writefile({ "local a = 1", "return a" }, file)
@@ -613,7 +643,7 @@ describe("LazyVim stack", function()
         sidecar.dispatch({ type = "tool_field", id = "p1", name = "Edit", key = key, phase = phase, value = x, text = x })
       end
       local function probe(buf)
-        return { pinned = require("hbac.state").is_pinned(buf), diagnostics = vim.diagnostic.is_enabled({ bufnr = buf }) }
+        return { diagnostics = vim.diagnostic.is_enabled({ bufnr = buf }) }
       end
       local send = sidecar.send
       sidecar.send = function() end
@@ -627,8 +657,8 @@ describe("LazyVim stack", function()
     ]],
       file
     )
-    assert.are.same({ pinned = true, diagnostics = false }, out.during)
-    assert.are.same({ pinned = false, diagnostics = true }, out.after)
+    assert.are.same({ diagnostics = false }, out.during)
+    assert.are.same({ diagnostics = true }, out.after)
   end)
 
   it("sends with <CR> when the menu is closed, and accepts an item when it is open", function()
@@ -796,8 +826,15 @@ describe("LazyVim stack", function()
     )
     wait_where({ win = "input", mode = "n" }, "a click on the prompt from visual mode")
     assert.are.same({ 5, 6, "char" }, probe().sel)
-    lua([[require("anvim.context").clear()]])
+    -- A typed <Esc> in the code window unpins, also through anvim's <Esc> map.
+    keys("<C-h>")
+    wait_where({ win = "code", mode = "n" }, "<C-h> from the prompt")
+    vim.wait(200)
+    assert.are.same({ 5, 6, "char" }, probe().sel, "going back to the code window dropped the pin")
+    assert.are.same("Escape and Clear hlsearch", lua([[return vim.fn.maparg("<Esc>", "n", false, true).desc]]))
     keys("<Esc>")
+    wait(2000, [[return require("anvim.context").selection() == nil]], "<Esc> kept the pin")
+    lua([[require("anvim.layout").focus_input({ insert = false })]])
   end)
 
   it("pauses follow mode while a selection is pinned, and follows again after the prompt", function()
@@ -939,8 +976,8 @@ describe("LazyVim stack", function()
     wait_where({ win = "input", mode = "i" }, "visual c")
     assert.are.same("@matchparen.lua#L3-4 ", prompt())
     to_code()
-    -- `c` starts the operator at once. Neither mini.surround's `cs` nor
-    -- which-key makes it wait for more keys.
+    -- `c` starts the operator at once. which-key does not make it wait for
+    -- more keys.
     keys("10Gc")
     vim.wait(100)
     assert.are.same("no", vim.rpcrequest(chan, "nvim_get_mode").mode, "c waits for more keys")
@@ -1149,6 +1186,120 @@ describe("LazyVim stack", function()
     end
   end)
 
+  it("goes to the explorer with <leader>e, which never closes it, and the explorer changes no files", function()
+    start()
+    lua([[
+      require("anvim.layout").focus_input()
+      vim.cmd.stopinsert()
+    ]])
+    for _, from in ipairs({ "the prompt", "the explorer" }) do
+      keys("<leader>e")
+      wait_where({ win = "snacks_picker_list", mode = "n" }, "<leader>e from " .. from)
+      vim.wait(200)
+      assert(lua([[return Snacks.picker.get({ source = "explorer" })[1] ~= nil]]), "<leader>e closed the explorer")
+    end
+    local maps = lua([[
+      local maps = {}
+      for _, key in ipairs({ "a", "d", "r", "c", "m", "p", "<C-c>" }) do
+        maps[key] = vim.fn.maparg(key, "n")
+      end
+      return maps
+    ]])
+    assert.are.same({ a = "", d = "", r = "", c = "", m = "", p = "", ["<C-c>"] = "" }, maps)
+    keys("<C-l>")
+    wait_where({ win = "code", mode = "n" }, "<C-l> from the tree")
+    lua([[require("anvim.layout").focus_input({ insert = false })]])
+  end)
+
+  it("names the which-key groups of the reading keys, each with an icon", function()
+    start()
+    local groups = lua([[
+      local icons = require("which-key.icons")
+      local ret = {}
+      for _, m in ipairs(require("which-key.config").mappings) do
+        if m.group and m.mode == "n" and m.lhs:find("^<leader>") then
+          local icon = m.icon and icons.get(m.icon) or icons.get({ desc = m.desc })
+          ret[m.lhs] = { m.desc, icon ~= nil }
+        end
+      end
+      return ret
+    ]])
+    assert.are.same({
+      ["<leader>f"] = { "file/find", true },
+      ["<leader>g"] = { "git", true },
+      ["<leader>gh"] = { "hunks", true },
+      ["<leader>k"] = { "claude", true },
+      ["<leader>s"] = { "search", true },
+      ["<leader>u"] = { "ui", true },
+    }, groups)
+  end)
+
+  it("maps the LSP keys in buffers with a server only, gr without a wait, and no LSP key that edits", function()
+    start()
+    local text = helpers.tmp .. "/plain.txt"
+    vim.fn.writefile({ "No language server reads this." }, text)
+    wait(5000, [[return #vim.lsp.get_clients({ name = "lua_ls" }) > 0]], "lua_ls did not start")
+    local out = lua(
+      [[
+      local function maps(buf)
+        return vim.api.nvim_buf_call(buf, function()
+          local ret = { x = vim.fn.maparg("gra", "x") }
+          for _, key in ipairs({ "grn", "gra", "grx", "grr", "gri", "grt" }) do
+            ret[key] = vim.fn.maparg(key, "n")
+          end
+          for _, key in ipairs({ "gd", "gr", "gD" }) do
+            local map = vim.fn.maparg(key, "n", false, true)
+            ret[key] = map.buffer == 1 and { map.desc, map.nowait } or false
+          end
+          return ret
+        end)
+      end
+      local with = next(vim.lsp.get_clients({ name = "lua_ls" })[1].attached_buffers)
+      local without = vim.fn.bufadd(...)
+      vim.fn.bufload(without)
+      local ret = { with = maps(with), without = maps(without), clients = #vim.lsp.get_clients({ bufnr = without }) }
+      vim.api.nvim_buf_delete(without, { force = true })
+      return ret
+    ]],
+      text
+    )
+    local none = { grn = "", gra = "", grx = "", grr = "", gri = "", grt = "", x = "" }
+    assert.are.same(0, out.clients, "a server attached to the text file")
+    assert.are.same(
+      vim.tbl_extend("force", none, {
+        gd = { "Goto Definition", 0 },
+        gr = { "References", 1 },
+        gD = { "Goto Declaration", 0 },
+      }),
+      out.with
+    )
+    assert.are.same(vim.tbl_extend("force", none, { gd = false, gr = false, gD = false }), out.without)
+  end)
+
+  it("keeps the git pickers read-only: Enter checks nothing out, and no key restores", function()
+    start()
+    local out = lua([[
+      local get = Snacks.picker.config.get
+      local ret = {}
+      for _, source in ipairs({ "git_log", "git_log_file", "git_log_line" }) do
+        ret[source] = get({ source = source }).confirm
+      end
+      for _, source in ipairs({ "git_status", "git_diff" }) do
+        local keys = get({ source = source }).win.input.keys
+        -- snacks writes the keys in this form.
+        ret[source] = { restore = keys["<C-R>"], stage = keys["<Tab>"] and keys["<Tab>"][1] }
+      end
+      return ret
+    ]])
+    assert.are.same({
+      git_log = "focus_preview",
+      git_log_file = "focus_preview",
+      git_log_line = "focus_preview",
+      git_status = { restore = false, stage = "git_stage" },
+      git_diff = { restore = false, stage = "git_stage" },
+    }, out)
+  end)
+
   it(
     "resumes typing where it stopped with a in a file buffer, and a click on the prompt moves the cursor there",
     function()
@@ -1186,9 +1337,24 @@ describe("LazyVim stack", function()
     end
   )
 
-  it("folds splits from window keys, LazyVim keys and pickers back into the code window", function()
+  it("folds splits from window keys, commands and pickers back into the code window", function()
     start()
     local file = helpers.tmp .. "/matchparen.lua"
+    -- Keys fed from an RPC request can run after the next request, so a check
+    -- could see the one code window from before the split. Each check first
+    -- waits for a new window.
+    lua([[
+      _G.anvim_wins_made = 0
+      vim.api.nvim_create_autocmd("WinNew", {
+        group = vim.api.nvim_create_augroup("anvim.test.wins_made", { clear = true }),
+        callback = function()
+          _G.anvim_wins_made = _G.anvim_wins_made + 1
+        end,
+      })
+    ]])
+    local function made()
+      return lua([[return _G.anvim_wins_made]])
+    end
     local function in_code(path)
       lua(
         [[
@@ -1200,7 +1366,7 @@ describe("LazyVim stack", function()
         path
       )
     end
-    local function assert_folded(what, line)
+    local function assert_folded(what, wins_made, line)
       local out
       local ok = vim.wait(3000, function()
         out = lua([[
@@ -1211,23 +1377,25 @@ describe("LazyVim stack", function()
             end
           end
           return {
+            made = _G.anvim_wins_made,
             count = count,
             current = vim.api.nvim_get_current_win() == code,
             name = vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(code)),
             line = vim.api.nvim_win_get_cursor(code)[1],
           }
         ]])
-        return out.count == 1 and out.current and out.name == file
+        return out.made > wins_made and out.count == 1 and out.current and out.name == file
       end, 20)
       assert(ok, what .. ": " .. vim.inspect(out))
       if line then
         assert.are.same(line, out.line, what)
       end
     end
-    for _, key in ipairs({ "<C-w>v", "<C-w>s", "<leader>-", "<leader>|", ":vsplit<CR>" }) do
+    for _, key in ipairs({ "<C-w>v", "<C-w>s", ":vsplit<CR>", ":split<CR>" }) do
       in_code(file)
+      local wins_made = made()
       keys(key)
-      assert_folded(key, 20)
+      assert_folded(key, wins_made, 20)
     end
     in_code(helpers.tmp .. "/session.jsonl")
     lua([[Snacks.picker.files()]])
@@ -1249,8 +1417,9 @@ describe("LazyVim stack", function()
       ]],
       "the picker did not find the file"
     )
+    local wins_made = made()
     keys("<C-v>")
-    assert_folded("the picker's vsplit")
+    assert_folded("the picker's vsplit", wins_made)
     local notes = lua([[
       local notes = {}
       for _, note in ipairs(Snacks.notifier.get_history()) do
@@ -1354,7 +1523,7 @@ describe("LazyVim stack", function()
 
   it("reopens a closed code window between the tree and the Claude column", function()
     start()
-    for _, key in ipairs({ ":close<CR>", "<C-w>c", "<leader>wd" }) do
+    for _, key in ipairs({ ":close<CR>", "<C-w>c" }) do
       lua(
         [[
         vim.cmd.stopinsert()
@@ -1708,7 +1877,7 @@ describe("LazyVim stack", function()
     ]])
   end)
 
-  it(":q in the prompt quits anvim with two tabs, cleanly, and leaves the main Neovim untouched", function()
+  it(":q in the prompt quits with two tabs, cleanly, and leaves the install dirs untouched", function()
     start()
     lua([[require("anvim.layout").focus_input()]])
     keys("<Esc>:tabnew<CR>")
@@ -1728,8 +1897,8 @@ describe("LazyVim stack", function()
       assert(not line:find("failed", 1, true), table.concat(log, "\n"))
     end
     assert.are.same(before, mtimes())
-    for _, dir in ipairs({ "lazy", "mason", "site/parser" }) do
-      assert(not vim.uv.fs_stat(xdg .. "/data/anvim/" .. dir), "anvim installed into its own " .. dir)
+    for _, dir in ipairs({ "lazy", "mason", "site" }) do
+      assert(not vim.uv.fs_stat(xdg .. "/data/anvim/" .. dir), "anvim installed into the data dir: " .. dir)
     end
   end)
 end)

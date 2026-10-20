@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 
 cd "$(dirname "$0")/.." || exit 1
+scripts/test-deps || exit 1
 nvim -l tests/minit.lua --minitest "$@"
