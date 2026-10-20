@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Updates anvim's plugins in the install dir to their newest commits, and
+# writes the new pins to the repo's lazy-lock.json. Plugin names limit the
+# update to those plugins. It reads no personal specs, so their plugins never
+# reach the repo's lockfile. The next start of bin/anvim syncs the install
+# dir's own lockfile.
+#
+# Usage: scripts/update-plugins [plugin...]   e.g. scripts/update-plugins snacks.nvim
+
+cd "$(dirname "$0")/.." || exit 1
+names=
+for name in "$@"; do
+  case $name in
+    '' | *[!A-Za-z0-9._-]*)
+      echo "update-plugins: $name is not a plugin name" >&2
+      exit 2
+      ;;
+  esac
+  names="$names'$name', "
+done
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+# lazy.nvim rewrites the lockfile after each of its steps, also when a step
+# fails.
+cp lazy-lock.json "$tmp/lazy-lock.json" || exit 1
+# The sync first brings the plugins to the repo's pins, so that the update
+# starts from them.
+env -u NVIM -u NVIM_LISTEN_ADDRESS \
+  NVIM_APPNAME=anvim ANVIM_NO_INSTALL=1 ANVIM_LOCKFILE="$PWD/lazy-lock.json" XDG_CONFIG_HOME="$tmp/config" \
+  nvim --headless -i NONE --cmd 'let g:anvim_sync = 1' -u init.lua \
+  -c "lua local i = require('anvim.base.install') i.run(function() i.sync() i.update({ $names }) end)" \
+  -c 'qa' </dev/null
+status=$?
+if [ $status -ne 0 ]; then
+  cp "$tmp/lazy-lock.json" lazy-lock.json
+  echo "update-plugins: the update failed, so lazy-lock.json is as it was" >&2
+fi
+git --no-pager diff --stat -- lazy-lock.json
+exit $status

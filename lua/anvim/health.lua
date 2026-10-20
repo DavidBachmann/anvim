@@ -1,4 +1,6 @@
+local base = require("anvim.base")
 local config = require("anvim.config")
+local install = require("anvim.base.install")
 local sidecar = require("anvim.sidecar")
 
 local M = {}
@@ -15,6 +17,21 @@ local function version(cmd)
   end
 end
 
+local run_install = "Run `scripts/install` in " .. install.root
+
+---@param tools { [1]: string, [2]: string, error?: boolean }[] Each tool, what anvim needs it for, and whether it must exist.
+local function executables(tools)
+  for _, tool in ipairs(tools) do
+    local path = vim.fn.exepath(tool[1])
+    if path ~= "" then
+      health.ok(("`%s`: %s"):format(tool[1], path))
+    else
+      local report = tool.error and health.error or health.warn
+      report(("`%s` is not on PATH. %s"):format(tool[1], tool[2]))
+    end
+  end
+end
+
 function M.check()
   health.start("anvim")
 
@@ -24,6 +41,36 @@ function M.check()
     health.error("anvim needs Neovim 0.12 or newer")
   end
 
+  if vim.env.NVIM_APPNAME == "anvim" then
+    health.ok("NVIM_APPNAME is anvim")
+  else
+    health.error(
+      "NVIM_APPNAME is not anvim, so stdpath() names another Neovim's dirs",
+      { "Start anvim with bin/anvim" }
+    )
+  end
+  health.info("Install dir: " .. base.dir)
+
+  local ok, check = pcall(function()
+    return vim
+      .system({ install.root .. "/scripts/install", "--check" }, { env = { ANVIM_INSTALL_DIR = base.dir } })
+      :wait(5000)
+  end)
+  if ok and check.code == 0 then
+    health.ok("The install matches the repo's lockfiles and its lists of mason packages and parsers")
+  else
+    health.warn("The install does not match the repo's lockfiles, or its lists of mason packages and parsers", {
+      run_install,
+    })
+  end
+
+  local specs = vim.fn.stdpath("config") .. "/lua/plugins"
+  if vim.uv.fs_stat(specs) then
+    health.info("Personal specs: " .. specs)
+  else
+    health.info("No personal specs in " .. specs)
+  end
+
   local bun = config.options.bun
   if vim.fn.executable(bun) == 1 then
     health.ok(("`%s` %s"):format(bun, version({ bun, "--version" }) or "(unknown version)"))
@@ -31,11 +78,13 @@ function M.check()
     health.error(("`%s` is not on PATH"):format(bun), { "Install Bun from https://bun.sh" })
   end
 
-  local install = ("Run `bun install` in %s"):format(sidecar.dir)
   if vim.uv.fs_stat(sidecar.dir .. "/node_modules") then
     health.ok("Sidecar dependencies are installed")
   else
-    health.warn("Sidecar dependencies are missing. anvim installs them on start.", { install })
+    health.warn(
+      "Sidecar dependencies are missing. anvim installs them from sidecar/bun.lock on start.",
+      { run_install }
+    )
   end
 
   -- The Agent SDK runs its own Claude Code binary from a per-platform package.
@@ -46,7 +95,33 @@ function M.check()
       ("Claude Code %s, bundled with the Agent SDK"):format(version({ claude, "--version" }) or "(unknown version)")
     )
   else
-    health.error("The Agent SDK has no Claude Code binary", { install })
+    health.error("The Agent SDK has no Claude Code binary", { run_install })
+  end
+
+  executables({
+    { "git", "lazy.nvim installs the plugins with it.", error = true },
+    { "rg", "Grep needs ripgrep." },
+    { "cc", "The treesitter parsers need a C compiler." },
+    { "node", "The TypeScript and JSON language servers need Node.js." },
+    { "npm", "mason installs the TypeScript and JSON language servers with npm." },
+  })
+
+  for _, pkg in ipairs(install.packages) do
+    if vim.uv.fs_stat(base.dir .. "/mason/packages/" .. pkg.name) then
+      health.ok(("mason package `%s` is installed"):format(pkg.name))
+    else
+      health.warn(("mason package `%s` is missing"):format(pkg.name), { run_install })
+    end
+  end
+  -- mason puts its bin dir on PATH only once it loads.
+  local cli = vim.fn.exepath("tree-sitter")
+  if cli == "" and vim.fn.executable(base.dir .. "/mason/bin/tree-sitter") == 1 then
+    cli = base.dir .. "/mason/bin/tree-sitter"
+  end
+  if cli ~= "" then
+    health.ok("tree-sitter CLI: " .. cli)
+  else
+    health.warn("The tree-sitter CLI is missing, so no parser can install", { run_install })
   end
 
   local chrome = vim.env.CHROME or "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"

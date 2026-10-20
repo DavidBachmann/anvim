@@ -1,0 +1,94 @@
+#!/bin/sh
+# Installs what anvim needs into its install dir: the sidecar's packages, the
+# plugins at the repo's pins, mason's packages and the treesitter parsers. A
+# second run installs only what is missing. bin/anvim runs it when the repo's
+# lockfiles changed since the last install.
+#
+# Usage: scripts/install [--check]
+#   --check  exits 0 when the last install applied the repo's lockfiles, and
+#            1 otherwise. It starts no Neovim.
+
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+# stdpath("data") under NVIM_APPNAME=anvim, as lua/anvim/base names it.
+dir=${ANVIM_INSTALL_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/anvim}
+case $dir in
+  /*) ;;
+  *) dir=$PWD/$dir ;;
+esac
+stamp=$dir/stamp
+
+# What an install applies, with the code that names the mason packages and
+# the parsers. The stamp keeps a copy of it.
+applied() {
+  cat "$root/lazy-lock.json" "$root/sidecar/bun.lock" \
+    "$root/lua/anvim/base/install.lua" "$root/lua/anvim/base/plugins/treesitter.lua"
+}
+
+if [ "$1" = --check ]; then
+  applied | cmp -s - "$stamp" 2>/dev/null || exit 1
+  exit 0
+fi
+
+have() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+failed=0
+need() {
+  if ! have "$1"; then
+    echo "Missing: $1. $2" >&2
+    failed=1
+  fi
+}
+want() {
+  have "$1" || echo "Warning: $1 is missing. $2" >&2
+}
+
+need nvim "Install Neovim 0.12 or newer: https://neovim.io"
+if have nvim; then
+  version=$(nvim --version 2>/dev/null | sed -n '1s/^NVIM v\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')
+  major=${version%%.*}
+  minor=${version#*.}
+  if [ -z "$version" ] || { [ "$major" -eq 0 ] && [ "$minor" -lt 12 ]; }; then
+    echo "Missing: Neovim 0.12 or newer, and nvim is ${version:-of an unknown version}. https://neovim.io" >&2
+    failed=1
+  fi
+fi
+need git "Install git, which lazy.nvim installs the plugins with."
+need bun "Install Bun, which runs the sidecar: https://bun.sh"
+[ $failed -eq 0 ] || exit 1
+want rg "Install ripgrep, for grep: https://github.com/BurntSushi/ripgrep"
+want cc "Install a C compiler, to build the treesitter parsers. On macOS: xcode-select --install"
+{ have node && have npm; } ||
+  echo "Warning: Node.js or npm is missing. mason installs the TypeScript and JSON language servers with npm." >&2
+want curl "mason and nvim-treesitter download with it."
+want tar "mason and nvim-treesitter unpack with it."
+want gzip "mason unpacks the tree-sitter CLI with it."
+
+echo "Installing the sidecar's packages"
+(cd "$root/sidecar" && bun install --frozen-lockfile) </dev/null || exit 1
+
+echo "Installing the plugins, mason's packages and the treesitter parsers into $dir"
+mkdir -p "$dir" || exit 1
+# The -c commands run before VimEnter, so anvim never starts its sidecar.
+env -u NVIM -u NVIM_LISTEN_ADDRESS NVIM_APPNAME=anvim ANVIM_INSTALL_DIR="$dir" ANVIM_NO_INSTALL=1 \
+  nvim --headless -i NONE --cmd 'let g:anvim_sync = 1' -u "$root/init.lua" \
+  -c 'lua local i = require("anvim.base.install") i.run(function() i.sync() i.mason() i.parsers() end)' \
+  -c 'qa' </dev/null || exit 1
+
+applied | cmp -s - "$stamp" || applied >"$stamp" || exit 1
+echo "anvim is installed."
+
+target=$(command -v anvim 2>/dev/null) && target=$(realpath "$target")
+if [ "$target" != "$root/bin/anvim" ]; then
+  echo "To start it from any directory, put it on your PATH:"
+  echo "  mkdir -p ~/.local/bin"
+  echo "  ln -s \"$root/bin/anvim\" ~/.local/bin/anvim"
+  case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *)
+      echo "~/.local/bin is not on your PATH. Add it in your shell profile, such as ~/.zshrc:"
+      echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+      ;;
+  esac
+fi

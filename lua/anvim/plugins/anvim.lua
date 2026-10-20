@@ -10,7 +10,7 @@ return {
     lazy = false,
     opts = {
       model = vim.env.ANVIM_MODEL,
-      permission_mode = vim.env.ANVIM_MODE or "bypassPermissions",
+      permission_mode = vim.env.ANVIM_MODE,
       resume = vim.env.ANVIM_RESUME,
       continue = vim.env.ANVIM_CONTINUE == "1",
       sidecar_cmd = replay and { "bun", root .. "/sidecar/src/replay.ts", replay, vim.env.ANVIM_REPLAY_SPEED or "1" },

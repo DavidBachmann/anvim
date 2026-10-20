@@ -1,29 +1,57 @@
 # anvim
 
-A read-only Neovim for watching Claude Code work. You read and point; Claude writes, and its edits stream into your buffers as they are generated. This is a personal tool and is not distributed.
+anvim is a read-only Neovim for watching Claude Code work. You read and point; Claude writes, and its edits stream into your buffers as Claude generates them. It runs the real Claude Code engine through the Agent SDK, so your login, CLAUDE.md files, skills, MCP servers, hooks and settings work as they do in Claude Code. anvim is a personal tool shared with colleagues, with no releases and no compatibility promise.
 
 ## Requirements
 
-- Neovim 0.12 or newer
-- git, curl, tar and a C compiler, to install the plugins and build treesitter parsers
+- Neovim 0.12 or newer, git and [Bun](https://bun.sh)
+- A C compiler, curl, tar and gzip, to build the treesitter parsers and to install the language servers
 - Node.js with npm, for the TypeScript and JSON language servers
 - [ripgrep](https://github.com/BurntSushi/ripgrep), for grep
 - A [Nerd Font](https://www.nerdfonts.com) in the terminal, for the icons
-- [Bun](https://bun.sh)
 - Claude Code, logged in (`claude /login`)
 - Google Chrome, only for the screen tool
 
+`scripts/install` checks the tools. It stops without Neovim, git or Bun, and warns about the others.
+
 ## Install
 
-From the repo root:
+Clone the repo. Then, from its root:
 
 ```sh
+scripts/install
+mkdir -p ~/.local/bin
 ln -s "$PWD/bin/anvim" ~/.local/bin/anvim
 ```
 
-anvim brings its own Neovim config, with lazy.nvim and a small set of plugins. The first start installs them into `~/.local/share/anvim`, at the commits in the repo's `lazy-lock.json`. Then, in the background, it installs treesitter parsers, and with mason the language servers for Lua, TypeScript and JSON. anvim reads and writes nothing under your main Neovim's `~/.config/nvim` and `~/.local/share/nvim`, so the two never share a plugin or a file. Its state, undo history and logs are in `~/.local/state/anvim`. `:Lazy update` updates anvim's plugins and the repo's lockfile. The first launch also installs the sidecar's packages with Bun.
+If `~/.local/bin` is not on your PATH, add `export PATH="$HOME/.local/bin:$PATH"` to your shell profile, such as `~/.zshrc`.
 
-Your own specs go in `~/.config/anvim/lua/plugins/*.lua`. They load after anvim's, as lazy.nvim specs, and lazy.nvim adds their plugins to the repo's lockfile. Without a colorscheme of your own, anvim uses tokyonight. To bring one:
+`scripts/install` installs the sidecar's packages from `sidecar/bun.lock`, and anvim's plugins with lazy.nvim at the commits in the repo's `lazy-lock.json`. With mason, it installs the tree-sitter CLI and the language servers for Lua, TypeScript and JSON. Then it builds the treesitter parsers. The first run takes about half a minute on a fast network. A second run installs only what is missing, and takes less than a second. The link puts `anvim` on your PATH, and any dir on your PATH works for it. `scripts/install` prints these steps when `anvim` is not on your PATH yet.
+
+anvim brings its own Neovim config, and reads and writes nothing under your main Neovim's `~/.config/nvim` and `~/.local/share/nvim`. The two never share a plugin or a file.
+
+## The first start
+
+```sh
+anvim ~/dev/project
+```
+
+anvim opens three columns: the explorer, the code and Claude. The cursor is in the prompt at the bottom right, in normal mode. Press `i`, type a question and press `Enter`. Claude asks before it edits a file or runs a command (see [Permissions](#permissions)). If `scripts/install` never ran, `anvim` runs it first.
+
+## Update
+
+```sh
+git pull
+anvim
+```
+
+When the repo's `lazy-lock.json` or `sidecar/bun.lock` changed since the last install, or the code that lists the mason packages and the parsers, `anvim` runs `scripts/install` before it starts. The install moves each plugin to the repo's commit, also back to an older one. If it fails, for example without a network, anvim warns, starts with the plugins it has, and tries again at the next start. A plugin of your own specs that fails to install only gets a warning. With `ANVIM_NO_INSTALL=1`, anvim installs nothing, not even at start.
+
+Nothing that anvim does writes a tracked file, so `git pull` always works. `:Lazy update` in anvim updates the plugins in the install dir only. The next install after a pull that changes the repo's lockfile brings anvim's own plugins back to the repo's commits.
+
+## Your own plugins
+
+Your own specs go in `~/.config/anvim/lua/plugins/*.lua`. They load after anvim's, as lazy.nvim specs. lazy.nvim installs their plugins at the next start, and keeps their commits in the install dir's lockfile, `~/.local/share/anvim/lazy-lock.json`, never in the repo. Without a colorscheme of your own, anvim uses tokyonight. To bring one:
 
 ```lua
 -- ~/.config/anvim/lua/plugins/colorscheme.lua
@@ -40,12 +68,28 @@ return {
 }
 ```
 
+## Files and uninstall
+
+anvim's Neovim runs with `NVIM_APPNAME=anvim`, so its files are in dirs of their own:
+
+- `~/.local/share/anvim`, the install dir: the plugins in `lazy/`, the parsers in `site/`, mason's packages in `mason/`, lazy.nvim's lockfile and the stamp of the last install. `ANVIM_INSTALL_DIR` puts it elsewhere.
+- `~/.local/state/anvim`: the log, undo history, past prompts and the language servers' logs.
+- `~/.cache/anvim`: caches.
+- `~/.config/anvim`: your own specs, if you have any.
+- `sidecar/node_modules` in the repo.
+
+The first four follow `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME` and `XDG_CONFIG_HOME`. Claude Code keeps its sessions in `~/.claude`, as for the CLI. To uninstall anvim, remove its dirs and the link, and then the repo:
+
+```sh
+rm -rf ~/.local/share/anvim ~/.local/state/anvim ~/.cache/anvim ~/.config/anvim ~/.local/bin/anvim
+```
+
 ## Use
 
 ```sh
 anvim [--model <model>] [--mode <mode>] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
 anvim --model haiku ~/dev/project
-anvim --mode default ~/dev/project              # approve tools as Claude asks
+anvim --mode bypassPermissions ~/dev/project    # run every tool without asking
 anvim -c ~/dev/project                          # go on with the latest session there
 anvim --resume ~/dev/project                    # pick a session to go on with
 ```
@@ -159,7 +203,7 @@ References are text in the prompt, in the form `@path#L12-30`, and you can write
 
 ## Permissions
 
-anvim starts in bypass permissions mode, so Claude runs every tool without asking. Start it with `--mode default` to approve tools as Claude asks for them, or with `--mode acceptEdits` or `--mode plan`. `Shift-Tab` in the prompt cycles default, accept edits and plan mode, plus bypass when anvim started in it.
+anvim starts in default mode, as Claude Code does: Claude asks before it edits a file or runs a command, unless your Claude Code settings allow it. Start it with `--mode acceptEdits`, `--mode plan` or `--mode bypassPermissions` for another mode. To run every tool without asking by default, put `export ANVIM_MODE=bypassPermissions` in your shell profile. `--mode` wins over it. `Shift-Tab` in the prompt cycles default, accept edits and plan mode, plus bypass when anvim started in it.
 
 When Claude needs your yes, the request appears at the bottom of the Claude column, as in Claude Code. An edit streams into the code window before the request opens, so you see the change before you answer. If you say no, the buffer shows the file on disk again. Claude's questions and its plan, when it wants to leave plan mode, appear the same way. If your cursor is outside the prompt, anvim leaves it there, posts a notification and shows "⏺ Claude is waiting" in the statusline. A request brings the transcript to its end, even if you scrolled it up. In read mode the transcript stays where you read, and it goes to the request when you leave read mode. `Esc` there takes you back to the prompt and answers nothing. A choice key never answers a request that is out of view: it brings the request into view instead.
 
@@ -184,6 +228,8 @@ Each prompt you send during a replay plays the next recorded turn. The work of a
 
 ## Development
 
+These must pass before a commit. The Lua checks need `stylua` and `selene` on your PATH.
+
 ```sh
 cd sidecar && bunx tsc --noEmit && bun test
 scripts/test
@@ -193,6 +239,15 @@ stylua --check . && selene .
 cd tools/screen && bunx tsc --noEmit
 ```
 
-Each test script first runs `scripts/test-deps`. It installs anvim's plugins at the lockfile's commits, and mason's lua-language-server, into `.tests/anvim`. Its first run needs the network, and later runs work offline. `scripts/test` runs the Neovim specs in `tests/`, with test plugins of its own in `.tests/`. `scripts/test-stack` boots the real `init.lua` in a child Neovim, with the plugins from `.tests/anvim` and temporary state dirs. It checks that anvim installs and writes nothing there, nor in your main Neovim's dirs. `scripts/test-ui` embeds anvim with a UI attached and checks the frames it draws: splits that fold back, the cursor after a close, mouse drags, resizes, permission prompts typed at a user's pace, and a selection pinned while Claude reads elsewhere. Run `:checkhealth anvim` when something does not start.
+The repo's `lazy-lock.json` holds the commits of anvim's own plugins, and only `scripts/update-plugins` writes it:
+
+```sh
+scripts/update-plugins               # every plugin
+scripts/update-plugins snacks.nvim   # only these
+```
+
+It first brings your install dir to the repo's commits, and then updates the plugins there to their newest commits. It reads none of your own specs, so their plugins stay out of the repo's lockfile. Commit the new lockfile after the tests pass. After a pull, each colleague's next start installs the new commits.
+
+Each test script first runs `scripts/test-deps`. It installs anvim's plugins at the lockfile's commits, with the same code as `scripts/install`, and mason's lua-language-server, into `.tests/anvim`. Its first run needs the network, and later runs work offline. `scripts/test` runs the Neovim specs in `tests/`, with test plugins of its own in `.tests/`. `scripts/test-stack` boots the real `init.lua` in a child Neovim, with the plugins from `.tests/anvim` and temporary state dirs. It checks that anvim installs and writes nothing there, nor in your main Neovim's dirs. `scripts/test-ui` embeds anvim with a UI attached and checks the frames it draws: splits that fold back, the cursor after a close, mouse drags, resizes, permission prompts typed at a user's pace, and a selection pinned while Claude reads elsewhere. Run `:checkhealth anvim` when something does not start.
 
 `tools/screen/screen.ts` drives anvim headless and saves text, highlight and PNG snapshots of the real screen. It boots the plugins in `.tests/anvim`, as the UI tests do. See the header of that file for its steps. It shares its UI client, `tools/screen/ui.ts`, with the UI tests. The log is at `~/.local/state/anvim/anvim.log`. A screen tool run keeps its own in a temp dir, and prints its path.

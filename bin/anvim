@@ -1,5 +1,9 @@
 #!/bin/sh
 # Usage: anvim [--model <model>] [--mode <mode>] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
+# The permission mode is default, acceptEdits, plan or bypassPermissions. It is
+# default unless --mode or ANVIM_MODE says otherwise: Claude asks before it
+# runs a tool. When the repo's lockfiles changed since the last install, anvim
+# runs scripts/install first. ANVIM_NO_INSTALL=1 skips that.
 root=$(cd "$(dirname "$(realpath "$0")")/.." && pwd)
 
 is_session_id() {
@@ -11,6 +15,8 @@ is_session_id() {
 
 # Only flags resume a session, never a value inherited from another anvim.
 unset ANVIM_CONTINUE ANVIM_RESUME
+# Only the install of this start sets it.
+unset ANVIM_INSTALL_FAILED
 
 # Take anvim's own flags out of the arguments and keep the rest in order.
 n=$#
@@ -80,6 +86,34 @@ if [ -n "$ANVIM_CONTINUE" ] && [ -n "$ANVIM_RESUME" ]; then
 fi
 [ -n "$ANVIM_CONTINUE" ] && export ANVIM_CONTINUE
 [ -n "$ANVIM_RESUME" ] && export ANVIM_RESUME
+
+# The cd below would change what a relative dir names.
+case $ANVIM_INSTALL_DIR in
+  '' | /*) ;;
+  *) export ANVIM_INSTALL_DIR="$PWD/$ANVIM_INSTALL_DIR" ;;
+esac
+
+# The install's output goes to stderr, because with --embed stdout is the RPC
+# channel.
+if [ "$ANVIM_NO_INSTALL" != 1 ]; then
+  # stdpath("data") under NVIM_APPNAME=anvim.
+  install=${ANVIM_INSTALL_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/anvim}
+  export ANVIM_INSTALL_DIR="$install"
+  if ! "$root/scripts/install" --check; then
+    echo "anvim: installing what this checkout needs into $install" >&2
+    if ! "$root/scripts/install" </dev/null >&2; then
+      # The install's last line can lack its newline.
+      echo >&2
+      if [ ! -e "$install/stamp" ]; then
+        echo "anvim: the install failed" >&2
+        exit 1
+      fi
+      echo "anvim: the install failed, so anvim starts with the earlier install, and tries again next time" >&2
+      # The TUI's alternate screen hides these lines, so anvim warns again.
+      export ANVIM_INSTALL_FAILED=1
+    fi
+  fi
+fi
 
 if [ -d "$1" ]; then
   cd "$1" || exit 1

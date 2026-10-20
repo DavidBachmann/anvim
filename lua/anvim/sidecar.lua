@@ -49,7 +49,7 @@ local function command()
   end
   if not vim.uv.fs_stat(M.dir .. "/node_modules") then
     vim.notify("anvim: installing sidecar dependencies...")
-    vim.system({ opts.bun, "install" }, { cwd = M.dir }):wait()
+    vim.system({ opts.bun, "install", "--frozen-lockfile" }, { cwd = M.dir }):wait()
   end
   return { opts.bun, M.dir .. "/src/main.ts" }
 end

@@ -14,33 +14,21 @@ fi
 
 echo "Installing the test plugins into $dir"
 tmp=$(mktemp -d)
-# lazy.nvim rewrites the lockfile after an install or a restore, and drops the
-# plugins of personal specs from it. The tests must not change it.
-cp lazy-lock.json "$tmp/lock.json"
-trap 'cp "$tmp/lock.json" lazy-lock.json; rm -rf "$tmp"' EXIT
+trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$dir/site"
-# The -c commands run before VimEnter, so anvim never starts its sidecar.
-# Plain `Lazy install` would clone the newest commits, so this installs from
-# the lockfile.
+# The sync brings the plugins to the lockfile's commits, and fails when one
+# is not there. The -c commands run before VimEnter, so anvim never starts
+# its sidecar.
 env -u NVIM -u NVIM_LISTEN_ADDRESS \
   NVIM_APPNAME=anvim ANVIM_INSTALL_DIR="$dir" ANVIM_NO_INSTALL=1 \
   XDG_CONFIG_HOME="$tmp/config" XDG_DATA_HOME="$tmp/data" XDG_STATE_HOME="$tmp/state" XDG_CACHE_HOME="$tmp/cache" \
-  nvim --headless -u init.lua \
-  -c 'lua require("lazy").install({ wait = true, lockfile = true, show = false })' \
-  -c 'lua require("lazy").restore({ wait = true, show = false })' \
+  nvim --headless --cmd 'let g:anvim_sync = 1' -u init.lua \
+  -c 'lua local i = require("anvim.base.install") i.run(i.sync)' \
   -c 'MasonUpdate' \
   -c "MasonInstall --quiet $mason" \
-  -c "lua vim.fn.writefile(vim.tbl_map(function(p) return p.name end, require('lazy').plugins()), '$tmp/names')" \
-  -c 'qa' || exit 1
+  -c 'qa' </dev/null
+status=$?
+# mason's last message ends without a newline.
 echo
-# A failed clone or checkout does not change Neovim's exit code.
-while IFS= read -r name; do
-  [ "$name" = anvim ] && continue
-  commit=$(sed -n "s/^ *\"$name\": {.*\"commit\": \"\\([0-9a-f]*\\)\".*/\\1/p" "$tmp/lock.json")
-  head=$(git -C "$dir/lazy/$name" rev-parse HEAD 2>/dev/null)
-  if [ -z "$commit" ] || [ "$head" != "$commit" ]; then
-    echo "test-deps: $name is at ${head:-no commit}, and the lockfile has ${commit:-none}" >&2
-    exit 1
-  fi
-done <"$tmp/names"
-{ cat "$tmp/lock.json"; echo "$mason"; } >"$stamp"
+[ $status -eq 0 ] || exit 1
+{ cat lazy-lock.json; echo "$mason"; } >"$stamp"

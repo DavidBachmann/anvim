@@ -32,6 +32,8 @@ local function shared_paths()
     nvim_data .. "/mason/packages",
     nvim_data .. "/mason/registries/github/mason-org/mason-registry/registry.json",
     helpers.root .. "/lazy-lock.json",
+    install .. "/lazy-lock.json",
+    install .. "/stamp",
     install .. "/lazy",
     install .. "/site",
     install .. "/site/parser",
@@ -79,8 +81,15 @@ local function start()
   end
   local env = vim.fn.environ()
   for key in pairs(env) do
-    -- Without the cmux variables, the child posts no notifications.
-    if key:match("^XDG_") or key:match("^LAZY_") or key:match("^NVIM") or key:match("^CMUX_") then
+    -- Without the cmux variables, the child posts no notifications. A shell
+    -- profile can set ANVIM_MODE, and the child runs in the default mode.
+    if
+      key:match("^XDG_")
+      or key:match("^LAZY_")
+      or key:match("^NVIM")
+      or key:match("^CMUX_")
+      or key == "ANVIM_MODE"
+    then
       env[key] = nil
     end
   end
@@ -256,6 +265,11 @@ describe("stack", function()
   it("passes ANVIM_MODEL on", function()
     start()
     assert.are.same("haiku", lua([[return require("anvim.config").options.model]]))
+  end)
+
+  it("starts in the default permission mode without ANVIM_MODE, so Claude asks before it runs a tool", function()
+    start()
+    assert.are.same("default", lua([[return require("anvim.config").options.permission_mode]]))
   end)
 
   it("starts without errors", function()
