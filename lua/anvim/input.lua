@@ -312,9 +312,11 @@ function M.working()
 end
 
 -- The model on the left and the mode on the right. After the model, the chip
--- says what the next prompt shows Claude. In a narrow column, the hint goes
--- first, then the branch, which the statusline shows too. Then the mode gets
--- its short label, the chip's file name gets shorter, and last the chip goes.
+-- says what the next prompt shows Claude, and a dot in each running agent's
+-- color follows, with their count. In a narrow column, the hint goes first,
+-- then the branch, which the statusline shows too, then the agents' count.
+-- Then the mode gets its short label and the dots go. The chip, which says
+-- what Claude gets, goes last: first its file name gets shorter.
 ---@param width integer
 ---@return [string, string?][] chunks
 function M.footer(width)
@@ -326,10 +328,21 @@ function M.footer(width)
   local hint = state.waiting and "" or " (shift+tab to cycle)"
   local context = require("anvim.context")
   local chip = context.chip()
+  local agents = require("anvim.agents")
+  local running = agents.running()
+  local dots = {} ---@type [string, string][]
+  for _, agent in ipairs(running) do
+    if agent.slot then
+      dots[#dots + 1] = { "●", agents.group(agent.slot) }
+    end
+  end
+  local count = #dots > 0 and (" %d agent%s"):format(#running, #running == 1 and "" or "s") or ""
   -- Columns to spare between the left side and the right side.
   local function free()
     local right = mode and 2 + w(mode[1] .. hint .. " ") or 0
-    return width - w(" anvim " .. branch .. model) - (chip and w("  " .. chip[1]) or 0) - right
+    local left = w(" anvim " .. branch .. model) + (chip and w("  " .. chip[1]) or 0)
+    left = left + (#dots > 0 and 2 + #dots * w("●") + w(count) or 0)
+    return width - left - right
   end
   if free() < 0 then
     hint = ""
@@ -337,8 +350,14 @@ function M.footer(width)
   if free() < 0 then
     branch = ""
   end
+  if free() < 0 then
+    count = ""
+  end
   if mode and mode[3] and free() < 0 then
     mode = { mode[3], mode[2] }
+  end
+  if free() < 0 then
+    dots = {}
   end
   if chip and free() < 0 then
     chip = context.chip(w(chip[1]) + free())
@@ -346,6 +365,10 @@ function M.footer(width)
   local chunks = { { " anvim ", "AnvimClaude" }, { branch, "Comment" }, { model } }
   if chip then
     vim.list_extend(chunks, { { "  " }, chip })
+  end
+  if #dots > 0 then
+    vim.list_extend(chunks, { { "  " }, unpack(dots) })
+    chunks[#chunks + 1] = { count, "AnvimChip" }
   end
   if mode then
     vim.list_extend(chunks, {
@@ -433,6 +456,11 @@ function M.attach()
   end)
   api.nvim_create_autocmd({ "WinResized", "VimResized" }, {
     group = api.nvim_create_augroup("anvim.input.resize", {}),
+    callback = M.render,
+  })
+  api.nvim_create_autocmd("User", {
+    group = api.nvim_create_augroup("anvim.input.agents", {}),
+    pattern = "AnvimAgents",
     callback = M.render,
   })
 end

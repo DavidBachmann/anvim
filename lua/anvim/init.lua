@@ -36,6 +36,11 @@ local highlights = {
   AnvimSelection = { link = "Visual" },
   AnvimChip = { link = "Comment" },
   AnvimChipSelection = { link = "AnvimClaude" },
+  -- Far apart from each other and from AnvimClaude in the usual colorschemes.
+  AnvimAgent1 = { link = "MiniIconsAzure" },
+  AnvimAgent2 = { link = "MiniIconsPurple" },
+  AnvimAgent3 = { link = "MiniIconsYellow" },
+  AnvimAgent4 = { link = "MiniIconsBlue" },
 }
 
 local function set_highlights()
@@ -62,6 +67,7 @@ local function refresh_branch()
 end
 
 local function wire()
+  require("anvim.agents").attach(sidecar)
   transcript.attach(sidecar)
   input.attach()
   readonly.attach(sidecar)

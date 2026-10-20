@@ -107,6 +107,115 @@ describe("Translator", () => {
     expect(events.at(-1)).toEqual({ type: "notice", level: "error", text: "Compaction failed: too short" });
   });
 
+  // Shapes as Claude Code 2.1.304 sends them for a foreground subagent.
+  test("a subagent's life and tool calls", () => {
+    const agent = { parent_tool_use_id: "toolu_A", agent_id: "a1", subagent_type: "general-purpose", task_description: "Edit alpha.js" };
+    const events = run([
+      msg({
+        type: "system",
+        subtype: "task_started",
+        task_id: "a1",
+        run_id: "r1",
+        tool_use_id: "toolu_A",
+        description: "Edit alpha.js",
+        subagent_type: "general-purpose",
+        is_backgrounded: false,
+        spawn_depth: 1,
+        task_type: "local_agent",
+        prompt: "Add a comment",
+      }),
+      msg({
+        type: "system",
+        subtype: "task_progress",
+        task_id: "a1",
+        tool_use_id: "toolu_A",
+        description: "Editing alpha.js",
+        usage: { total_tokens: 1200, tool_uses: 1, duration_ms: 900 },
+        last_tool_name: "Edit",
+      }),
+      msg({
+        type: "assistant",
+        ...agent,
+        message: { content: [{ type: "tool_use", id: "t1", name: "Edit", input: { file_path: "/alpha.js" } }] },
+      }),
+      msg({
+        type: "user",
+        ...agent,
+        message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "updated" }] },
+      }),
+      msg({ type: "system", subtype: "task_updated", task_id: "a1", patch: { status: "completed", end_time: 1 } }),
+      msg({
+        type: "system",
+        subtype: "task_notification",
+        task_id: "a1",
+        tool_use_id: "toolu_A",
+        status: "completed",
+        output_file: "/tmp/a1.output",
+        summary: "Added a comment",
+      }),
+    ]);
+    expect(events).toEqual([
+      {
+        type: "agent_start",
+        agent_id: "a1",
+        tool_use_id: "toolu_A",
+        description: "Edit alpha.js",
+        subagent_type: "general-purpose",
+        depth: 1,
+        background: false,
+      },
+      { type: "agent_progress", agent_id: "a1", description: "Editing alpha.js", tool_uses: 1, tokens: 1200, last_tool: "Edit" },
+      { type: "turn_start" },
+      { type: "tool_use", id: "t1", name: "Edit", input: { file_path: "/alpha.js" }, parent_id: "toolu_A", agent_id: "a1" },
+      { type: "tool_result", id: "t1", is_error: false, text: "updated", result: undefined, parent_id: "toolu_A", agent_id: "a1" },
+      { type: "agent_end", agent_id: "a1", status: "completed", summary: "Added a comment" },
+    ]);
+  });
+
+  test("a nested subagent names its parent, and other tasks send no agent events", () => {
+    const events = run([
+      msg({
+        type: "system",
+        subtype: "task_started",
+        task_id: "c1",
+        tool_use_id: "toolu_C",
+        description: "Edit beta.js",
+        subagent_type: "general-purpose",
+        is_backgrounded: true,
+        spawn_depth: 2,
+        parent_task_id: "b1",
+        task_type: "local_agent",
+      }),
+      msg({ type: "system", subtype: "task_started", task_id: "s1", tool_use_id: "toolu_S", description: "npm test", task_type: "local_bash" }),
+      msg({
+        type: "system",
+        subtype: "task_started",
+        task_id: "m1",
+        tool_use_id: "toolu_M",
+        description: "memory",
+        task_type: "local_agent",
+        ambient: true,
+      }),
+      msg({ type: "system", subtype: "task_progress", task_id: "s1", description: "Running", usage: { total_tokens: 0, tool_uses: 0 } }),
+      msg({ type: "system", subtype: "task_notification", task_id: "s1", status: "completed", output_file: "", summary: "" }),
+      msg({ type: "system", subtype: "task_notification", task_id: "c1", status: "stopped", output_file: "", summary: "" }),
+      msg({ type: "system", subtype: "task_notification", task_id: "c1", status: "stopped", output_file: "", summary: "" }),
+    ]);
+    expect(events).toEqual([
+      {
+        type: "agent_start",
+        agent_id: "c1",
+        tool_use_id: "toolu_C",
+        description: "Edit beta.js",
+        subagent_type: "general-purpose",
+        parent_agent_id: "b1",
+        depth: 2,
+        background: true,
+      },
+      { type: "agent_end", agent_id: "c1", status: "stopped" },
+    ]);
+  });
+
   test("message_stop closes a cut tool call", () => {
     const events = run([
       se({ type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "t2", name: "Write" } }),

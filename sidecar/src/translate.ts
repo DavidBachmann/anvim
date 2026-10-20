@@ -19,6 +19,9 @@ export class Translator {
   private inTurn = false;
   // /compact prints "Compacted" after the compact boundary, which says more.
   private compacted = false;
+  // The task ids of running subagents. Only task_started names a task's type,
+  // and shells and other tasks send task messages too.
+  private agents = new Set<string>();
 
   translate(msg: SDKMessage): Event[] {
     const m = msg as AnyRecord;
@@ -91,6 +94,41 @@ export class Translator {
         level: "warn",
         text: `API retry ${m.attempt}/${m.max_retries} in ${Math.round(m.retry_delay_ms / 1000)}s`,
       });
+    } else if (m.subtype?.startsWith("task_")) {
+      this.task(m, out);
+    }
+  }
+
+  // An ambient task is housekeeping, which Claude Code shows no activity for.
+  private task(m: AnyRecord, out: Event[]): void {
+    const id = m.task_id;
+    if (m.subtype === "task_started") {
+      if (m.task_type !== "local_agent" || m.ambient || !m.tool_use_id) return;
+      this.agents.add(id);
+      out.push({
+        type: "agent_start",
+        agent_id: id,
+        tool_use_id: m.tool_use_id,
+        description: m.description ?? "",
+        ...(m.subagent_type ? { subagent_type: m.subagent_type } : {}),
+        ...(m.parent_task_id ? { parent_agent_id: m.parent_task_id } : {}),
+        depth: m.spawn_depth ?? 1,
+        background: Boolean(m.is_backgrounded),
+      });
+    } else if (!this.agents.has(id)) {
+      return;
+    } else if (m.subtype === "task_progress") {
+      out.push({
+        type: "agent_progress",
+        agent_id: id,
+        description: m.description ?? "",
+        tool_uses: m.usage?.tool_uses,
+        tokens: m.usage?.total_tokens,
+        last_tool: m.last_tool_name,
+      });
+    } else if (m.subtype === "task_notification") {
+      this.agents.delete(id);
+      out.push({ type: "agent_end", agent_id: id, status: m.status, ...(m.summary ? { summary: truncate(m.summary) } : {}) });
     }
   }
 
@@ -141,7 +179,14 @@ export class Translator {
     const parent = m.parent_tool_use_id ?? null;
     for (const block of m.message?.content ?? []) {
       if (block.type === "tool_use") {
-        out.push({ type: "tool_use", id: block.id, name: block.name, input: block.input ?? {}, parent_id: parent });
+        out.push({
+          type: "tool_use",
+          id: block.id,
+          name: block.name,
+          input: block.input ?? {},
+          parent_id: parent,
+          ...agentOf(m),
+        });
       }
     }
     if (m.error) out.push({ type: "notice", level: "error", text: String(m.error) });
@@ -165,9 +210,14 @@ export class Translator {
         text: truncate(resultText(block.content)),
         result: trim(m.tool_use_result),
         parent_id: m.parent_tool_use_id ?? null,
+        ...agentOf(m),
       });
     }
   }
+}
+
+function agentOf(m: AnyRecord): { agent_id?: string } {
+  return m.agent_id ? { agent_id: m.agent_id } : {};
 }
 
 export function commandsEvent(commands: SdkSlashCommand[]): Event {

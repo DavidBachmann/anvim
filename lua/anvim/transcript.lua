@@ -1,5 +1,6 @@
 -- The conversation view, drawn like Claude Code: user prompts, streamed
 -- assistant text, and one line per tool call with its result below it.
+local agents = require("anvim.agents")
 local state = require("anvim.state")
 
 local M = {}
@@ -10,6 +11,7 @@ local ns = api.nvim_create_namespace("anvim.transcript")
 local ns_text = api.nvim_create_namespace("anvim.transcript.text")
 
 ---@class anvim.Tool
+---@field id string
 ---@field name string
 ---@field mark integer?
 ---@field input table?
@@ -433,6 +435,13 @@ local function tool_row(tool)
   return api.nvim_buf_get_extmark_by_id(M.buf(), ns, tool.mark, {})[1]
 end
 
+-- The bullet of a tool call that has no result yet. An Agent call's bullet
+-- takes its agent's color while the agent runs.
+local function pending(tool)
+  local agent = (tool.name == "Agent" or tool.name == "Task") and agents.by_tool(tool.id)
+  return agent and agent.status == "running" and agents.group(agent.slot) or "AnvimToolPending"
+end
+
 local function set_tool_line(tool, label, bullet_hl)
   local row = tool_row(tool)
   if not row then
@@ -519,19 +528,21 @@ end
 function M.tool_start(id, name)
   text_open, reply_done = false, true
   if todo_tools[name] then
-    tools[id] = { name = name, todo = true }
+    tools[id] = { id = id, name = name, todo = true }
     return
   end
   local label = tool_label(name)
   local row = append_item({ "⏺ " .. label })
-  tools[id] = { name = name, mark = hl(row, 0, #"⏺", "AnvimToolPending") }
+  local tool = { id = id, name = name }
+  tool.mark = hl(row, 0, #"⏺", pending(tool))
+  tools[id] = tool
   hl(row, #"⏺" + 1, #"⏺" + 1 + #label, "AnvimToolName")
 end
 
 function M.tool_field(ev)
   local tool = tools[ev.id]
   if tool and not tool.todo and ev.phase == "end" and ev.key == primary_arg[tool.name] then
-    set_tool_line(tool, tool_label(tool.name, { [ev.key] = ev.value }), "AnvimToolPending")
+    set_tool_line(tool, tool_label(tool.name, { [ev.key] = ev.value }), pending(tool))
   end
 end
 
@@ -587,7 +598,17 @@ function M.tool_use(ev)
     end
     return
   end
-  set_tool_line(tool, tool_label(ev.name, ev.input), "AnvimToolPending")
+  set_tool_line(tool, tool_label(ev.name, ev.input), pending(tool))
+end
+
+-- Agents started, ended or changed slots.
+local function paint_agents()
+  for _, tool in pairs(tools) do
+    local row = (tool.name == "Agent" or tool.name == "Task") and tool.mark and not tool.done and tool_row(tool)
+    if row then
+      tool.mark = hl(row, 0, #"⏺", pending(tool), { id = tool.mark })
+    end
+  end
 end
 
 local function finish_tool(tool, is_error, summary, group)
@@ -956,6 +977,11 @@ function M.attach(sidecar)
     M.output(ev.text)
   end)
   sidecar.on("compact", M.compact)
+  api.nvim_create_autocmd("User", {
+    group = api.nvim_create_augroup("anvim.transcript", {}),
+    pattern = "AnvimAgents",
+    callback = paint_agents,
+  })
   sidecar.on("exit", function(ev)
     if not ev.restart and bufnr and api.nvim_buf_is_loaded(bufnr) then
       M.notice(

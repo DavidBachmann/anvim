@@ -104,12 +104,15 @@ export type Event =
     }
   // The request was aborted, for example by an interrupt. The plugin drops it.
   | { type: "permission_cancel"; req: number }
+  // A subagent's tool calls have the id of the Agent tool call that started
+  // it as parent_id, and the subagent's own id as agent_id.
   | {
       type: "tool_use";
       id: string;
       name: string;
       input: Record<string, unknown>;
       parent_id: string | null;
+      agent_id?: string;
     }
   | {
       type: "tool_result";
@@ -118,7 +121,32 @@ export type Event =
       text: string;
       result?: unknown;
       parent_id: string | null;
+      agent_id?: string;
     }
+  // A subagent started. tool_use_id is the Agent tool call that started it.
+  // depth is 1 for a subagent of the main agent, and parent_agent_id names
+  // the subagent that started a deeper one.
+  | {
+      type: "agent_start";
+      agent_id: string;
+      tool_use_id: string;
+      description: string;
+      subagent_type?: string;
+      parent_agent_id?: string;
+      depth: number;
+      background: boolean;
+    }
+  // Sent before each of a subagent's tool calls. description says what it
+  // does, such as "Editing alpha.js".
+  | {
+      type: "agent_progress";
+      agent_id: string;
+      description: string;
+      tool_uses?: number;
+      tokens?: number;
+      last_tool?: string;
+    }
+  | { type: "agent_end"; agent_id: string; status: "completed" | "failed" | "stopped"; summary?: string }
   | {
       type: "turn_end";
       subtype: string;
