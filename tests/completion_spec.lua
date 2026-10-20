@@ -61,8 +61,8 @@ describe("completion", function()
       },
     })
     local items = by_label(complete("/re").items)
-    -- anvim runs /model and /resume itself, and adds them.
-    assert.are.same({ "/compact", "/model", "/resume", "/review" }, vim.fn.sort(vim.tbl_keys(items)))
+    -- anvim runs /model, /resume and /effort itself, and adds them.
+    assert.are.same({ "/compact", "/effort", "/model", "/resume", "/review" }, vim.fn.sort(vim.tbl_keys(items)))
     assert.are.same({
       newText = "/review ",
       range = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 3 } },
@@ -72,6 +72,85 @@ describe("completion", function()
     assert.is_nil(items["/compact"].labelDetails)
     assert.are.same({}, complete("say /re").items)
     assert.are.same({}, complete("/re", 2).items)
+  end)
+
+  it("hides the built-ins that do nothing here, and keeps the rest", function()
+    helpers.start()
+    local state = require("anvim.state")
+    local commands, terminal = completion.commands, completion.terminal
+    sidecar.dispatch({
+      type = "commands",
+      commands = {
+        { name = "color", description = "Set the prompt bar color", builtin = true },
+        { name = "color", description = "A plugin's color, which Claude Code's own shadows" },
+        { name = "doctor", description = "Check the setup", aliases = { "checkup" }, builtin = true },
+        { name = "focus", description = "A user's own focus command", argument_hint = "[on|off]" },
+        { name = "reload-plugins", description = "Activate pending plugin changes", builtin = true },
+        { name = "__remote-workflow", description = "Run the workflow script", builtin = true },
+        { name = "ultrareview", description = "Review the branch in the cloud", builtin = true },
+        { name = "code-review", description = "Review the diff", argument_hint = "[level]", builtin = true },
+        { name = "usage", description = "Show plan usage", aliases = { "cost", "stats" }, builtin = true },
+        { name = "model", description = "Set the AI model for Claude Code", argument_hint = "<model>", builtin = true },
+      },
+    })
+    -- Init names the terminal-bound built-ins. Without the list, none is.
+    local function init(list)
+      sidecar.dispatch({
+        type = "init",
+        session_id = state.session_id,
+        model = state.model,
+        permission_mode = state.permission_mode,
+        slash_commands = {},
+        terminal_slash_commands = list,
+      })
+    end
+    init(nil)
+    assert.are.same({}, completion.terminal)
+    init({ "color", "doctor", "focus", "reload-plugins" })
+
+    local labels = vim.tbl_map(function(item)
+      return item.label
+    end, complete("/").items)
+    assert.are.same(
+      { "/__remote-workflow", "/color", "/doctor", "/ultrareview" },
+      vim.tbl_filter(function(label)
+        return not vim.tbl_contains(labels, label)
+      end, {
+        "/__remote-workflow",
+        "/color",
+        "/doctor",
+        "/ultrareview",
+        "/code-review",
+        "/effort",
+        "/focus",
+        "/model",
+        "/reload-plugins",
+        "/usage",
+      })
+    )
+    -- anvim's own /model takes the place of Claude Code's, so Enter sends it
+    -- and opens the picker, as /effort does.
+    local items = by_label(complete("/").items)
+    assert.are.same({ true, true }, { items["/model"].data.send, items["/effort"].data.send })
+    assert.are.same("Choose Claude's model", items["/model"].labelDetails.description)
+
+    assert.are.same("/color works only in Claude Code's terminal. Run `claude` for it.", completion.unusable("color"))
+    assert.are.same(
+      "/checkup works only in Claude Code's terminal. Run `claude` for it.",
+      completion.unusable("checkup")
+    )
+    assert.are.same(
+      "/__remote-workflow works only in sessions that a server launched.",
+      completion.unusable("__remote-workflow")
+    )
+    local paid = "anvim starts no paid cloud review. Run /ultrareview or /code-review ultra in Claude Code."
+    assert.are.same(paid, completion.unusable("ultrareview"))
+    assert.are.same(paid, completion.unusable("code-review", " Ultra 42"))
+    assert.is_nil(completion.unusable("code-review", "high"))
+    for _, name in ipairs({ "focus", "reload-plugins", "usage", "cost", "review", "code-review", "nope" }) do
+      assert.is_nil(completion.unusable(name), name)
+    end
+    completion.commands, completion.terminal = commands, terminal
   end)
 
   it("leaves out the other providers in a reference or a slash command", function()

@@ -77,3 +77,70 @@ test("<leader>cm lists Claude Code's models, and the choice reaches the footer",
   const sent = await ui.exec_lua<{ type: string; model?: string }[]>(`return _G.sent`);
   expect(sent.filter((m) => m.type === "set_model")).toEqual([{ type: "set_model", model: "sonnet" }]);
 });
+
+test("a picker that the prompt opens in insert mode gives insert mode back, also after a cancel", async () => {
+  anvim = await start();
+  const { ui } = anvim;
+  await ui.exec_lua(`
+    local sessions, sidecar = require("anvim.sessions"), require("anvim.sidecar")
+    sessions.fetch = function(cb)
+      cb({ { id = "11111111-1111-1111-1111-111111111111", title = "Add a comment to matchparen", modified = os.time() * 1000 } })
+    end
+    local send = sidecar.send
+    _G.sent = {}
+    sidecar.send = function(msg)
+      table.insert(_G.sent, msg)
+      if msg.type == "list_models" then
+        vim.schedule(function()
+          sidecar.dispatch({ type = "models", models = {
+            { value = "haiku", name = "Haiku 5.5", description = "Fastest for quick answers", resolved = "claude-haiku-5-5" },
+          } })
+        end)
+      elseif msg.type ~= "set_effort" then
+        return send(msg)
+      end
+    end
+  `);
+  const sent = (type: string) =>
+    ui.exec_lua<{ type: string; effort?: string }[]>(
+      `local t = ... return vim.tbl_filter(function(m) return m.type == t end, _G.sent)`,
+      type,
+    );
+  // Enter on the menu's row sends the command, as in Claude Code.
+  const run = async (command: string, title: string) => {
+    await anvim!.type(command, 30);
+    await Bun.sleep(200);
+    await ui.input("<CR>");
+    await ui.waitFor(title);
+    await Bun.sleep(200);
+  };
+
+  await anvim.insert();
+  await run("/effort", "default (your settings, else the model's)");
+  await anvim.type("high", 30);
+  await Bun.sleep(200);
+  await ui.input("<CR>");
+  await anvim.waitWhere("input", "i");
+  expect(await sent("set_effort")).toEqual([{ type: "set_effort", effort: "high" }]);
+
+  await run("/model", "Fastest for quick answers");
+  await ui.input("<C-c>");
+  await anvim.waitWhere("input", "i");
+
+  await run("/resume", "Add a comment to matchparen");
+  await ui.input("<C-c>");
+  await anvim.waitWhere("input", "i");
+  await anvim.type("still typing", 30);
+  await ui.waitFor("still typing");
+
+  // From normal mode, the prompt stays in normal mode.
+  await ui.input("<Esc>");
+  await ui.exec_lua(`vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "/effort" })`);
+  await anvim.waitWhere("input", "n");
+  await ui.input("<CR>");
+  await ui.waitFor("default (your settings, else the model's)");
+  await Bun.sleep(200);
+  await ui.input("<C-c>");
+  await anvim.waitWhere("input", "n");
+  expect((await sent("set_effort")).length).toBe(1);
+});

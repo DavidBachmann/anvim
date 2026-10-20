@@ -349,21 +349,23 @@ local function mode_label()
   end
 end
 
--- The model on the left. After it, the chip says what the next prompt shows
--- Claude, and a dot in each running agent's color follows, with their count.
--- The focused agent's dot is ◉. On the right, the follow status says where
--- Claude is, in the focused agent's color, then the mode's label with its
--- hint, or "? for shortcuts". In a narrow column, the hints go first, then
--- the branch, which the statusline shows too, then the agents' count and the
--- model. Then the follow status and the mode get their short forms, the dots
--- go, and the follow status goes to the statusline. The chip, which says what
--- Claude gets, goes last: first its file name gets shorter.
+-- The model and its effort on the left. After them, the chip says what the
+-- next prompt shows Claude, and a dot in each running agent's color follows,
+-- with their count. The focused agent's dot is ◉. On the right, the follow
+-- status says where Claude is, in the focused agent's color, then the mode's
+-- label with its hint, or "? for shortcuts". In a narrow column, the hints go
+-- first, then the branch, which the statusline shows too, then the agents'
+-- count, the effort and the model. Then the follow status and the mode get
+-- their short forms, the dots go, and the follow status goes to the
+-- statusline. The chip, which says what Claude gets, goes last: first its
+-- file name gets shorter.
 ---@param width integer
 ---@return [string, string?][] chunks, boolean follows The chunks show the follow status.
 function M.footer(width)
   local w = api.nvim_strwidth
   local branch = state.branch and ("git:(" .. state.branch .. ") ") or ""
   local model = M.model_label(state.model or config.options.model)
+  local effort = state.effort and (" · " .. state.effort) or ""
   local mode = state.waiting and { "⏺ Claude is waiting for you", "AnvimClaude", "⏺ waiting" } or mode_label()
   local hint = mode and not state.waiting and " (shift+tab to cycle)" or ""
   local shortcuts = not mode and M.shortcuts() and "? for shortcuts" or ""
@@ -390,7 +392,7 @@ function M.footer(width)
   -- Columns to spare between the left side and the right side.
   local function free()
     local r = right()
-    local left = w(" anvim " .. branch .. model) + (chip and w("  " .. chip[1]) or 0)
+    local left = w(" anvim " .. branch .. model .. effort) + (chip and w("  " .. chip[1]) or 0)
     left = left + (#dots > 0 and 2 + #dots * w("⏺") + w(count) or 0)
     return width - left - (r > 0 and r + 3 or 0)
   end
@@ -410,6 +412,9 @@ function M.footer(width)
     count = ""
   end
   if free() < 0 then
+    effort = ""
+  end
+  if free() < 0 then
     model = ""
   end
   if status ~= "" and free() < 0 then
@@ -427,7 +432,7 @@ function M.footer(width)
   if chip and free() < 0 then
     chip = context.chip(w(chip[1]) + free())
   end
-  local chunks = { { " anvim ", "AnvimClaude" }, { branch, "Comment" }, { model } }
+  local chunks = { { " anvim ", "AnvimClaude" }, { branch, "Comment" }, { model .. effort } }
   if chip then
     vim.list_extend(chunks, { { "  " }, chip })
   end

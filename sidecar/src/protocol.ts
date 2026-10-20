@@ -11,13 +11,24 @@ export type PromptContext = {
   selection?: { start_line: number; end_line: number; text: string; mode: "char" | "line" | "block" };
 };
 
-export type SlashCommand = { name: string; description: string; argument_hint?: string };
+// builtin marks Claude Code's own commands. A typed alias runs the command
+// that has it as its name, when one exists.
+export type SlashCommand = {
+  name: string;
+  description: string;
+  argument_hint?: string;
+  aliases?: string[];
+  builtin?: boolean;
+};
+
+export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
 
 export type Command =
   | {
       type: "start";
       cwd: string;
       model?: string;
+      effort?: EffortLevel;
       permission_mode?: string;
       // A session to go on with, or the latest one in cwd with `continue`.
       resume?: string;
@@ -30,6 +41,9 @@ export type Command =
   | { type: "interrupt" }
   | { type: "set_permission_mode"; mode: string }
   | { type: "set_model"; model?: string }
+  // For the rest of the session. null is the default: the level of the user's
+  // Claude Code settings for the model, else the model's, also after a switch.
+  | { type: "set_effort"; effort: EffortLevel | null }
   // Answered with a models event.
   | { type: "list_models" }
   | { type: "preview_done"; req: number }
@@ -59,6 +73,8 @@ export type Event =
       permission_mode: string;
       version: string;
       slash_commands: string[];
+      // The commands whose UX Claude Code binds to its terminal.
+      terminal_slash_commands?: string[];
     }
   // The slash commands with descriptions, after start and whenever they change.
   | { type: "commands"; commands: SlashCommand[] }
@@ -187,7 +203,15 @@ export type Event =
   | { type: "compact"; trigger?: string; pre_tokens?: number; post_tokens?: number }
   // How full the context window is, after each turn.
   | { type: "context"; percent: number; tokens: number; max: number }
-  | { type: "models"; models: { value: string; name: string; description: string; resolved?: string }[] }
+  // The effort level that the session uses, after start, after each model or
+  // effort change, and after each turn. null for a model without effort.
+  | { type: "effort"; level: EffortLevel | null }
+  // After start, and as the answer to list_models. effort_levels is absent
+  // for a model without effort levels.
+  | {
+      type: "models";
+      models: { value: string; name: string; description: string; resolved?: string; effort_levels?: EffortLevel[] }[];
+    }
   // A resumed session's past, sent before it starts. Its events draw the
   // transcript as live ones do. A "user" event is a past prompt.
   | { type: "history"; session_id: string; events: (Event | { type: "user"; text: string })[] }

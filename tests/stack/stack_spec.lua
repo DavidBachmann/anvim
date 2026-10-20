@@ -82,13 +82,15 @@ local function start()
   local env = vim.fn.environ()
   for key in pairs(env) do
     -- Without the cmux variables, the child posts no notifications. A shell
-    -- profile can set ANVIM_MODE, and the child runs in the default mode.
+    -- profile can set ANVIM_MODE or ANVIM_EFFORT, and the child runs in the
+    -- default mode, with the default effort.
     if
       key:match("^XDG_")
       or key:match("^LAZY_")
       or key:match("^NVIM")
       or key:match("^CMUX_")
       or key == "ANVIM_MODE"
+      or key == "ANVIM_EFFORT"
     then
       env[key] = nil
     end

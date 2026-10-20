@@ -3,7 +3,7 @@
 //   bun src/sessions.ts list <dir>
 import { getSessionInfo, getSessionMessages, listSessions, type SessionMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Event } from "./protocol";
-import { commandOutput, resultText, truncate } from "./translate";
+import { commandOutput, resultText, truncate, truncateOutput } from "./translate";
 
 export type SessionItem = {
   id: string;
@@ -85,7 +85,7 @@ function prompt(content: string): HistoryEvent | undefined {
     return { type: "notice", level: "warn", text: "Interrupted by user" };
   }
   const output = commandOutput(content);
-  if (output !== undefined) return output === "" ? undefined : { type: "output", text: truncate(output) };
+  if (output !== undefined) return output === "" ? undefined : { type: "output", text: truncateOutput(output) };
   const name = content.match(/<command-name>(.*?)<\/command-name>/)?.[1];
   if (name) {
     // A session that /clear started begins with the /clear itself.

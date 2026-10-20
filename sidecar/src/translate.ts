@@ -1,8 +1,13 @@
-import type { SDKMessage, SlashCommand as SdkSlashCommand } from "@anthropic-ai/claude-agent-sdk";
+import type { ModelInfo, SDKMessage, SlashCommand as SdkSlashCommand } from "@anthropic-ai/claude-agent-sdk";
 import { FieldStream } from "./fieldstream";
 import type { Event } from "./protocol";
 
 const MAX_TEXT = 2000;
+// A local command such as /context prints about 10k characters of tables.
+const MAX_OUTPUT = 20000;
+// Claude Code's model name on the messages that it writes itself, such as a
+// slash command's output.
+const SYNTHETIC = "<synthetic>";
 
 type Block =
   | { type: "text" }
@@ -87,9 +92,12 @@ export class Translator {
         permission_mode: m.permissionMode,
         version: m.claude_code_version,
         slash_commands: m.slash_commands ?? [],
+        ...(Array.isArray(m.terminal_slash_commands) ? { terminal_slash_commands: m.terminal_slash_commands } : {}),
       });
     } else if (m.subtype === "commands_changed" && Array.isArray(m.commands)) {
       out.push(commandsEvent(m.commands));
+    } else if (m.subtype === "local_command_output" && typeof m.content === "string" && m.content.trim()) {
+      out.push({ type: "output", text: truncateOutput(m.content.trim()) });
     } else if (m.subtype === "status") {
       out.push({ type: "status", status: m.status ?? null, permission_mode: m.permissionMode });
       if (m.compact_result === "failed") {
@@ -210,6 +218,15 @@ export class Translator {
   }
 
   private assistant(m: AnyRecord, out: Event[]): void {
+    const synthetic = m.message?.model === SYNTHETIC;
+    const failed = m.error || (synthetic && m.is_api_error_message);
+    // A slash command such as /usage answers with a message of its own, which
+    // streams no text.
+    if (synthetic && !failed && mainThread(m as SDKMessage)) {
+      const text = resultText(m.message.content).trim();
+      if (text) out.push({ type: "output", text: truncateOutput(text) });
+      return;
+    }
     const parent = m.parent_tool_use_id ?? null;
     for (const block of m.message?.content ?? []) {
       if (block.type === "tool_use") {
@@ -223,14 +240,19 @@ export class Translator {
         });
       }
     }
-    if (m.error) out.push({ type: "notice", level: "error", text: String(m.error) });
+    // A synthetic error says in its text what went wrong. Its code, such as
+    // server_error, names only the kind.
+    if (failed) {
+      const text = synthetic ? resultText(m.message.content).trim() : "";
+      out.push({ type: "notice", level: "error", text: truncate(text || String(m.error ?? "API error")) });
+    }
   }
 
   private user(m: AnyRecord, out: Event[]): void {
     const content = m.message?.content;
     if (typeof content === "string" && m.parent_tool_use_id == null) {
       const text = commandOutput(content);
-      if (text !== undefined && !this.compacted && text !== "") out.push({ type: "output", text: truncate(text) });
+      if (text !== undefined && !this.compacted && text !== "") out.push({ type: "output", text: truncateOutput(text) });
       if (text !== undefined) this.compacted = false;
       return;
     }
@@ -261,6 +283,21 @@ export function commandsEvent(commands: SdkSlashCommand[]): Event {
       name: c.name,
       description: c.description ?? "",
       ...(c.argumentHint ? { argument_hint: c.argumentHint } : {}),
+      ...(c.aliases?.length ? { aliases: c.aliases } : {}),
+      ...(c.builtin ? { builtin: true } : {}),
+    })),
+  };
+}
+
+export function modelsEvent(models: ModelInfo[]): Event {
+  return {
+    type: "models",
+    models: models.map((m) => ({
+      value: m.value,
+      name: m.displayName,
+      description: m.description,
+      resolved: m.resolvedModel,
+      ...(m.supportsEffort && m.supportedEffortLevels?.length ? { effort_levels: m.supportedEffortLevels } : {}),
     })),
   };
 }
@@ -282,6 +319,13 @@ export function resultText(content: unknown): string {
 
 export function truncate(s: string): string {
   return s.length > MAX_TEXT ? s.slice(0, MAX_TEXT) + "..." : s;
+}
+
+// A slash command's output ends at a line end, so no table row breaks.
+export function truncateOutput(s: string): string {
+  if (s.length <= MAX_OUTPUT) return s;
+  const end = s.lastIndexOf("\n", MAX_OUTPUT);
+  return s.slice(0, end > 0 ? end : MAX_OUTPUT) + "\n...";
 }
 
 // Tool results can hold whole files. The plugin only needs the metadata.

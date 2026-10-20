@@ -4,6 +4,8 @@ local M = {}
 M.defaults = {
   ---@type string? Model id or alias. Nil uses the Claude Code default.
   model = nil,
+  ---@type 'low'|'medium'|'high'|'xhigh'|'max'|nil Nil uses your Claude Code settings, else the model's level.
+  effort = nil,
   ---@type 'default'|'acceptEdits'|'plan'|'bypassPermissions'
   permission_mode = "default",
   ---@type string? A session id to resume at start, or "pick" to choose one.
@@ -43,8 +45,25 @@ M.defaults = {
 ---@type anvim.Config
 M.options = vim.deepcopy(M.defaults)
 
+M.effort_levels = { "low", "medium", "high", "xhigh", "max" }
+
 function M.setup(opts)
   M.options = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts or {})
+  -- bin/anvim checks --effort, but a personal spec or a stale ANVIM_EFFORT
+  -- can name anything.
+  local effort = M.options.effort
+  if effort == "" then
+    M.options.effort = nil
+  elseif effort ~= nil and not vim.tbl_contains(M.effort_levels, effort) then
+    M.options.effort = nil
+    vim.schedule(function()
+      local levels = "low, medium, high, xhigh or max"
+      vim.notify(
+        ("anvim: the effort %s is unknown, so Claude uses the default. Use %s."):format(vim.inspect(effort), levels),
+        vim.log.levels.WARN
+      )
+    end)
+  end
 end
 
 return M

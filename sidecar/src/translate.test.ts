@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Event } from "./protocol";
-import { mainThread, Translator } from "./translate";
+import { mainThread, modelsEvent, Translator } from "./translate";
 
 const se = (event: object, parent: string | null = null) =>
   ({ type: "stream_event", event, parent_tool_use_id: parent }) as unknown as SDKMessage;
@@ -100,6 +100,102 @@ describe("Translator", () => {
       { type: "output", text: "Total cost: $0.01" },
       end,
     ]);
+  });
+
+  // Shapes as Claude Code 2.1.304 sends them for /usage and /effort: a
+  // message of Claude Code's own, with no stream events.
+  test("the output of a local slash command, which comes as a message of Claude Code's own", () => {
+    const synthetic = (text: string, extra: object = {}) =>
+      msg({
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: { model: "<synthetic>", role: "assistant", content: [{ type: "text", text }] },
+        local_command_run: { command: "effort", args: "current" },
+        ...extra,
+      });
+    const result = msg({ type: "result", subtype: "success", is_error: false, duration_ms: 1, total_cost_usd: 0, num_turns: 0 });
+    const events = run([
+      synthetic("Current effort level: low (Quick, straightforward implementation)"),
+      result,
+      msg({ type: "system", subtype: "local_command_output", content: "Voice mode is on\n" }),
+      synthetic("A subagent's own", { parent_tool_use_id: "t1" }),
+    ]);
+    expect(events).toEqual([
+      { type: "turn_start" },
+      { type: "output", text: "Current effort level: low (Quick, straightforward implementation)" },
+      { type: "turn_end", subtype: "success", is_error: false, duration_ms: 1, cost_usd: 0, num_turns: 0 },
+      { type: "output", text: "Voice mode is on" },
+    ]);
+  });
+
+  // As Claude Code sends it with ANTHROPIC_BASE_URL at a closed port.
+  test("a synthetic API error shows its text, and its code only without one", () => {
+    const failed = (content: object[], extra: object) =>
+      msg({
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: { model: "<synthetic>", role: "assistant", content },
+        is_api_error_message: true,
+        ...extra,
+      });
+    const refused = "API Error: Connection refused - a firewall or proxy may be blocking it (ECONNREFUSED)";
+    const events = run([
+      failed([{ type: "text", text: refused }], { error: "server_error" }),
+      failed([], { error: "server_error" }),
+      failed([{ type: "text", text: "The model's tool call could not be parsed (retry also failed)." }], {}),
+    ]);
+    expect(events).toEqual([
+      { type: "turn_start" },
+      { type: "notice", level: "error", text: refused },
+      { type: "notice", level: "error", text: "server_error" },
+      { type: "notice", level: "error", text: "The model's tool call could not be parsed (retry also failed)." },
+    ]);
+  });
+
+  test("a long command output, such as /context, ends at a line end", () => {
+    const row = "| Messages | 1.2k tokens | 0.6% |";
+    const text = Array.from({ length: 1000 }, () => row).join("\n");
+    const [, output] = run([
+      msg({
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: { model: "<synthetic>", role: "assistant", content: [{ type: "text", text }] },
+      }),
+    ]);
+    const lines = (output as { text: string }).text.split("\n");
+    expect(lines.at(-1)).toBe("...");
+    expect(lines.slice(0, -1).every((line) => line === row)).toBe(true);
+    expect(lines.length).toBeGreaterThan(500);
+  });
+
+  test("init names the commands that Claude Code binds to its terminal", () => {
+    const init = (extra: object) =>
+      msg({ type: "system", subtype: "init", session_id: "s", model: "m", slash_commands: ["color", "usage"], ...extra });
+    const [withList, without] = run([init({ terminal_slash_commands: ["color"] }), init({})]);
+    expect(withList).toMatchObject({ type: "init", slash_commands: ["color", "usage"], terminal_slash_commands: ["color"] });
+    expect(without).not.toHaveProperty("terminal_slash_commands");
+  });
+
+  test("models carry their effort levels, and a model without effort has none", () => {
+    expect(
+      modelsEvent([
+        {
+          value: "haiku",
+          displayName: "Haiku 5.5",
+          description: "Fastest",
+          resolvedModel: "claude-haiku-5-5",
+          supportsEffort: true,
+          supportedEffortLevels: ["low", "medium"],
+        },
+        { value: "claude-haiku-4-5", displayName: "Haiku 4.5", description: "Older", supportsEffort: false },
+      ]),
+    ).toEqual({
+      type: "models",
+      models: [
+        { value: "haiku", name: "Haiku 5.5", description: "Fastest", resolved: "claude-haiku-5-5", effort_levels: ["low", "medium"] },
+        { value: "claude-haiku-4-5", name: "Haiku 4.5", description: "Older", resolved: undefined },
+      ],
+    });
   });
 
   test("a failed compaction is an error notice", () => {

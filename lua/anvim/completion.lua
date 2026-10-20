@@ -12,8 +12,30 @@ local FRESH_MS = 5000
 -- LSP CompletionItemKind values, as blink.cmp uses them.
 local KIND = { file = 17, folder = 19, command = 14 }
 
----@type { name: string, description: string?, argument_hint: string? }[]
+---@class anvim.SlashCommand
+---@field name string without the slash
+---@field description string?
+---@field argument_hint string?
+---@field aliases string[]?
+---@field builtin boolean? Claude Code's own command
+
+---@type anvim.SlashCommand[]
 M.commands = {}
+
+-- The built-ins whose UX Claude Code binds to its terminal, from init's
+-- terminal_slash_commands. Init comes with the first turn, so this build's
+-- list stands in until then.
+M.terminal = { "color", "doctor", "focus", "reload-plugins" }
+-- Terminal-bound in Claude Code's list, but it works the same here: it loads
+-- changed plugins into the session.
+local works_here = { ["reload-plugins"] = true }
+-- Built-ins that run only in a session that a server launched. Elsewhere they
+-- print an error, and Claude Code's list does not say so.
+local remote_only = { ["__remote-workflow"] = true, ["workflow-launch-exec"] = true }
+-- Built-ins that start a billed review in the cloud. anvim starts none, so a
+-- slip of Enter in the menu costs nothing.
+local paid = { ultrareview = true }
+local PAID = "anvim starts no paid cloud review. Run /ultrareview or /code-review ultra in Claude Code."
 ---@class anvim.FileList
 ---@field paths string[] relative to the cwd, shallow ones first
 ---@field lower string[] the same paths in lower case
@@ -164,23 +186,76 @@ local function needs_argument(hint)
   return type(hint) == "string" and hint ~= "" and not hint:match("^%[") and not hint:lower():find("optional")
 end
 
+-- The command that /name runs, as Claude Code picks it: Claude Code's own row
+-- of that name, another row of that name, or the row that has it as an alias.
+---@param name string without the slash
+---@return anvim.SlashCommand?
+local function resolve(name)
+  local named, aliased
+  for _, c in ipairs(M.commands) do
+    if c.name == name and c.builtin then
+      return c
+    elseif c.name == name then
+      named = named or c
+    elseif vim.tbl_contains(c.aliases or {}, name) then
+      aliased = aliased or c
+    end
+  end
+  return named or aliased
+end
+
+-- Why the built-in `builtin` does nothing in anvim, or nil when it works
+-- here. `typed` is the name or alias that the user typed.
+---@return string?
+local function refused(builtin, typed)
+  if remote_only[builtin] then
+    return ("/%s works only in sessions that a server launched."):format(typed)
+  elseif vim.tbl_contains(M.terminal, builtin) and not works_here[builtin] then
+    return ("/%s works only in Claude Code's terminal. Run `claude` for it."):format(typed)
+  end
+end
+
+-- Why /name does nothing in anvim, or nil when it works here. Commands of
+-- users, projects, plugins and skills always work. A paid review is refused
+-- by its name, also before Claude Code's list came.
+---@param name string without the slash
+---@param arg string? the text after the name
+---@return string?
+function M.unusable(name, arg)
+  local c = resolve(name)
+  local first = (arg or ""):match("^%s*(%S*)"):lower()
+  if paid[name] or c and paid[c.name] or (c and c.name or name) == "code-review" and first == "ultra" then
+    return PAID
+  end
+  return c and c.builtin and refused(c.name, name) or nil
+end
+
 function M.command_items(row, cursor)
+  -- A row's own name runs Claude Code's row of that name, when it has one.
+  local hidden = {}
+  for _, c in ipairs(M.commands) do
+    if paid[c.name] or c.builtin and refused(c.name, c.name) then
+      hidden[c.name] = true
+    end
+  end
   local items = {}
   for _, c in ipairs(M.commands) do
     local desc = c.description ~= "" and c.description or nil
-    items[#items + 1] = {
-      -- Enter sends it, as in Claude Code, unless it needs an argument.
-      data = { anvim_command = true, send = not needs_argument(c.argument_hint) },
-      label = "/" .. c.name,
-      filterText = c.name,
-      kind = KIND.command,
-      labelDetails = desc and { description = vim.fn.strcharpart(desc, 0, 48) } or nil,
-      documentation = desc and {
-        kind = "plaintext",
-        value = desc .. (c.argument_hint and ("\n\n/" .. c.name .. " " .. c.argument_hint) or ""),
-      } or nil,
-      textEdit = edit(row, 0, cursor, "/" .. c.name .. " "),
-    }
+    if not hidden[c.name] then
+      items[#items + 1] = {
+        -- Enter sends it, as in Claude Code, unless it needs an argument.
+        data = { anvim_command = true, send = not needs_argument(c.argument_hint) },
+        label = "/" .. c.name,
+        filterText = c.name,
+        kind = KIND.command,
+        labelDetails = desc and { description = vim.fn.strcharpart(desc, 0, 48) } or nil,
+        documentation = desc and {
+          kind = "plaintext",
+          value = desc .. (c.argument_hint and ("\n\n/" .. c.name .. " " .. c.argument_hint) or ""),
+        } or nil,
+        textEdit = edit(row, 0, cursor, "/" .. c.name .. " "),
+      }
+    end
   end
   return items
 end
@@ -242,6 +317,8 @@ end
 
 function M.attach(sidecar)
   sidecar.on("init", function(ev)
+    -- Claude Code leaves the list out when it is empty.
+    M.terminal = ev.terminal_slash_commands or {}
     if #M.commands == 0 then
       M.commands = vim.tbl_map(function(name)
         return { name = name, description = "" }

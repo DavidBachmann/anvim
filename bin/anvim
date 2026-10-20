@@ -1,9 +1,11 @@
 #!/bin/sh
-# Usage: anvim [--model <model>] [--mode <mode>] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
+# Usage: anvim [--model <model>] [--effort <level>] [--mode <mode>] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
 # The permission mode is default, acceptEdits, plan or bypassPermissions. It is
 # default unless --mode or ANVIM_MODE says otherwise: Claude asks before it
-# runs a tool. When the repo's lockfiles changed since the last install, anvim
-# runs scripts/install first. ANVIM_NO_INSTALL=1 skips that.
+# runs a tool. The effort is low, medium, high, xhigh or max. Without
+# --effort or ANVIM_EFFORT it is the level in the Claude Code settings for the
+# model, else the model's. When the repo's lockfiles changed since the last
+# install, anvim runs scripts/install first. ANVIM_NO_INSTALL=1 skips that.
 root=$(cd "$(dirname "$(realpath "$0")")/.." && pwd)
 
 is_session_id() {
@@ -22,18 +24,27 @@ unset ANVIM_INSTALL_FAILED
 n=$#
 while [ "$n" -gt 0 ]; do
   case "$1" in
-    --model | --mode)
+    --model | --mode | --effort)
       # $# also counts the arguments already moved to the end.
       if [ "$n" -lt 2 ]; then
-        echo "anvim: $1 needs a value, e.g. --model haiku or --mode default" >&2
+        echo "anvim: $1 needs a value, e.g. --model haiku, --effort high or --mode default" >&2
         exit 2
       fi
-      if [ "$1" = --model ]; then ANVIM_MODEL=$2; else ANVIM_MODE=$2 mode=1; fi
+      case $1 in
+        --model) ANVIM_MODEL=$2 ;;
+        --mode) ANVIM_MODE=$2 mode=1 ;;
+        *) ANVIM_EFFORT=$2 effort=1 ;;
+      esac
       shift 2
       n=$((n - 2))
       ;;
     --model=*)
       ANVIM_MODEL=${1#--model=}
+      shift
+      n=$((n - 1))
+      ;;
+    --effort=*)
+      ANVIM_EFFORT=${1#--effort=} effort=1
       shift
       n=$((n - 1))
       ;;
@@ -76,6 +87,15 @@ if [ -n "$mode" ] || [ -n "$ANVIM_MODE" ]; then
     default | acceptEdits | plan | bypassPermissions) export ANVIM_MODE ;;
     *)
       echo "anvim: --mode must be default, acceptEdits, plan or bypassPermissions" >&2
+      exit 2
+      ;;
+  esac
+fi
+if [ -n "$effort" ] || [ -n "$ANVIM_EFFORT" ]; then
+  case "$ANVIM_EFFORT" in
+    low | medium | high | xhigh | max) export ANVIM_EFFORT ;;
+    *)
+      echo "anvim: --effort must be low, medium, high, xhigh or max" >&2
       exit 2
       ;;
   esac

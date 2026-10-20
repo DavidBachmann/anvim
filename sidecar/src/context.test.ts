@@ -164,17 +164,19 @@ describe("contextHook", () => {
 });
 
 describe("commandsEvent", () => {
-  test("keeps names, descriptions and argument hints", () => {
+  test("keeps names, descriptions, argument hints, aliases and which are Claude Code's own", () => {
     expect(
       commandsEvent([
         { name: "review", description: "Review a pull request", argumentHint: "<pr>" },
-        { name: "compact", description: "Clear history but keep a summary", argumentHint: "" },
+        { name: "compact", description: "Clear history but keep a summary", argumentHint: "", builtin: true },
+        { name: "usage", description: "Show session cost", argumentHint: "", aliases: ["cost", "stats"], builtin: true },
       ]),
     ).toEqual({
       type: "commands",
       commands: [
         { name: "review", description: "Review a pull request", argument_hint: "<pr>" },
-        { name: "compact", description: "Clear history but keep a summary" },
+        { name: "compact", description: "Clear history but keep a summary", builtin: true },
+        { name: "usage", description: "Show session cost", aliases: ["cost", "stats"], builtin: true },
       ],
     });
   });

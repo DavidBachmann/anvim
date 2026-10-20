@@ -10,6 +10,7 @@ return {
     lazy = false,
     opts = {
       model = vim.env.ANVIM_MODEL,
+      effort = vim.env.ANVIM_EFFORT,
       permission_mode = vim.env.ANVIM_MODE,
       resume = vim.env.ANVIM_RESUME,
       continue = vim.env.ANVIM_CONTINUE == "1",

@@ -1,7 +1,7 @@
 // Embeds anvim, attaches as a UI, and records exactly what Nvim draws: text,
 // highlight groups and colors, and the timing of every redraw.
 //
-// Usage: bun screen.ts [--cwd dir] [--size 200x50] [--replay file] [--model m] [--mode m] [--out dir] [--xdg dir] -- step...
+// Usage: bun screen.ts [--cwd dir] [--size 200x50] [--replay file] [--model m] [--effort e] [--mode m] [--out dir] [--xdg dir] -- step...
 // anvim's state, cache, data and config dirs go in --xdg, by default a new temp
 // dir. Its plugins come from .tests/anvim, which scripts/test-deps fills on the
 // first run. The tool prints the path of anvim's log at the end.
@@ -36,6 +36,7 @@ const env: Record<string, string> = {};
 if (flag("--replay")) env.ANVIM_REPLAY = resolve(flag("--replay")!);
 if (flag("--model")) env.ANVIM_MODEL = flag("--model")!;
 if (flag("--mode")) env.ANVIM_MODE = flag("--mode")!;
+if (flag("--effort")) env.ANVIM_EFFORT = flag("--effort")!;
 
 const xdg = resolve(flag("--xdg") ?? mkdtempSync(join(tmpdir(), "anvim-screen-")));
 // The plugins come from .tests/anvim, as in the UI tests.

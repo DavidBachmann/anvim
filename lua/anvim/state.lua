@@ -2,6 +2,9 @@
 local M = {
   session_id = nil, ---@type string?
   model = nil, ---@type string?
+  -- The effort level that the session uses, as Claude Code reports it. Nil for
+  -- a model without effort, and until the sidecar reports it.
+  effort = nil, ---@type string?
   permission_mode = "default",
   cwd = vim.fn.getcwd(),
   branch = nil, ---@type string?

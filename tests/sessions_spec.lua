@@ -71,7 +71,8 @@ describe("sessions", function()
 
   -- Other specs check the model that the replay's init named.
   after_each(function()
-    state.model, sessions.model = model, nil
+    state.model, sessions.model, state.effort = model, nil, nil
+    sessions.effort_choice, sessions.models, require("anvim.config").options.effort = nil, nil, nil
   end)
 
   it("lists sessions for the picker: title, time, size and which one is open", function()
@@ -340,23 +341,35 @@ describe("sessions", function()
     assert.are.same("haiku", sessions.start_command().model)
   end)
 
-  it("adds /resume and /model to Claude Code's commands for the completion", function()
+  it("adds /resume, /model and /effort to Claude Code's commands, in place of Claude Code's own", function()
     local completion = require("anvim.completion")
     local before = completion.commands
+    local function names()
+      return vim.tbl_map(function(c)
+        return c.name
+      end, completion.commands)
+    end
     sidecar.dispatch({ type = "commands", commands = { { name = "compact", description = "Summarize" } } })
-    assert.are.same(
-      { "compact", "resume", "model" },
-      vim.tbl_map(function(c)
-        return c.name
-      end, completion.commands)
-    )
-    sidecar.dispatch({ type = "commands", commands = { { name = "model", description = "Claude Code's own" } } })
-    assert.are.same(
-      { "model", "resume" },
-      vim.tbl_map(function(c)
-        return c.name
-      end, completion.commands)
-    )
+    assert.are.same({ "compact", "resume", "model", "effort" }, names())
+    sidecar.dispatch({
+      type = "commands",
+      commands = {
+        { name = "model", description = "Claude Code's own", argument_hint = "<model>", builtin = true },
+        { name = "usage", description = "Show plan usage", builtin = true },
+        {
+          name = "effort",
+          description = "Set effort level for model usage",
+          argument_hint = "<low|medium|high|xhigh|max|auto|ultracode [on|off]>",
+          builtin = true,
+        },
+      },
+    })
+    assert.are.same({ "model", "usage", "effort", "resume" }, names())
+    assert.are.same("[model]", completion.commands[1].argument_hint)
+    assert.are.same("[level]", completion.commands[3].argument_hint)
+    -- Claude Code's hint offers words that do more than set a level.
+    local menu = vim.inspect(completion.command_items(0, 1))
+    assert.is_nil(menu:find("ultracode", 1, true), menu)
     completion.commands = before
   end)
 
@@ -375,5 +388,222 @@ describe("sessions", function()
     unpick()
     unmodels()
     assert.are.same({ 1, 1 }, { #picks, #models })
+  end)
+
+  local haiku = {
+    value = "haiku",
+    name = "Haiku 5.5",
+    resolved = "claude-haiku-5-5",
+    effort_levels = { "low", "medium", "high", "xhigh", "max" },
+  }
+  local old = { value = "claude-haiku-4-5-20251001", name = "Haiku 4.5", resolved = "claude-haiku-4-5-20251001" }
+
+  local function footer()
+    return table.concat(vim.tbl_map(function(c)
+      return c[1]
+    end, input.footer(100)))
+  end
+
+  local function last_line()
+    local all = buf_lines(transcript.buf())
+    return all[#all]
+  end
+
+  it("/effort <level> sets the effort, and a restart keeps it", function()
+    local config = require("anvim.config")
+    sessions.models, state.model = { haiku, old }, "claude-haiku-5-5"
+    config.options.effort = "medium"
+    assert.are.same("medium", sessions.start_command().effort)
+    helpers.capture_sends(function(sent)
+      assert(sessions.command("/effort high"))
+      assert.are.same({ { type = "set_effort", effort = "high" } }, sent)
+      assert.are.same("✻ Set effort to high", last_line())
+      assert.are.same("high", sessions.start_command().effort)
+      assert.are.same("high", sessions.start_command({ resume = "s1" }).effort)
+
+      -- The default wins over the option, also after a restart, which starts
+      -- without an effort, as a new session does.
+      assert(sessions.command("/effort default"))
+      assert.are.same({ type = "set_effort", effort = vim.NIL }, sent[2])
+      assert.are.same("✻ Set effort to default (your settings, else the model's)", last_line())
+      assert.is_nil(sessions.start_command().effort)
+      assert.is_nil(sessions.start_command({ resume = "s1" }).effort)
+    end)
+  end)
+
+  it("the footer shows the effort that Claude Code reports, and drops it in a narrow column", function()
+    state.model = "claude-haiku-5-5"
+    assert.is_nil(footer():find("Haiku 5.5 ·", 1, true), footer())
+    sidecar.dispatch({ type = "effort", level = "xhigh" })
+    assert(footer():find("Haiku 5.5 · xhigh", 1, true), footer())
+    -- A model without effort. JSON's null arrives as nil.
+    sidecar.dispatch({ type = "effort" })
+    assert.is_nil(state.effort)
+    assert.is_nil(footer():find("Haiku 5.5 ·", 1, true), footer())
+
+    sidecar.dispatch({ type = "effort", level = "high" })
+    local function text(width)
+      return table.concat(vim.tbl_map(function(c)
+        return c[1]
+      end, input.footer(width)))
+    end
+    local wide = text(200)
+    assert(wide:find("Haiku 5.5 · high", 1, true), wide)
+    -- The effort goes once the dots and the other parts that go first are gone.
+    local width = vim.api.nvim_strwidth((wide:gsub("%s+$", ""))) - 6
+    while text(width):find(" · high", 1, true) do
+      width = width - 1
+    end
+    local narrow = text(width)
+    assert(narrow:find("Haiku 5.5", 1, true), narrow)
+    assert.is_nil(narrow:find("shift+tab", 1, true), narrow)
+  end)
+
+  it("/effort opens a picker of the model's levels, whose first item is the default", function()
+    local choices, pick = nil, 1
+    local _, unselect = stub(vim.ui, "select", function(items, opts, on_choice)
+      choices = vim.tbl_map(opts.format_item, items)
+      on_choice(items[pick])
+    end)
+    sessions.models, state.model = { haiku, old }, "claude-haiku-5-5"
+    local default = "default (your settings, else the model's)"
+    helpers.capture_sends(function(sent)
+      -- Without a choice in this session, no row is the current one.
+      sessions.effort_choice, pick = nil, nil
+      assert(sessions.command("/effort"))
+      assert.are.same({ "  " .. default, "  low", "  medium", "  high", "  xhigh", "  max" }, choices)
+      assert.are.same({}, sent)
+      sessions.effort_choice, pick = "medium", 1
+      assert(sessions.command("/effort"))
+      assert.are.same({ "  " .. default, "  low", "⏺ medium", "  high", "  xhigh", "  max" }, choices)
+      assert.are.same({ type = "set_effort", effort = vim.NIL }, sent[1])
+      pick = nil
+      assert(sessions.command("/effort"))
+      assert.are.same("⏺ " .. default, choices[1])
+
+      -- Without Claude Code's list, as in a replay, it offers every level.
+      sessions.models, choices, pick = nil, nil, 3
+      assert(sessions.command("/effort"))
+      assert.are.same(6, #choices)
+      assert.are.same({ type = "set_effort", effort = "medium" }, sent[2])
+
+      -- A model without effort levels gets a notice.
+      sessions.models, state.model, choices = { haiku, old }, old.resolved, nil
+      assert(sessions.command("/effort"))
+      assert.is_nil(choices)
+      assert.are.same("✻ Haiku 4.5 has no effort levels.", last_line())
+      assert.are.same(2, #sent)
+    end)
+    unselect()
+  end)
+
+  it("refuses a level that the model lacks or that anvim does not offer, and sends nothing", function()
+    sessions.models, state.model =
+      { vim.tbl_extend("force", haiku, { effort_levels = { "low", "medium", "high" } }) }, "claude-haiku-5-5"
+    helpers.capture_sends(function(sent)
+      assert(sessions.command("/effort max"))
+      assert.are.same("✻ Haiku 5.5 has no max effort. It has low, medium and high.", last_line())
+      assert(sessions.command("/effort turbo"))
+      assert.are.same("✻ /effort takes low, medium, high or default.", last_line())
+      -- Claude Code takes words for /effort that turn on more than an effort.
+      for _, text in ipairs({ "/effort ultracode", "/effort ultracode on", "/effort ULTRACODE off" }) do
+        assert(sessions.command(text), text)
+        assert.are.same("✻ /effort takes low, medium, high or default.", last_line())
+      end
+      local buf = input.buf()
+      vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "/effort ultracode on" })
+      input.submit()
+      assert.are.same({}, sent)
+      -- Claude Code answers these itself.
+      assert.is_false(sessions.command("/effort current"))
+    end)
+    assert.is_nil(sessions.effort())
+  end)
+
+  it("keeps the effort over a model switch, as Claude Code does, and says so when the model lacks it", function()
+    sessions.models, state.model, sessions.effort_choice = { haiku, old }, "claude-haiku-5-5", "high"
+    helpers.capture_sends(function(sent)
+      sessions.set_model(old)
+      assert.are.same({ type = "set_model", model = old.value }, sent[1])
+      assert.are.same("✻ Haiku 4.5 has no high effort. Claude Code keeps it for a model that has it.", last_line())
+      assert.are.same("high", sessions.start_command().effort)
+      sessions.set_model(haiku)
+      assert.are.same("✻ Set model to Haiku 5.5", last_line())
+      -- The default follows the model, so a switch says nothing about it.
+      sessions.effort_choice = false
+      sessions.set_model(old)
+      assert.are.same("✻ Set model to Haiku 4.5", last_line())
+    end)
+  end)
+
+  it("drops an effort option that is no level, with a warning", function()
+    local config = require("anvim.config")
+    local options = config.options
+    local notes, unnotify = stub(vim, "notify")
+    config.setup({ effort = "turbo" })
+    local dropped = config.options.effort
+    config.setup({ effort = "" })
+    local empty = config.options.effort
+    config.setup({ effort = "xhigh" })
+    local kept = config.options.effort
+    config.options = options
+    vim.wait(100, function()
+      return #notes > 0
+    end)
+    unnotify()
+    assert.are.same({ nil, nil, "xhigh" }, { dropped, empty, kept })
+    assert.are.same(1, #notes)
+    assert(notes[1][1]:find('"turbo" is unknown', 1, true), notes[1][1])
+    assert.are.same(vim.log.levels.WARN, notes[1][2])
+    helpers.capture_sends(function(sent)
+      assert.is_nil(sessions.start_command().effort)
+      assert.are.same({}, sent)
+    end)
+  end)
+
+  it("refuses a typed built-in that does nothing here, and sends the rest to Claude", function()
+    local completion = require("anvim.completion")
+    local commands, terminal = completion.commands, completion.terminal
+    completion.commands = {
+      { name = "color", description = "Set the prompt bar color", builtin = true },
+      { name = "usage", description = "Show plan usage", aliases = { "cost" }, builtin = true },
+      { name = "focus", description = "A user's own command" },
+    }
+    completion.terminal = { "color", "focus" }
+    local buf = input.buf()
+    helpers.capture_sends(function(sent)
+      vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "/color red" })
+      input.submit()
+      assert.are.same({}, sent)
+      assert.are.same("✻ /color works only in Claude Code's terminal. Run `claude` for it.", last_line())
+      assert.are.same({ "" }, buf_lines(buf))
+      for _, text in ipairs({ "/usage", "/cost", "/focus on", "/help" }) do
+        assert.is_false(sessions.command(text), text)
+      end
+    end)
+    completion.commands, completion.terminal = commands, terminal
+  end)
+
+  it("starts no paid cloud review, also before Claude Code's list came", function()
+    local completion = require("anvim.completion")
+    local commands = completion.commands
+    completion.commands = {}
+    local buf = input.buf()
+    helpers.capture_sends(function(sent)
+      for _, text in ipairs({ "/ultrareview", "/ultrareview 42", "/code-review ultra", "/code-review Ultra --post" }) do
+        vim.api.nvim_buf_set_lines(buf, 0, -1, false, { text })
+        input.submit()
+        assert.are.same({}, sent, text)
+        assert.are.same(
+          "✻ anvim starts no paid cloud review. Run /ultrareview or /code-review ultra in Claude Code.",
+          last_line(),
+          text
+        )
+      end
+      for _, text in ipairs({ "/code-review", "/code-review high", "/code-review ultrafast" }) do
+        assert.is_false(sessions.command(text), text)
+      end
+    end)
+    completion.commands = commands
   end)
 end)

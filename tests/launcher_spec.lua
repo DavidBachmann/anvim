@@ -15,7 +15,7 @@ vim.fn.writefile({
   [[  --version) echo "NVIM v0.12.5"; exit 0 ;;]],
   [[  --headless) echo "fake install" >&2; exit "${FAKE_INSTALL_EXIT:-0}" ;;]],
   "esac",
-  [[printf '%s|%s|%s|%s|%s|%s|%s\n' "$ANVIM_MODEL" "$ANVIM_RESUME" "$ANVIM_CONTINUE" "$(pwd)" "$*" "$ANVIM_INSTALL_DIR" "$ANVIM_INSTALL_FAILED"]],
+  [[printf '%s|%s|%s|%s|%s|%s|%s|%s\n' "$ANVIM_MODEL" "$ANVIM_RESUME" "$ANVIM_CONTINUE" "$(pwd)" "$*" "$ANVIM_INSTALL_DIR" "$ANVIM_INSTALL_FAILED" "$ANVIM_EFFORT"]],
 }, bin .. "/nvim")
 vim.fn.writefile({ "#!/bin/sh", [[[ "$1" = --version ] && echo 1.0.0]], "exit 0" }, bin .. "/bun")
 for _, name in ipairs({ "nvim", "bun" }) do
@@ -32,6 +32,7 @@ local id = "9b0fe4b4-4c79-44ac-be0c-7ccce0301a50"
 ---@field args string
 ---@field install string
 ---@field failed string ANVIM_INSTALL_FAILED
+---@field effort string
 
 ---@param env? table<string, string|false> false unsets the variable.
 ---@return anvim.LauncherOut? out What nvim got, or nil when bin/anvim did not start it.
@@ -43,6 +44,7 @@ local function run(args, env, cwd)
     PATH = bin .. ":" .. vim.env.PATH,
     ANVIM_MODEL = "",
     ANVIM_MODE = "",
+    ANVIM_EFFORT = "",
     ANVIM_NO_INSTALL = "1",
     ANVIM_INSTALL_DIR = helpers.tmp .. "/launcher install",
   }
@@ -57,8 +59,8 @@ local function run(args, env, cwd)
       clear_env = true,
     })
     :wait()
-  local model, resume, continue, dir, rest, install, failed = (res.stdout or ""):match(
-    "^(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)\n$"
+  local model, resume, continue, dir, rest, install, failed, effort = (res.stdout or ""):match(
+    "^(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)\n$"
   )
   local out = model
       and {
@@ -69,6 +71,7 @@ local function run(args, env, cwd)
         args = rest,
         install = install,
         failed = failed,
+        effort = effort,
       }
     or nil
   return out, res.code, res.stderr or ""
@@ -94,6 +97,27 @@ describe("bin/anvim", function()
     assert(vim.endswith(out.args, "/init.lua +10"), out.args)
     out = assert(run({ "--resume=abc" }))
     assert.are.same("abc", out.resume)
+  end)
+
+  it("takes --effort and --effort=, and refuses a level that Claude Code does not know", function()
+    local out = assert(run({ "--effort", "high", project }))
+    assert.are.same({ "high", vim.fn.resolve(project) }, { out.effort, vim.fn.resolve(out.dir) })
+    out = assert(run({ "--effort=max", "--model", "haiku" }))
+    assert.are.same({ "max", "haiku" }, { out.effort, out.model })
+    out = assert(run({}))
+    assert.are.same("", out.effort)
+    local cases = {
+      { { "--effort", "turbo" } },
+      { { "--effort=" } },
+      { {}, { ANVIM_EFFORT = "turbo" } },
+      { { project, "--effort" }, nil, "--effort needs a value" },
+    }
+    for _, case in ipairs(cases) do
+      local args, env, want = case[1], case[2], case[3] or "--effort must be low, medium, high, xhigh or max"
+      local _, code, err = run(args, env)
+      assert.are.same(2, code, vim.inspect(case))
+      assert(err:find(want, 1, true), err)
+    end
   end)
 
   it("never resumes from a value that another anvim left in the environment", function()

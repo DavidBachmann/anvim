@@ -11,10 +11,10 @@ import { createInterface } from "node:readline";
 import { contextHook, PendingContexts } from "./context";
 import { PermissionBridge } from "./permissions";
 import { PreviewBridge } from "./preview";
-import type { Command, Event } from "./protocol";
+import type { Command, EffortLevel, Event } from "./protocol";
 import * as sessions from "./sessions";
 import { EditorBridge, editorServer, SERVER } from "./tools";
-import { commandsEvent, Translator } from "./translate";
+import { commandsEvent, modelsEvent, Translator } from "./translate";
 
 const record = process.env.ANVIM_RECORD;
 
@@ -56,6 +56,13 @@ class Inbox implements AsyncIterable<SDKUserMessage> {
 
 const inbox = new Inbox();
 let session: Query | null = null;
+let sessionReady!: (q: Query) => void;
+// The start's effort goes out before any change runs.
+const ready = new Promise<Query>((resolve) => (sessionReady = resolve)).then(async (q) => {
+  await reportEffort(q);
+  return q;
+});
+let controls: Promise<void> = Promise.resolve();
 const editor = new EditorBridge(emit);
 const permissions = new PermissionBridge(emit);
 const contexts = new PendingContexts();
@@ -88,6 +95,75 @@ async function reportContext(): Promise<void> {
   }
 }
 
+// Model and effort changes wait for the session, which a resume starts only
+// after its history went out. They run one at a time, in order.
+function control(fn: (q: Query) => Promise<void>): Promise<void> {
+  const next = controls.then(() => ready).then(fn);
+  controls = next.catch(() => {});
+  return next;
+}
+
+// What getSettings() answers. The SDK has the method, but not in its types.
+export type SettingsAnswer = {
+  sources?: { source: string; settings?: Record<string, any> | null }[];
+  applied?: { model?: string; effort?: EffortLevel | null };
+};
+
+function getSettings(q: Query): Promise<SettingsAnswer> {
+  return (q as unknown as { getSettings(): Promise<SettingsAnswer> }).getSettings();
+}
+
+// claude-opus-5-5[1m] and claude-opus-5-5-20261001 are claude-opus-5-5.
+function canonical(model: string): string {
+  return model.replace(/\[1m\]$/i, "").replace(/-\d{8}$/, "");
+}
+
+// The level that a new session takes from the settings files for a model:
+// the model's modelSettings entry, or a file's top-level effortLevel, from
+// the highest file that has either. Claude Code applies the user's own
+// top-level effortLevel only to some older models, so it does not count here.
+// The flag settings are anvim's own. null leaves the model's own level.
+export function settingsEffort(answer: SettingsAnswer, model: string): EffortLevel | null {
+  const name = canonical(model);
+  for (const { source, settings } of [...(answer.sources ?? [])].reverse()) {
+    if (source === "flagSettings" || !settings) continue;
+    const entries = Object.entries(settings.modelSettings ?? {}) as [string, { effortLevel?: EffortLevel }][];
+    const own = entries.find(([key]) => key === name) ?? entries.find(([key]) => canonical(key) === name);
+    const level = own?.[1]?.effortLevel ?? (source === "userSettings" ? undefined : settings.effortLevel);
+    if (level) return level;
+  }
+  return null;
+}
+
+// A session that started without an effort inherits it: Claude Code takes it
+// from the settings for each model, as in a new session. A level from
+// set_effort ends that, and the flag settings cannot bring it back. After
+// set_effort null, a model switch applies the settings' level for the new
+// model, so the default follows the model as an inherited effort does.
+let inheriting = false;
+let followSettings = false;
+// The levels that the session inherited, by model. They are Claude Code's own
+// answer, which settingsEffort() only comes close to.
+const inherited = new Map<string, EffortLevel | null>();
+
+async function reportEffort(q: Query): Promise<void> {
+  try {
+    const { applied } = await getSettings(q);
+    const level = applied?.effort ?? null;
+    if (inheriting && applied?.model) inherited.set(applied.model, level);
+    emit({ type: "effort", level });
+  } catch {
+    // Without get_settings, the footer shows no effort.
+  }
+}
+
+async function defaultEffort(q: Query): Promise<EffortLevel | null> {
+  const answer = await getSettings(q);
+  const model = answer.applied?.model;
+  if (!model) return null;
+  return inherited.has(model) ? inherited.get(model)! : settingsEffort(answer, model);
+}
+
 // A message that the translator cannot read goes to the log. It must not end
 // the session.
 function translate(translator: Translator, msg: SDKMessage): Event[] {
@@ -106,6 +182,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
   const options: Options = {
     cwd: cmd.cwd,
     model: cmd.model,
+    effort: cmd.effort,
     resume: await resumeTarget(cmd),
     permissionMode: mode,
     allowDangerouslySkipPermissions: mode === "bypassPermissions",
@@ -119,20 +196,31 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     canUseTool: permissions.canUseTool,
     stderr: (data) => process.stderr.write(data),
   };
+  inheriting = !cmd.effort;
   session = query({ prompt: inbox, options });
+  sessionReady(session);
   session
     .supportedCommands()
     .then((commands) => emit(commandsEvent(commands)))
+    .catch(() => {});
+  // The effort picker needs the models' effort levels.
+  session
+    .supportedModels()
+    .then((models) => emit(modelsEvent(models)))
     .catch(() => {});
   const translator = new Translator();
   for await (const msg of session) {
     contexts.message(msg);
     for (const ev of translate(translator, msg)) emit(ev);
-    if (msg.type === "result") void reportContext();
+    if (msg.type === "result") {
+      void reportContext();
+      // A settings file can change the inherited effort meanwhile.
+      void control(reportEffort);
+    }
   }
 }
 
-async function handle(cmd: Command): Promise<void> {
+export async function handle(cmd: Command): Promise<void> {
   switch (cmd.type) {
     case "start":
       if (session) return;
@@ -155,21 +243,29 @@ async function handle(cmd: Command): Promise<void> {
       await session?.setPermissionMode(cmd.mode as PermissionMode);
       return;
     case "set_model":
-      await session?.setModel(cmd.model);
-      return;
-    case "list_models": {
-      const models = (await session?.supportedModels()) ?? [];
-      emit({
-        type: "models",
-        models: models.map((m) => ({
-          value: m.value,
-          name: m.displayName,
-          description: m.description,
-          resolved: m.resolvedModel,
-        })),
+      await control(async (q) => {
+        await q.setModel(cmd.model);
+        if (followSettings && !inheriting) await q.applyFlagSettings({ effortLevel: await defaultEffort(q) });
+        await reportEffort(q);
       });
       return;
-    }
+    case "set_effort":
+      await control(async (q) => {
+        followSettings = cmd.effort === null;
+        // An inherited effort is the default already.
+        if (!(followSettings && inheriting)) {
+          const level = cmd.effort ?? (await defaultEffort(q));
+          inheriting = false;
+          // The flag layer, so the effort lasts for this session only, and no
+          // settings file changes.
+          await q.applyFlagSettings({ effortLevel: level });
+        }
+        await reportEffort(q);
+      });
+      return;
+    case "list_models":
+      await control(async (q) => emit(modelsEvent(await q.supportedModels())));
+      return;
     case "preview_done":
       previews.done(cmd.req);
       return;
@@ -182,18 +278,6 @@ async function handle(cmd: Command): Promise<void> {
   }
 }
 
-const rl = createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  if (!line.trim()) return;
-  let cmd: Command;
-  try {
-    cmd = JSON.parse(line);
-  } catch {
-    emit({ type: "notice", level: "error", text: `bad command: ${line.slice(0, 200)}` });
-    return;
-  }
-  handle(cmd).catch((err) => emit({ type: "notice", level: "error", text: String(err?.message ?? err) }));
-});
 // Bun runs no exit handlers on SIGTERM, so the SDK would leave Claude Code
 // running. A restart of a hung sidecar sends SIGTERM.
 function shutdown(): void {
@@ -201,5 +285,21 @@ function shutdown(): void {
   session?.close();
   process.exit(0);
 }
-rl.on("close", shutdown);
-process.on("SIGTERM", shutdown);
+
+// The tests import handle() without the process around it.
+if (import.meta.main) {
+  const rl = createInterface({ input: process.stdin });
+  rl.on("line", (line) => {
+    if (!line.trim()) return;
+    let cmd: Command;
+    try {
+      cmd = JSON.parse(line);
+    } catch {
+      emit({ type: "notice", level: "error", text: `bad command: ${line.slice(0, 200)}` });
+      return;
+    }
+    handle(cmd).catch((err) => emit({ type: "notice", level: "error", text: String(err?.message ?? err) }));
+  });
+  rl.on("close", shutdown);
+  process.on("SIGTERM", shutdown);
+}

@@ -85,6 +85,7 @@ describe("footer", function()
     saved = {
       branch = state.branch,
       model = state.model,
+      effort = state.effort,
       mode = state.permission_mode,
       start = options().permission_mode,
       paused = follow.paused,
@@ -95,7 +96,7 @@ describe("footer", function()
 
   after_each(function()
     state.branch, state.permission_mode, options().permission_mode = saved.branch, saved.mode, saved.start
-    state.model = saved.model
+    state.model, state.effort = saved.model, saved.effort
     follow.paused, state.waiting = saved.paused, nil
     agents.clear()
     follow.forget()
@@ -158,7 +159,7 @@ describe("footer", function()
 
   it("drops the hints first in a narrow column, then shortens and drops the follow status before the chip", function()
     options().permission_mode, state.permission_mode, state.branch = "default", "acceptEdits", "main"
-    state.model = "claude-opus-5-5"
+    state.model, state.effort = "claude-opus-5-5", "xhigh"
     away("footer_narrow.lua")
     start("fn1")
     start("fn2")
@@ -171,6 +172,7 @@ describe("footer", function()
       { "the jump key", "(<leader>j)" },
       { "the branch", "git:(main)" },
       { "the agents' count", " 2 agents" },
+      { "the effort", " · xhigh" },
       { "the model", "Opus 5.5" },
       { "the long follow status", "Claude at footer_narrow.lua:3" },
       { "the long label", "accept edits on" },
