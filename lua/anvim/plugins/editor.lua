@@ -1,8 +1,10 @@
+local keys = require("anvim.keys")
+
 local to_code = {
   function()
     vim.api.nvim_set_current_win(require("anvim.layout").code_win())
   end,
-  desc = "Go to the code window",
+  desc = keys.desc("explorer", "n", "<C-l>"),
 }
 
 return {
@@ -98,7 +100,7 @@ return {
                 keys = {
                   ["<c-w>l"] = to_code,
                   ["<c-l>"] = to_code,
-                  ["@"] = { "anvim_reference", desc = "Point Claude at the file" },
+                  ["@"] = { "anvim_reference", desc = keys.desc("explorer", "n", "@") },
                   -- Claude changes the files. These keys add, delete, rename,
                   -- copy, move and paste them.
                   a = false,

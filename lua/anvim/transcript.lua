@@ -91,13 +91,14 @@ function M.buf()
   vim.bo[bufnr].formatlistpat = [[^\s*\%(⏺\|❯\|⎿\|⚠\)\?\s*]]
   -- The cursor is here only in read mode. Insert commands go back to typing.
   local layout = require("anvim.layout")
+  local keys = require("anvim.keys")
   for _, key in ipairs({ "q", "<Esc>" }) do
-    vim.keymap.set("n", key, function()
+    keys.set("transcript", "n", key, function()
       layout.focus_input({ insert = false })
-    end, { buffer = bufnr, desc = "Back to the prompt" })
+    end, { buffer = bufnr })
   end
   for _, key in ipairs(layout.insert_keys) do
-    vim.keymap.set("n", key, layout.focus_input, { buffer = bufnr, desc = "Back to typing" })
+    keys.set("transcript", "n", key, layout.focus_input, { buffer = bufnr })
   end
   return bufnr
 end

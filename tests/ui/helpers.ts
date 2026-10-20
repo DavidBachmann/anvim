@@ -90,6 +90,12 @@ export class Anvim {
     return box;
   }
 
+  // The footer under the prompt, as the grid shows it.
+  async footer(): Promise<string> {
+    const input = await this.box("input");
+    return cells(this.ui.lines()[input.row + input.height - 1] ?? "", input.col, input.width);
+  }
+
   // Shows a project file in the code window, with the cursor there in normal mode.
   async toCode(file = "matchparen.lua", view?: { lnum: number; topline: number }) {
     await this.ui.exec_lua(

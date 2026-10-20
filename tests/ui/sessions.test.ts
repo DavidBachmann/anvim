@@ -8,7 +8,7 @@ afterEach(async () => {
   anvim = undefined;
 });
 
-test("<leader>ks lists this directory's sessions, and enter resumes the chosen one", async () => {
+test("<leader>cs lists this directory's sessions, and enter resumes the chosen one", async () => {
   anvim = await start();
   const { ui } = anvim;
   await ui.exec_lua(`
@@ -26,7 +26,7 @@ test("<leader>ks lists this directory's sessions, and enter resumes the chosen o
     end
   `);
   await anvim.toCode();
-  await anvim.type(" ks", 80);
+  await anvim.type(" cs", 80);
   await ui.waitFor("Resume a session");
   await ui.waitFor("Explain the highlight function");
   const screen = ui.screen();
@@ -44,7 +44,7 @@ test("<leader>ks lists this directory's sessions, and enter resumes the chosen o
   await ui.waitFor("Resuming session 22222222-2222-2222-2222-222222222222");
 });
 
-test("<leader>km lists Claude Code's models, and the choice reaches the footer", async () => {
+test("<leader>cm lists Claude Code's models, and the choice reaches the footer", async () => {
   anvim = await start();
   const { ui } = anvim;
   await ui.exec_lua(`
@@ -67,7 +67,7 @@ test("<leader>km lists Claude Code's models, and the choice reaches the footer",
     end
   `);
   await anvim.toCode();
-  await anvim.type(" km", 80);
+  await anvim.type(" cm", 80);
   await ui.waitFor("Most efficient for simpler tasks");
   await anvim.type("sonnet", 30);
   await Bun.sleep(200);

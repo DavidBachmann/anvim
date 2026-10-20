@@ -94,11 +94,11 @@ anvim -c ~/dev/project                          # go on with the latest session 
 anvim --resume ~/dev/project                    # pick a session to go on with
 ```
 
-The screen has three columns: the explorer, code, and Claude. The explorer is 24 columns wide. While it has focus, it widens over the code window to fit its names, and the code window stays where it is. anvim starts with the cursor in the prompt at the bottom right, in normal mode, so your first keys can move around. Press `i` to type. While your cursor is in the prompt, the code window follows Claude. It opens the files Claude reads, and edits stream in with the old text struck through. Claude often reads with Bash, so `cat`, `head`, `tail`, `sed -n` and `nl` open their files too, and a `grep -n` opens at its first hit. Move the cursor anywhere else to take control. The statusline then shows where Claude is.
+The screen has three columns: the explorer, code, and Claude. The explorer is 24 columns wide. While it has focus, it widens over the code window to fit its names, and the code window stays where it is. anvim starts with the cursor in the prompt at the bottom right, in normal mode, so your first keys can move around. Press `i` to type. While your cursor is in the prompt, the code window follows Claude. It opens the files Claude reads, and edits stream in with the old text struck through. Claude often reads with Bash, so `cat`, `head`, `tail`, `sed -n` and `nl` open their files too, and a `grep -n` opens at its first hit. Move the cursor anywhere else to take control. The footer under the prompt then shows where Claude is, such as `⏺ Claude at stream.lua:40 +2`, and `<leader>j` jumps there. In the prompt it says `◉ following`. In a narrow column it drops the words, as in `⏺ stream.lua:40 +2`, and when even that does not fit, the statusline shows it.
 
 File buffers are read-only. `:w` does nothing but say so, and format on save never runs. Claude makes every change, and buffers reload when files change on disk. Markdown and text files wrap, with no spell checking.
 
-The cursor moves between the code window and the prompt in one step: `Ctrl-W l` or `Ctrl-L` from any row of the code window, and `Ctrl-W h` or `Ctrl-H` back. Moving into the prompt leaves you in normal mode. Only insert commands start typing: `i`, `a` and the others in the prompt. In a file buffer, `i`, `a`, `I`, `A`, `o` and `O` go to the prompt and type where you stopped. The transcript takes no focus. A window key that would land on it skips it, a click on it goes to the prompt, and the mouse wheel scrolls it from anywhere. New output keeps the transcript at its end, unless you scrolled up. Then it stays put until you scroll back down or send a prompt. To yank or search the transcript, enter read mode with `<leader>kr`, or drag across it with the mouse.
+The cursor moves between the code window and the prompt in one step: `Ctrl-W l` or `Ctrl-L` from any row of the code window, and `Ctrl-W h` or `Ctrl-H` back. Moving into the prompt leaves you in normal mode. Only insert commands start typing: `i`, `a` and the others in the prompt. In a file buffer, `i`, `a`, `I`, `A`, `o` and `O` go to the prompt and type where you stopped. The transcript takes no focus. A window key that would land on it skips it, a click on it goes to the prompt, and the mouse wheel scrolls it from anywhere. New output keeps the transcript at its end, unless you scrolled up. Then it stays put until you scroll back down or send a prompt. To yank or search the transcript, enter read mode with `<leader>cr`, or drag across it with the mouse.
 
 For a long prompt, `Ctrl-G` in the prompt opens it in a large window in the middle of the screen, as Claude Code's `Ctrl-G` opens it in your editor. There `Enter` adds a line, and `@` and `/` complete as in the prompt. `Ctrl-G` again, `:wq` or `ZZ` puts the text back in the prompt, at the same place and in the same mode: after `Ctrl-G` while typing you go on typing, and after `:wq` you are in normal mode. `:w` puts it there and keeps the window open, and `:q!` drops your changes. Leaving the window keeps the text too. Follow mode goes on while you write.
 
@@ -106,14 +106,21 @@ Only one window shows files, so anvim always knows which file you are looking at
 
 Claude can also use your editor. It points at code with `show_user`, which marks a range and puts a short note above it until your next prompt. It asks the language servers that run in anvim for diagnostics, definitions, references, hover text and symbols, so it greps less. These tools work in every permission mode, so they read only files inside the directory that anvim opened. `show_user` can point at any file, because its answer holds no file text.
 
-The keys for reading sit where LazyVim puts them, so a LazyVim user finds them at once. Keys that edit, such as code actions, rename, comments and window splits, are left out. In the explorer, the keys that add, delete, rename, copy, move and paste files do nothing, and so does `Ctrl-C`, which would change the working directory. In the git logs, `Enter` goes to the commit's diff and never checks out. Git status and the diff picker stage with `Tab`, but cannot restore. `<leader>` is Space.
+## Keys
+
+`<leader>` is Space. `<leader>?` shows every key of anvim in one view, grouped by where it works, as in the tables below. In the prompt, `?` in normal mode shows it too. While you type, `?` shows it only when the prompt is empty and no request waits. Otherwise it types a `?`. The footer says `? for shortcuts` then, unless it shows a mode. A dim tag names the mode of a key that does not work in normal mode, such as `insert` or `visual`. `j` and `k` scroll the view when it does not fit. `q`, `Esc` or `:q` closes it, and the cursor goes back where it was, in the same mode. Vim's own keys work as usual.
+
+The keys for reading sit where LazyVim puts them, so a LazyVim user finds them at once. Keys that edit, such as code actions, rename and window splits, are left out. So are Neovim's own keys that only change text: `gc` and `gcc`, which comment, `[<Space>` and `]<Space>`, which add blank lines, and `&`, which repeats a substitution. In operator-pending mode `gc` stays, because it selects a comment: `cgc` points Claude at one. In the explorer, the keys that add, delete, rename, copy, move and paste files do nothing, and so does `Ctrl-C`, which would change the working directory. In the git logs, `Enter` goes to the commit's diff and never checks out. Git status and the diff picker stage with `Tab`, but cannot restore.
+
+### Everywhere
 
 | Key | Action |
 | --- | --- |
+| `<leader>?` | Show every key of anvim |
 | `Ctrl-H`, `Ctrl-J`, `Ctrl-K`, `Ctrl-L` | Go to the window on the left, below, above or on the right |
 | `Shift-H`, `Shift-L` | Previous and next buffer |
-| `Esc` | Clear the search highlight |
 | `j`, `k` | Move by screen line in wrapped text, by line with a count |
+| `Esc` | Clear the search highlight |
 | `<leader><space>`, `<leader>/`, `<leader>,` | Find files, grep, buffers |
 | `<leader>fr` | Recent files |
 | `<leader>e` | Go to the explorer |
@@ -123,53 +130,106 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 | `<leader>sh` | Help pages |
 | `<leader>gs`, `<leader>gd` | Git status, git diff by hunk |
 | `<leader>gl`, `<leader>gf`, `<leader>gb` | Git log, the file's history, the line's history |
-| `]h`, `[h`, `]H`, `[H` | Next, previous, last and first hunk |
-| `<leader>ghp`, `<leader>ghb` | Preview the hunk, blame the line |
+| `<leader>uw`, `<leader>ud` | Toggle wrap, toggle diagnostics |
+| `q` | Close a help, quickfix or info window |
+
+### Code window
+
+| Key | Action |
+| --- | --- |
+| `i`, `a`, `I`, `A`, `o`, `O` | Go to the prompt and type where you stopped |
+| `c` in visual mode | Put a reference to the selected lines in the prompt |
+| `c{motion}`, `cc` | Put a reference to the lines of the motion, or to the current line, in the prompt |
+| `Ctrl-L` in visual mode | Go to the prompt and keep the selection |
 | `gd`, `gr`, `gI`, `gy`, `gD` | Definition, references, implementation, type definition, declaration, in a buffer with a language server |
 | `K` | Hover |
-| `]d`, `[d` | Next and previous diagnostic |
+| `gO` | List the file's symbols |
 | `]]`, `[[` | Next and previous reference to the word under the cursor, in a buffer with a language server |
-| `<leader>uw`, `<leader>ud` | Toggle wrap, toggle diagnostics |
+| `]d`, `[d`, `]D`, `[D` | Next, previous, last and first diagnostic |
+| `Ctrl-W d` | Show the diagnostics at the cursor |
+| `]h`, `[h`, `]H`, `[H` | Next, previous, last and first hunk |
+| `<leader>ghp`, `<leader>ghb` | Preview the hunk, blame the line |
+| `gx` | Open the path or link under the cursor with the system app |
+| `ii`, `ai` | The scope inside its edges, the scope with its edges, as text objects: `cii` points Claude at a block |
+| `[i`, `]i` | Go to the scope's top and bottom edge |
 
-anvim adds these:
+### Prompt
 
-| Key | Where | Action |
-| --- | --- | --- |
-| `Enter` | prompt | Send |
-| `Shift-Enter`, `Alt-Enter` | prompt, insert mode | New line |
-| `Up` on the first line, `Down` on the last | prompt, insert mode | Go back and forth through past prompts |
-| `Ctrl-P`, `Ctrl-N` | prompt, normal mode | Go back and forth through past prompts |
-| `Esc` (normal mode), `Ctrl-C` | prompt | Interrupt Claude |
-| `Shift-Tab` | prompt | Cycle the permission mode |
-| `PageUp`, `PageDown` | prompt | Scroll the transcript |
-| `Ctrl-U`, `Ctrl-D`, `Ctrl-B`, `Ctrl-F` | prompt, normal mode | Scroll the transcript |
-| `Ctrl-X` | prompt | Unpin the selection |
-| `Ctrl-G` | prompt | Write the prompt in a large window. `Ctrl-G` there goes back |
-| `@`, `/` | prompt, insert mode | Complete a file, or a slash command at the start |
-| `i`, `a`, `I`, `A`, `o`, `O` | file buffer | Go to the prompt and type where you stopped |
-| `c` | file buffer, visual mode | Put a reference to the selected lines in the prompt |
-| `c{motion}`, `cc` | file buffer | Put a reference to the lines of the motion in the prompt |
-| `Ctrl-L` | file buffer, visual mode | Go to the prompt and keep the selection |
-| `Ctrl-W l`, `Ctrl-L` | explorer | Go to the code window |
-| `@` | explorer | Put a reference to the file in the prompt |
-| `<leader>j`, `<leader>kj` | anywhere | Jump to where Claude, or the focused subagent, is |
-| `<leader>k1` to `<leader>k4` | anywhere | Focus the subagent with that number, so follow mode follows it |
-| `<leader>k0` | anywhere | Focus Claude, the main agent, again |
-| `<leader>ka` | anywhere | Pick an agent to focus, with its place in the preview |
-| `<leader>kt`, `:AnvimTrail` | anywhere | Pick a place from Claude's trail |
-| `<leader>kr`, `:AnvimTranscript` | anywhere | Read the transcript: put the cursor in it to yank and search |
-| `<leader>ky` | anywhere | Yank Claude's last reply to the clipboard |
-| `<leader>ks`, `:AnvimSessions` | anywhere | Resume a session of this directory |
-| `<leader>km`, `:AnvimModel` | anywhere | Choose Claude's model |
-| `:AnvimRestart` | anywhere | Start Claude again, in the same session |
-| `q`, `Esc` | transcript in read mode | Go back to the prompt |
-| `i`, `a`, `I`, `A`, `o`, `O` | transcript in read mode | Go back to the prompt and type |
+| Key | Action |
+| --- | --- |
+| `Enter` | Send |
+| `Shift-Enter`, `Alt-Enter` | New line, in insert mode |
+| `Esc` in normal mode, `Ctrl-C` | Interrupt Claude |
+| `Shift-Tab` | Cycle the permission mode |
+| `Ctrl-X` | Unpin the selection |
+| `Ctrl-G` | Write the prompt in a large window |
+| `Up` on the first line, `Down` on the last | Go back and forth through past prompts, in insert mode |
+| `Ctrl-P`, `Ctrl-N` | Go back and forth through past prompts, in normal mode |
+| `Ctrl-U`, `Ctrl-D`, `Ctrl-B`, `Ctrl-F` | Scroll the transcript, in normal mode |
+| `PageUp`, `PageDown` | Scroll the transcript |
+| `@`, `/` | Complete a file, or a slash command at the start, in insert mode |
+| `?` | Show every key of anvim, in normal mode or in an empty prompt |
+| `Ctrl-Space`, `Ctrl-E` | Show and close the completion menu, in insert mode |
+| `Ctrl-N`, `Ctrl-P`, `Up`, `Down` | Next and previous item, while the menu is open |
+| `Ctrl-Y`, `Enter` | Accept the item |
+| `Ctrl-B`, `Ctrl-F` | Scroll the item's documentation, in insert mode |
+
+### Compose window
+
+| Key | Action |
+| --- | --- |
+| `Ctrl-G` | Put the text back in the prompt and go there |
+| `:w` | Put the text in the prompt, and keep the window open |
+| `:wq`, `ZZ` | Put the text in the prompt, and close the window |
+| `:q!` | Drop the changes |
+
+### Explorer
+
+| Key | Action |
+| --- | --- |
+| `@` | Put a reference to the file in the prompt |
+| `Ctrl-W l`, `Ctrl-L` | Go to the code window |
+| `?` | Show the explorer's own keys |
+
+### Transcript and read mode
+
+| Key | Action |
+| --- | --- |
+| `q`, `Esc` | Go back to the prompt |
+| `i`, `a`, `I`, `A`, `o`, `O` | Go back to the prompt and type |
+| Mouse drag | Select text, in read mode |
+| Mouse wheel | Scroll the transcript, from any window |
+
+### Permission requests
+
+These keys work in the prompt, in normal mode, while Claude waits for your answer.
+
+| Key | Action |
+| --- | --- |
+| `1` to `9` | Choose that option |
+| `j`, `k`, then `Enter` | Move to an option and choose it |
+| `Esc` | No |
+
+### Claude and its agents
+
+| Key | Action |
+| --- | --- |
+| `<leader>j`, `<leader>cj` | Jump to where Claude, or the focused subagent, is |
+| `<leader>c1` to `<leader>c4` | Focus the subagent with that number, so follow mode follows it |
+| `<leader>c0` | Focus Claude, the main agent, again |
+| `<leader>ca` | Pick an agent to focus, with its place in the preview |
+| `<leader>ct`, `:AnvimTrail` | Pick a place from Claude's trail |
+| `<leader>cr`, `:AnvimTranscript` | Read the transcript: put the cursor in it to yank and search |
+| `<leader>cy` | Yank Claude's last reply to the clipboard |
+| `<leader>cs`, `:AnvimSessions` | Resume a session of this directory |
+| `<leader>cm`, `:AnvimModel` | Choose Claude's model |
+| `<leader>cR`, `:AnvimRestart` | Start Claude again, in the same session |
 
 ## Sessions
 
-Claude Code saves every session, and anvim reads them through the Agent SDK. `anvim -c` goes on with the latest session in the directory, and `anvim --resume <id>` with that one. `--resume` without an id opens the session picker at start. In anvim, `<leader>ks` or `/resume` opens it: each session shows its title or first prompt, when it changed, its size and its branch, with details in the preview. Choosing one starts Claude again in that session and draws its past in the transcript, as it looked live. A session that Claude Code compacted starts at the compaction, because Claude Code keeps only the summary. Saved sessions do not keep what went with each prompt, so a resumed transcript shows no `⎿  ⧉` lines. A background subagent's end shows as it did live, but past subagents get no numbers, colors or dots.
+Claude Code saves every session, and anvim reads them through the Agent SDK. `anvim -c` goes on with the latest session in the directory, and `anvim --resume <id>` with that one. `--resume` without an id opens the session picker at start. In anvim, `<leader>cs` or `/resume` opens it: each session shows its title or first prompt, when it changed, its size and its branch, with details in the preview. Choosing one starts Claude again in that session and draws its past in the transcript, as it looked live. A session that Claude Code compacted starts at the compaction, because Claude Code keeps only the summary. Saved sessions do not keep what went with each prompt, so a resumed transcript shows no `⎿  ⧉` lines. A background subagent's end shows as it did live, but past subagents get no numbers, colors or dots.
 
-`/clear` starts a new session and empties the transcript. `<leader>km` or `/model` lists the models that Claude Code offers, and the footer shows the one you choose. `/model sonnet` switches at once. `:AnvimRestart` starts Claude again when it exited or hangs, in the same session, and keeps the model you chose. Other slash commands run in Claude Code, and their output shows under them, such as the text of `/cost`. As in Claude Code, `Enter` on a slash command in the completion menu completes it and sends it. A command that needs an argument, such as `/batch <instruction>`, is only completed, so you can type the argument.
+`/clear` starts a new session and empties the transcript. `<leader>cm` or `/model` lists the models that Claude Code offers, and the footer shows the one you choose. `/model sonnet` switches at once. `<leader>cR` or `:AnvimRestart` starts Claude again when it exited or hangs, in the same session, and keeps the model you chose. Other slash commands run in Claude Code, and their output shows under them, such as the text of `/cost`. As in Claude Code, `Enter` on a slash command in the completion menu completes it and sends it. A command that needs an argument, such as `/batch <instruction>`, is only completed, so you can type the argument.
 
 Your prompts are saved per directory, the last 200, in anvim's state dir. `Up` on the first line of the prompt goes back through them, and `Down` on the last line comes forward again, back to what you were typing. While the completion menu is open, `Up` and `Down` move in the menu instead.
 
@@ -185,7 +245,7 @@ Claude's todo list stays at the end of the transcript, under the newest output, 
 
 Claude can start subagents, such as Explore, and several at once. Each running subagent gets a number from 1 to 4 and a color of its own, and anvim names it by its type and that number, such as `Explore 2`. The bullet of its line in the transcript has that color while it runs. The footer has a dot in each running subagent's color, and their count: `⏺⏺⏺ 3 agents`. In the explorer, a `⏺` in an agent's color marks each file that the agent writes to, and each closed folder above it, up to three agents and then `+`. A subagent's dots go when it ends, and Claude's own dots last until its turn ends.
 
-Follow mode follows one agent at a time, at first Claude itself. `<leader>k2` focuses subagent 2, and `<leader>k0` focuses Claude again. `<leader>ka` lists Claude and the running subagents, with what each one does, its tool uses and its place, which the preview shows. While a subagent has focus, the code window goes where that subagent reads and edits, and the other agents' moves leave it alone. The statusline says `◉ following Explore 2` in the agent's color, the agent's dot in the footer is `◉`, and its line in the transcript ends in `◉ focused`. Claude Code sends a subagent's edits whole, not as they are generated. So while you follow a subagent, anvim types its edits into the code window at a steady pace, in 2 s at most, before the file changes. The other agents never wait for that. When the subagent ends, focus goes back to Claude, and the transcript says so. A permission request from a subagent names it in its color, such as `Edit file · Explore 2 (Find x)`.
+Follow mode follows one agent at a time, at first Claude itself. `<leader>c2` focuses subagent 2, and `<leader>c0` focuses Claude again. `<leader>ca` lists Claude and the running subagents, with what each one does, its tool uses and its place, which the preview shows. While a subagent has focus, the code window goes where that subagent reads and edits, and the other agents' moves leave it alone. The footer says `◉ following Explore 2` in the agent's color, the agent's dot there is `◉`, and its line in the transcript ends in `◉ focused`. Claude Code sends a subagent's edits whole, not as they are generated. So while you follow a subagent, anvim types its edits into the code window at a steady pace, in 2 s at most, before the file changes. The other agents never wait for that. When the subagent ends, focus goes back to Claude, and the transcript says so. A permission request from a subagent names it in its color, such as `Edit file · Explore 2 (Find x)`.
 
 A background subagent keeps working after Claude's turn ends. Its line says `Backgrounded agent`, lists its newest tool calls, and keeps its color and its number until it ends. Then its line shows its totals, and a row at the end of the transcript says `Agent "Find x" finished`, with its summary. When Claude is idle, it replies to each end in a turn of its own, as in Claude Code.
 
@@ -195,23 +255,19 @@ Claude always knows what you look at. Each prompt tells it the file in the code 
 
 Select lines in the code window, in any visual mode, and go to the prompt: `Ctrl-L`, `Ctrl-W l`, a click, or `Esc` and then `i`. The selection stays highlighted, and the footer says `⧉ 19 lines selected`. Your next prompt carries it, and sending that prompt unpins it. It also goes when you move on: move the cursor in the code window, open another file, start a new selection, or press `Esc` in normal mode there. Scrolling keeps it. `Ctrl-X` in the prompt unpins it. When Claude edits the file, the selection goes, because its text changed. A long selection gives Claude its line numbers and its first 2000 characters, as Claude Code's IDE integrations do. Slash commands run in Claude Code and carry no editor context.
 
-While a selection is pinned, follow mode waits, so the code window keeps what you point at. The statusline says so, for example `⏸ pinned · Claude at stream.lua:40 +2`. Once the prompt is sent or the pin goes, the code window catches up with Claude, also with a file that Claude is still writing. `<leader>j` unpins and goes to Claude, or to the focused subagent, at once.
+While a selection is pinned, follow mode waits, so the code window keeps what you point at. The footer says so, for example `⏸ pinned · Claude at stream.lua:40 +2`. Once the prompt is sent or the pin goes, the code window catches up with Claude, also with a file that Claude is still writing. `<leader>j` unpins and goes to Claude, or to the focused subagent, at once.
 
 References are text in the prompt, in the form `@path#L12-30`, and you can write several. In a file buffer, `c` puts one in the prompt and goes on typing after it: `c` in visual mode for the selection, `c{motion}` for the lines of a motion such as `cip` or `cj`, and `cc` for the current line or, with a count, more lines. Read-only buffers leave `c` free, so read it as "change this, Claude". `@` in the explorer references whole files and leaves the cursor after them, in normal mode. In the prompt, `@` completes files and directories, and `/` at the start completes slash commands. The transcript shows what went with each prompt, dimmed under it: `⎿  ⧉ stream.lua#L12-30`.
 
-`<leader>kt` opens Claude's trail: every file and range that Claude read, edited, wrote or showed you, and your own references, newest first, with a preview. `Enter` opens the place in the code window.
+`<leader>ct` opens Claude's trail: every file and range that Claude read, edited, wrote or showed you, and your own references, newest first, with a preview. `Enter` opens the place in the code window.
 
 ## Permissions
 
-anvim starts in default mode, as Claude Code does: Claude asks before it edits a file or runs a command, unless your Claude Code settings allow it. Start it with `--mode acceptEdits`, `--mode plan` or `--mode bypassPermissions` for another mode. To run every tool without asking by default, put `export ANVIM_MODE=bypassPermissions` in your shell profile. `--mode` wins over it. `Shift-Tab` in the prompt cycles default, accept edits and plan mode, plus bypass when anvim started in it.
+anvim starts in default mode, as Claude Code does: Claude asks before it edits a file or runs a command, unless your Claude Code settings allow it. Start it with `--mode acceptEdits`, `--mode plan` or `--mode bypassPermissions` for another mode. To run every tool without asking by default, put `export ANVIM_MODE=bypassPermissions` in your shell profile. `--mode` wins over it. `Shift-Tab` in the prompt cycles default, accept edits and plan mode, plus bypass when anvim started in it. The footer shows the mode only while it differs from the one anvim started in, such as `⏵⏵ accept edits on`, or `⏵ manual mode on` for default mode. Plan mode always shows.
 
 When Claude needs your yes, the request appears at the bottom of the Claude column, as in Claude Code. An edit streams into the code window before the request opens, so you see the change before you answer. If you say no, the buffer shows the file on disk again. Claude's questions and its plan, when it wants to leave plan mode, appear the same way. If your cursor is outside the prompt, anvim leaves it there, posts a notification and shows "⏺ Claude is waiting" in the statusline. A request brings the transcript to its end, even if you scrolled it up. In read mode the transcript stays where you read, and it goes to the request when you leave read mode. `Esc` there takes you back to the prompt and answers nothing. A choice key never answers a request that is out of view: it brings the request into view instead.
 
-| Key | In the prompt in normal mode, while Claude waits |
-| --- | --- |
-| `1` to `9` | Choose that option |
-| `j`, `k`, then `Enter` | Move to an option and choose it |
-| `Esc` | No |
+The keys that answer are under [Permission requests](#permission-requests).
 
 While a request waits, normal mode in the prompt is for choosing. Typing your prompt never answers: if you are typing when a request opens, you keep typing, digits are text, and `Enter` keeps your prompt without sending it or answering. Press `Esc`, then choose. `Enter` chooses only after `j` or `k`, so `Esc` and `Enter`, the habit of sending a prompt, does nothing. A choice also does nothing within 0.4 s of the request opening or of the last character you typed. Going to the prompt while Claude waits leaves you in normal mode. After you answer, the prompt goes back to insert mode where you stopped typing, if you were typing.
 

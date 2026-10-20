@@ -135,13 +135,11 @@ function M.down_keys()
 end
 
 function M.map(buf)
-  local opts = function(desc, expr)
-    return { buffer = buf, desc = desc, expr = expr }
-  end
-  vim.keymap.set("i", "<Up>", M.up_keys, opts("Previous prompt", true))
-  vim.keymap.set("i", "<Down>", M.down_keys, opts("Next prompt", true))
-  vim.keymap.set("n", "<C-p>", M.older, opts("Previous prompt"))
-  vim.keymap.set("n", "<C-n>", M.newer, opts("Next prompt"))
+  local keys = require("anvim.keys")
+  keys.set("prompt", "i", "<Up>", M.up_keys, { buffer = buf, expr = true })
+  keys.set("prompt", "i", "<Down>", M.down_keys, { buffer = buf, expr = true })
+  keys.set("prompt", "n", "<C-p>", M.older, { buffer = buf })
+  keys.set("prompt", "n", "<C-n>", M.newer, { buffer = buf })
 end
 
 return M

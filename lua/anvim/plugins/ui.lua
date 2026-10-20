@@ -2,20 +2,17 @@ local function claude_color()
   return { fg = Snacks.util.color("AnvimClaude") }
 end
 
--- Below this width, Neovim would cut the follow status from the left.
-local function narrow()
-  return vim.o.columns < 100
-end
-
 return {
-  -- The global statusline shows where Claude is and whether it works, from any window.
+  -- The global statusline shows whether Claude works or waits, from any
+  -- window. The prompt's footer says where Claude is, and the statusline does
+  -- when the footer's column is too narrow for it.
   {
     "nvim-lualine/lualine.nvim",
     optional = true,
     opts = function(_, opts)
       vim.api.nvim_create_autocmd("User", {
         group = vim.api.nvim_create_augroup("anvim.lualine", {}),
-        pattern = { "AnvimStatus", "AnvimAgents" },
+        pattern = "AnvimStatus",
         callback = function()
           require("lualine").refresh({ place = { "statusline" } })
         end,
@@ -42,27 +39,14 @@ return {
         },
         {
           function()
-            return (follow.status(narrow()):gsub("%%", "%%%%"))
+            return (follow.status(true):gsub("%%", "%%%%"))
           end,
           cond = function()
-            return follow.status() ~= ""
+            return not input.follows() and follow.status() ~= ""
           end,
           color = function()
             return { fg = Snacks.util.color(follow.group()) }
           end,
-          separator = "",
-        },
-        {
-          function()
-            return "(<leader>j)"
-          end,
-          cond = function()
-            return follow.place() ~= nil and not follow.following() and not narrow()
-          end,
-          color = function()
-            return { fg = Snacks.util.color("Comment") }
-          end,
-          padding = { left = 0, right = 1 },
         },
       }
       for i, component in ipairs(components) do
@@ -79,11 +63,15 @@ return {
           return { fg = Snacks.util.color("Comment") }
         end,
       })
-      -- The Claude column has no file, so its statusline drops the path and position.
+      -- The Claude column and the key view have no file, so their statusline
+      -- drops the path and position.
       local claude = vim.deepcopy(opts.sections)
       claude.lualine_c, claude.lualine_y = {}, {}
       opts.extensions = opts.extensions or {}
-      table.insert(opts.extensions, { filetypes = { "anvim_input", "anvim_transcript" }, sections = claude })
+      table.insert(
+        opts.extensions,
+        { filetypes = { "anvim_input", "anvim_transcript", "anvim_keys" }, sections = claude }
+      )
     end,
   },
 
@@ -113,7 +101,7 @@ return {
     opts = {
       spec = {
         { "<leader>j", icon = { icon = "⏺", color = "orange" } },
-        { "<leader>k", group = "claude", icon = { icon = "⏺", color = "orange" } },
+        { "<leader>c", group = "claude", icon = { icon = "⏺", color = "orange" } },
       },
     },
   },

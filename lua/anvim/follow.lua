@@ -1,7 +1,7 @@
 -- Follow mode: while the cursor is in the prompt, the code window shows where
 -- Claude reads and writes. Elsewhere the user is in control, and the
--- statusline says where Claude is. A pinned selection pauses it, so the code
--- window keeps what the user points at until the next prompt. Follow mode
+-- prompt's footer says where Claude is. A pinned selection pauses it, so the
+-- code window keeps what the user points at until the next prompt. Follow mode
 -- follows one agent: the main agent, or the subagent that the user focused.
 local agents = require("anvim.agents")
 local bashread = require("anvim.bashread")
@@ -196,7 +196,7 @@ function M.resume()
 end
 
 -- Follow mode follows agent `id`, or the main agent for nil, and catches up
--- with it at once. Elsewhere the statusline points at its place.
+-- with it at once. Elsewhere the footer points at its place.
 ---@param id string?
 function M.set_focus(id)
   local agent = id and agents.get(id)
@@ -419,10 +419,9 @@ end
 
 local edit_tools = { Edit = true, Write = true, NotebookEdit = true }
 
--- Where Claude is, as plain text for the statusline. A global statusline
--- shows the current window, so this does not depend on the window. A focused
--- subagent takes Claude's name.
----@param short boolean? Without the words, for a narrow statusline.
+-- Where Claude is, as plain text for the prompt's footer. A focused subagent
+-- takes Claude's name.
+---@param short boolean? Without the words, for a narrow column.
 function M.status(short)
   local place = M.place()
   local where = place
@@ -619,17 +618,15 @@ function M.attach(sidecar)
     end,
   })
   api.nvim_create_autocmd("User", { group = group, pattern = "AnvimAgents", callback = on_agents })
-  vim.keymap.set("n", "<leader>j", M.jump, { desc = "Jump to where Claude or the focused agent is" })
-  vim.keymap.set("n", "<leader>kj", M.jump, { desc = "Jump to where Claude or the focused agent is" })
-  vim.keymap.set("n", "<leader>k0", function()
-    M.focus_slot(0)
-  end, { desc = "Focus the main agent" })
-  for slot = 1, agents.slots do
-    vim.keymap.set("n", "<leader>k" .. slot, function()
+  local keys = require("anvim.keys")
+  keys.set("claude", "n", "<leader>j", M.jump)
+  keys.set("claude", "n", "<leader>cj", M.jump)
+  for slot = 0, agents.slots do
+    keys.set("claude", "n", "<leader>c" .. slot, function()
       M.focus_slot(slot)
-    end, { desc = ("Focus agent %d"):format(slot) })
+    end)
   end
-  vim.keymap.set("n", "<leader>ka", M.pick, { desc = "Pick an agent to focus" })
+  keys.set("claude", "n", "<leader>ca", M.pick)
 end
 
 return M

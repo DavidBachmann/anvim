@@ -59,8 +59,8 @@ test("the code window follows the focused agent only, and no frame shows another
   await read("a2", "beta.js", 3);
   await Bun.sleep(50);
   expect(shown(ui.lines(), box)).toEqual([]);
-  // In the prompt, in normal mode: <leader>k2.
-  await ui.input(" k2");
+  // In the prompt, in normal mode: <leader>c2.
+  await ui.input(" c2");
   await ui.waitFor(() => shown(ui.lines(), box).includes("beta"));
   for (const [id, file] of [
     ["a1", "alpha.js"],
@@ -81,8 +81,8 @@ test("the code window follows the focused agent only, and no frame shows another
   expect(seen).toEqual(["beta", "delta"]);
   expect(await anvim.where()).toEqual({ win: "input", mode: "n" });
 
-  // The statusline names the agent in its color, and so do the footer's ◉
-  // and the end of its Agent line.
+  // The footer names the agent in its color, and so do its ◉ and the end of
+  // the agent's Agent line. The statusline leaves it out.
   const want = await ui.exec_lua<number>(`return vim.api.nvim_get_hl(0, { name = "AnvimAgent2", link = false }).fg`);
   const fg = (row: number, col: number) => ui.attrs.get(ui.grid[row]![col]!.hl)?.rgb.foreground;
   const find = (text: string) => {
@@ -91,8 +91,12 @@ test("the code window follows the focused agent only, and no frame shows another
     expect(row).toBeGreaterThan(-1);
     return { row, col: [...lines[row]!.slice(0, lines[row]!.indexOf(text))].length };
   };
-  const status = find("◉ following Explore 2");
-  expect(fg(status.row, status.col)).toBe(want);
+  const input = await anvim.box("input");
+  const footer = await anvim.footer();
+  const at = footer.search(/◉ (following )?Explore 2/);
+  expect(at).toBeGreaterThan(-1);
+  expect(fg(input.row + input.height - 1, input.col + [...footer.slice(0, at)].length)).toBe(want);
+  expect(ui.lines().at(-1)).not.toContain("Explore 2");
   const line = find("⏺ Explore(Read a2)");
   expect(ui.lines()[line.row]).toContain("◉ focused");
   const focused = find("◉ focused");

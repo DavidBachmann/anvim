@@ -110,6 +110,8 @@ local function start()
     addr,
     "--cmd",
     "set columns=200 lines=48",
+    "--cmd",
+    "luafile " .. helpers.root .. "/tests/stack/record_keys.lua",
     "-u",
     helpers.root .. "/init.lua",
   }, {
@@ -155,6 +157,43 @@ local function statusline()
     local win = vim.api.nvim_get_current_win()
     return vim.api.nvim_eval_statusline(vim.wo[win].statusline, { winid = win }).str
   ]])
+end
+
+-- The footer under the prompt, as drawn: its text, and the group of the
+-- chunk that holds `needle`.
+---@return { text: string, group: string? }
+local function footer(needle)
+  return lua(
+    [[
+    local needle = ...
+    local ns = vim.api.nvim_get_namespaces()["anvim.input"]
+    local mark = vim.api.nvim_buf_get_extmarks(require("anvim.input").buf(), ns, 0, -1, { details = true })[1]
+    local text, group = {}, nil
+    for _, chunk in ipairs(mark and mark[4].virt_lines[1] or {}) do
+      text[#text + 1] = chunk[1]
+      if needle ~= vim.NIL and not group and chunk[1]:find(needle, 1, true) then
+        group = chunk[2]
+      end
+    end
+    return { text = table.concat(text), group = group }
+  ]],
+    needle or vim.NIL
+  )
+end
+
+-- Waits until the footer holds each text.
+local function wait_footer(texts, msg)
+  local got
+  local ok = vim.wait(3000, function()
+    got = footer().text
+    for _, t in ipairs(texts) do
+      if not got:find(t, 1, true) then
+        return false
+      end
+    end
+    return true
+  end, 20)
+  assert(ok, ("%s: %s"):format(msg, got))
 end
 
 -- Types keys in the child. Its main loop runs them after this call returns,
@@ -421,22 +460,33 @@ describe("stack", function()
     assert.are.same(install .. "/mason", out.mason)
   end)
 
-  it("shows the follow status in lualine from any window", function()
+  it("shows the follow status in the footer from any window, and not in lualine", function()
     start()
-    assert(statusline():find("◉ following", 1, true), statusline())
+    wait_footer({ "◉ following" }, "the footer in the prompt")
+    assert(not statusline():find("following", 1, true), statusline())
     lua([[vim.api.nvim_set_current_win(require("anvim.layout").wins.code)]])
     local file = helpers.tmp .. "/matchparen.lua"
     lua(
       [[require("anvim.sidecar").dispatch({ type = "tool_use", id = "r9", name = "Read", input = { file_path = ... } })]],
       file
     )
-    local text = statusline()
-    assert(text:find("⏺ Claude at matchparen.lua:1 +1", 1, true), text)
-    assert(text:find("(<leader>j)", 1, true), text)
+    -- The narrow column takes the short form, without "Claude at".
+    wait_footer({ "⏺ ", "matchparen.lua:1 +1" }, "the footer in the code window")
+    assert(not statusline():find("matchparen.lua:1", 1, true), statusline())
+    -- A column too narrow for it leaves the follow status to the statusline.
+    lua([[vim.o.columns, vim.o.lines = 90, 24]])
+    local ok = vim.wait(3000, function()
+      return not footer().text:find("matchparen.lua:1", 1, true)
+        and statusline():find("⏺ matchparen.lua:1 +1", 1, true) ~= nil
+    end, 20)
+    assert(ok, ("footer %q, statusline %q"):format(footer().text, statusline()))
+    lua([[vim.o.columns, vim.o.lines = 200, 48]])
+    wait_footer({ "⏺ ", "matchparen.lua:1 +1" }, "the footer at 200x48")
+    assert(not statusline():find("matchparen.lua:1", 1, true), statusline())
     lua([[require("anvim.layout").focus_input()]])
   end)
 
-  it("focuses an agent with <leader>k1 and the picker, and lualine names it in its color", function()
+  it("focuses an agent with <leader>c1 and the picker, and the footer names it in its color", function()
     start()
     -- A file of its own: a cursor that this case moves would make a later 2G scroll.
     local file = helpers.tmp .. "/focus_stack.lua"
@@ -468,52 +518,32 @@ describe("stack", function()
       ]],
         file
       )
-      -- lualine's own refreshes, from its timer and its autocmds, name a trigger.
-      lua([[
-        local lualine = require("lualine")
-        local refresh = lualine.refresh
-        _G.anvim_refreshes = 0
-        lualine.refresh = function(opts)
-          _G.anvim_refreshes = _G.anvim_refreshes + ((opts or {}).trigger and 0 or 1)
-          return refresh(opts)
-        end
-        _G.anvim_lualine_refresh = refresh
-      ]])
-      keys("<leader>k1")
-      wait(3000, [[return require("anvim.follow").focus == "s1"]], "<leader>k1 took no focus")
-      local refreshes = lua([[
-        require("lualine").refresh = _G.anvim_lualine_refresh
-        return _G.anvim_refreshes
-      ]])
-      assert(refreshes > 0, "lualine did not refresh on the focus")
-      -- lualine colors the follow status with the agent's color, in a group of its own.
-      local out = lua([[
-        require("lualine").refresh({ force = true, place = { "statusline" } })
-        local win = vim.api.nvim_get_current_win()
-        local line = vim.api.nvim_eval_statusline(vim.wo[win].statusline, { winid = win, highlights = true })
-        local at = line.str:find("◉ following Agent 1", 1, true)
-        local group
-        for _, h in ipairs(line.highlights) do
-          if at and h.start < at then
-            group = h.groups[#h.groups]
-          end
-        end
+      keys("<leader>c1")
+      wait(3000, [[return require("anvim.follow").focus == "s1"]], "<leader>c1 took no focus")
+      -- The focus redraws the footer, which colors the status with the agent's color.
+      wait_footer({ "◉ ", "Agent 1" }, "the footer after the focus")
+      local out = footer("Agent 1")
+      local colors = lua(
+        [[
         local function fg(name)
           return vim.api.nvim_get_hl(0, { name = name, link = false }).fg
         end
-        return { str = line.str, fg = group and fg(group), want = fg("AnvimAgent1"), claude = fg("AnvimClaude") }
-      ]])
-      assert(out.str:find("◉ following Agent 1", 1, true), out.str)
-      assert.are.same(out.want, out.fg)
-      assert.are_not.same(out.claude, out.fg)
-      keys("<leader>ka")
+        return { got = fg(...), want = fg("AnvimAgent1"), claude = fg("AnvimClaude") }
+      ]],
+        out.group
+      )
+      assert.are.same("AnvimAgent1", out.group, out.text)
+      assert.are.same(colors.want, colors.got)
+      assert.are_not.same(colors.claude, colors.got)
+      assert(not statusline():find("Agent 1", 1, true), statusline())
+      keys("<leader>ca")
       wait(
         3000,
         [[
         local picker = Snacks.picker.get({ source = "anvim_agents" })[1]
         return picker ~= nil and #picker:items() == 3
       ]],
-        "<leader>ka opened no picker"
+        "<leader>ca opened no picker"
       )
       keys("Explore")
       wait(
@@ -533,14 +563,14 @@ describe("stack", function()
         return { name = vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(win)), line = vim.api.nvim_win_get_cursor(win)[1] }
       ]])
       assert.are.same({ name = file, line = 30 }, out)
-      assert(statusline():find("◉ following Explore 2", 1, true), statusline())
+      wait_footer({ "◉ ", "Explore 2" }, "the footer after the picker")
     end)
     lua([[
       require("anvim.agents").clear()
       require("anvim.layout").focus_input({ insert = false })
     ]])
     assert(ok, err)
-    assert(statusline():find("◉ following", 1, true), statusline())
+    wait_footer({ "◉ following" }, "the footer after the agents")
   end)
 
   it("puts the activity line in the winbar and the footer under the prompt", function()
@@ -565,7 +595,9 @@ describe("stack", function()
       }
     ]])
     assert(out.winbar:find("^%d+%.%ds · %$%d+%.%d%d ─"), out.winbar)
-    assert(out.footer:find("^ anvim Opus 5%.5  ⧉ In [%w._-]+ +⏵⏵ bypass permissions on"), out.footer)
+    -- The session started in default mode, so bypass shows. The model goes
+    -- first, to leave room for the follow status.
+    assert(out.footer:find("^ anvim   ⧉ In [%w._-]+ +◉ following  ⏵⏵ bypass permissions on $"), out.footer)
     assert.are.same(out.width, vim.fn.strdisplaywidth(out.footer))
     assert.are.same(3, out.height, "one prompt line, the footer and the winbar")
     lua([[vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "a", "b", "c" })]])
@@ -845,7 +877,7 @@ describe("stack", function()
     wait_where({ win = "code", mode = "n" }, "<C-h> from the prompt")
     vim.wait(200)
     assert.are.same({ 5, 6, "char" }, probe().sel, "going back to the code window dropped the pin")
-    assert.are.same("Escape and Clear hlsearch", lua([[return vim.fn.maparg("<Esc>", "n", false, true).desc]]))
+    assert.are.same("Clear the search highlight", lua([[return vim.fn.maparg("<Esc>", "n", false, true).desc]]))
     keys("<Esc>")
     wait(2000, [[return require("anvim.context").selection() == nil]], "<Esc> kept the pin")
     lua([[require("anvim.layout").focus_input({ insert = false })]])
@@ -905,8 +937,7 @@ describe("stack", function()
     read("pin1")
     vim.wait(100)
     assert.are.same(file, code_file(), "follow mode left the pinned file")
-    local text = statusline()
-    assert(text:find("⏸ pinned · Claude at pin_other.lua:1 +1", 1, true), text)
+    wait_footer({ "⏸ ", "pin_other.lua:1 +1" }, "the footer with a pin")
     local sent = ask()
     assert.are.same({ 10, 11 }, { sent.context.selection.start_line, sent.context.selection.end_line })
     wait(
@@ -916,7 +947,7 @@ describe("stack", function()
       ),
       "follow mode did not catch up after the prompt"
     )
-    assert(statusline():find("◉ following", 1, true), statusline())
+    wait_footer({ "◉ following" }, "the footer after the prompt")
 
     -- Claude reads another file while the user reads, and the user then points.
     keys("<Esc>")
@@ -1138,7 +1169,7 @@ describe("stack", function()
     assert(ok, err)
   end)
 
-  it("opens Claude's trail with <leader>kt, newest first, and <CR> goes there", function()
+  it("opens Claude's trail with <leader>ct, newest first, and <CR> goes there", function()
     start()
     local file = helpers.tmp .. "/matchparen.lua"
     lua(
@@ -1151,7 +1182,7 @@ describe("stack", function()
     ]],
       file
     )
-    keys("<leader>kt")
+    keys("<leader>ct")
     wait(
       3000,
       [[
@@ -1225,27 +1256,459 @@ describe("stack", function()
     lua([[require("anvim.layout").focus_input({ insert = false })]])
   end)
 
-  it("names the which-key groups of the reading keys, each with an icon", function()
+  it("names each which-key group under <leader>, with an icon", function()
     start()
-    local groups = lua([[
+    local out = lua([[
       local icons = require("which-key.icons")
-      local ret = {}
+      local groups = {}
       for _, m in ipairs(require("which-key.config").mappings) do
         if m.group and m.mode == "n" and m.lhs:find("^<leader>") then
           local icon = m.icon and icons.get(m.icon) or icons.get({ desc = m.desc })
-          ret[m.lhs] = { m.desc, icon ~= nil }
+          groups[m.lhs] = { m.desc, icon ~= nil }
         end
       end
-      return ret
+      -- Each prefix of a <leader> key in the key view is a group.
+      local keys, prefixes = require("anvim.keys"), {}
+      for _, place in ipairs(keys.places) do
+        for _, key in ipairs(place.keys) do
+          for _, lhs in ipairs(keys.lhs(key)) do
+            local rest, path = lhs:match("^<leader>(.+)"), "<leader>"
+            local parts, i = {}, 1
+            while rest and i <= #rest do
+              parts[#parts + 1] = rest:match("^<[^>]+>", i) or rest:sub(i, i)
+              i = i + #parts[#parts]
+            end
+            for p = 1, #parts - 1 do
+              path = path .. parts[p]
+              prefixes[path] = true
+            end
+          end
+        end
+      end
+      return { groups = groups, prefixes = vim.tbl_keys(prefixes) }
     ]])
     assert.are.same({
       ["<leader>f"] = { "file/find", true },
       ["<leader>g"] = { "git", true },
       ["<leader>gh"] = { "hunks", true },
-      ["<leader>k"] = { "claude", true },
+      ["<leader>c"] = { "claude", true },
       ["<leader>s"] = { "search", true },
       ["<leader>u"] = { "ui", true },
-    }, groups)
+    }, out.groups)
+    local names = vim.tbl_keys(out.groups)
+    table.sort(names)
+    table.sort(out.prefixes)
+    assert.are.same(names, out.prefixes)
+  end)
+
+  it("lists each key that anvim maps in the key view, and no key that does not exist", function()
+    start()
+    -- Neovim's own global maps, as a clean Neovim has them.
+    local script = helpers.tmp .. "/neovim_maps.lua"
+    vim.fn.writefile({
+      "local ret = {}",
+      'for _, mode in ipairs({ "n", "x", "o", "i" }) do',
+      "  for _, m in ipairs(vim.api.nvim_get_keymap(mode)) do",
+      "    ret[#ret + 1] = { mode, m.lhs }",
+      "  end",
+      "end",
+      "io.stdout:write(vim.json.encode(ret))",
+    }, script)
+    local clean = vim.json.decode(vim.system({ vim.v.progpath, "--clean", "--headless", "-l", script }):wait().stdout)
+    -- Each snapshot holds every live map of one buffer, or the global ones.
+    lua([[
+      local snaps = {}
+      package.loaded["anvim_test_snaps"] = snaps
+      package.loaded["anvim_test_snap"] = function(name, ctx, buf)
+        local maps = {}
+        for _, mode in ipairs({ "n", "x", "o", "i" }) do
+          for _, m in ipairs(buf and vim.api.nvim_buf_get_keymap(buf, mode) or vim.api.nvim_get_keymap(mode)) do
+            if not m.lhs:find("^<Plug>") and not m.lhs:find("^<SNR>") then
+              local src = m.callback and debug.getinfo(m.callback, "S").source or ""
+              maps[#maps + 1] = { mode = mode, lhs = m.lhs, desc = m.desc or "", src = src }
+            end
+          end
+        end
+        snaps[name] = { ctx = ctx, maps = maps }
+      end
+    ]])
+    local function snap(name, ctx, buf_code)
+      lua(([[package.loaded["anvim_test_snap"](%q, %q, %s)]]):format(name, ctx, buf_code or "nil"))
+    end
+    wait(5000, [[return #vim.lsp.get_clients({ name = "lua_ls" }) > 0]], "lua_ls did not start")
+    snap("lsp", "file", [[next(vim.lsp.get_clients({ name = "lua_ls" })[1].attached_buffers)]])
+    -- The hunk keys exist for files that git tracks.
+    local repo = helpers.tmp .. "/keys-repo"
+    vim.fn.mkdir(repo, "p")
+    vim.fn.writefile({ "one" }, repo .. "/notes.txt")
+    vim.fn.system({ "git", "-C", repo, "init", "-q" })
+    vim.fn.system({ "git", "-C", repo, "add", "notes.txt" })
+    lua(
+      [[
+      vim.cmd.stopinsert()
+      vim.api.nvim_set_current_win(require("anvim.layout").wins.code)
+      vim.cmd.edit(...)
+    ]],
+      repo .. "/notes.txt"
+    )
+    wait(5000, [[return vim.fn.maparg("]h", "n", false, true).buffer == 1]], "gitsigns did not attach")
+    snap("git", "file", "vim.api.nvim_get_current_buf()")
+    lua([[vim.cmd.help("help")]])
+    wait(3000, [[return vim.bo.buftype == "help" and vim.fn.maparg("q", "n", false, true).buffer == 1]], "no q in help")
+    snap("help", "other", "vim.api.nvim_get_current_buf()")
+    lua([[
+      vim.cmd.helpclose()
+      vim.fn.setqflist({ { filename = "notes.txt", lnum = 1, text = "one" } })
+      vim.cmd.copen()
+    ]])
+    wait(
+      3000,
+      [[return vim.bo.buftype == "quickfix" and vim.fn.maparg("q", "n", false, true).buffer == 1]],
+      "no q in qf"
+    )
+    snap("qf", "other", "vim.api.nvim_get_current_buf()")
+    lua([[
+      vim.cmd.cclose()
+      require("anvim.layout").focus_input({ insert = false })
+      vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "" })
+    ]])
+    wait_where({ win = "input", mode = "n" }, "the prompt")
+    -- blink.cmp maps its keys at the prompt's first InsertEnter.
+    keys("i")
+    wait_where({ win = "input", mode = "i" }, "i in the prompt")
+    keys("<Esc>")
+    wait_where({ win = "input", mode = "n" }, "<Esc> in the prompt")
+    keys("<C-g>")
+    wait_where({ win = "anvim_input", mode = "n" }, "<C-g> in the prompt")
+    keys("i")
+    wait_where({ win = "anvim_input", mode = "i" }, "i in the compose window")
+    keys("<Esc>")
+    wait_where({ win = "anvim_input", mode = "n" }, "<Esc> in the compose window")
+    snap("compose", "compose", "vim.api.nvim_get_current_buf()")
+    keys("<C-g>")
+    wait_where({ win = "input", mode = "n" }, "<C-g> in the compose window")
+    local problems = lua(
+      [[
+      local clean = ...
+      local keys = require("anvim.keys")
+      local layout = require("anvim.layout")
+      local sidecar = require("anvim.sidecar")
+      local snaps, snap = package.loaded["anvim_test_snaps"], package.loaded["anvim_test_snap"]
+      local prompt = require("anvim.input").buf()
+      snap("global", "global")
+      snap("transcript", "transcript", require("anvim.transcript").buf())
+      snap("explorer", "explorer", Snacks.picker.get({ source = "explorer" })[1].list.win.buf)
+      require("anvim.keyview").open()
+      snap("view", "view", vim.api.nvim_get_current_buf())
+      require("anvim.keyview").close()
+      -- The prompt has the choice keys while a request waits.
+      local req = { command = "make keys" }
+      sidecar.dispatch({ type = "tool_start", id = "keys1", name = "Bash" })
+      sidecar.dispatch({ type = "tool_use", id = "keys1", name = "Bash", input = req })
+      sidecar.dispatch({ type = "permission_request", req = 901, tool_use_id = "keys1", tool = "Bash", input = req })
+      snap("prompt", "prompt", prompt)
+      sidecar.dispatch({ type = "permission_cancel", req = 901 })
+      sidecar.dispatch({ type = "tool_result", id = "keys1", is_error = true, text = "cancelled" })
+
+      local function index(maps)
+        local ret = {}
+        for _, m in ipairs(maps) do
+          ret[m.mode .. " " .. vim.keycode(m.lhs)] = m.desc
+        end
+        return ret
+      end
+      local found = {}
+      for name, s in pairs(snaps) do
+        found[name] = index(s.maps)
+      end
+      -- anvim's own prompt maps, from before blink.cmp mapped over some of them.
+      local own = require("anvim_test_prompt")[prompt] or {}
+      local problems = {}
+      -- Each key of the view exists, and anvim's own maps have its description.
+      for _, place in ipairs(keys.places) do
+        for _, key in ipairs(place.keys) do
+          local ctx = key.ctx or place.ctx
+          local names = ({
+            file = { key.when == "git" and "git" or "lsp" },
+            other = { "help", "qf" },
+          })[ctx] or { ctx }
+          for _, lhs in ipairs(key.static and {} or keys.lhs(key)) do
+            for _, mode in ipairs(keys.modes(key)) do
+              local id, desc = mode .. " " .. vim.keycode(lhs), nil
+              if ctx == "prompt" and not key.default then
+                desc = own[id] or found.prompt[id]
+              else
+                for _, name in ipairs(names) do
+                  desc = desc or found[name][id]
+                end
+              end
+              if desc == nil then
+                problems[#problems + 1] = ("%s: no %s map %s"):format(place.id, mode, lhs)
+              elseif not key.default and desc ~= key[2] then
+                problems[#problems + 1] = ("%s: %s %s says %q"):format(place.id, mode, lhs, desc)
+              end
+            end
+          end
+        end
+      end
+
+      -- Each live map is in the view, in the place where it lives, or it is
+      -- one of these.
+      local neovim = {}
+      for _, m in ipairs(clean) do
+        neovim[m[1] .. " " .. vim.keycode(m[2])] = true
+      end
+      local snacks = require("lazy.core.config").plugins["snacks.nvim"]
+      local explorer_keys = require("lazy.core.plugin").values(snacks, "opts", false).picker.sources.explorer.win.list.keys
+      local ours = {}
+      for lhs in pairs(explorer_keys) do
+        ours[vim.keycode(lhs)] = true
+      end
+      -- blink.cmp's snippet and signature keys. The prompt has neither, and
+      -- the keys fall back to the prompt's own: <S-Tab> cycles the mode.
+      local blink_only = { ["i <Tab>"] = true, ["i <S-Tab>"] = true, ["i <C-K>"] = true }
+      local function listed(ctx, mode, lhs)
+        for _, place in ipairs(keys.places) do
+          for _, key in ipairs(place.keys) do
+            if not key.static and (key.ctx or place.ctx) == ctx and vim.tbl_contains(keys.modes(key), mode) then
+              for _, l in ipairs(keys.lhs(key)) do
+                if vim.keycode(l) == vim.keycode(lhs) then
+                  return true
+                end
+              end
+            end
+          end
+        end
+      end
+      local function allowed(ctx, m)
+        local id = m.mode .. " " .. vim.keycode(m.lhs)
+        if listed(ctx, m.mode, m.lhs) then
+          return true
+        elseif m.desc:find("^which%-key%-trigger") then
+          return true
+        elseif ctx == "global" and neovim[id] then
+          return true
+        elseif m.src:find("^@vim/") or m.src:find(vim.env.VIMRUNTIME, 1, true) then
+          -- Neovim's own buffer maps, such as K from LSP and the help ftplugin's.
+          return true
+        elseif ctx == "explorer" and not ours[vim.keycode(m.lhs)] then
+          -- The explorer's own keys, which its ? lists.
+          return true
+        elseif (ctx == "prompt" or ctx == "compose") and m.desc:find("^blink%.cmp: ") then
+          -- The compose window has the prompt's completion.
+          return listed("prompt", m.mode, m.lhs) or blink_only[m.mode .. " " .. m.lhs] or false
+        end
+        return false
+      end
+      for name, s in pairs(snaps) do
+        for _, m in ipairs(s.maps) do
+          if not allowed(s.ctx, m) then
+            problems[#problems + 1] = ("%s has %s map %s (%s) that the view leaves out"):format(name, m.mode, m.lhs, m.desc)
+          end
+        end
+      end
+
+      -- Each map that anvim's code made is in the view, in the place where it lives.
+      local seen = {}
+      for _, m in ipairs(require("anvim_test_maps")) do
+        seen[m.ctx] = true
+        if not listed(m.ctx, m.mode, m.lhs) then
+          problems[#problems + 1] = ("%s map %s in %s from %s is not in the view"):format(m.mode, m.lhs, m.ctx, m.src)
+        end
+      end
+      for _, ctx in ipairs({ "global", "file", "prompt", "transcript", "compose", "view", "other" }) do
+        if not seen[ctx] then
+          problems[#problems + 1] = "no map was recorded in " .. ctx
+        end
+      end
+      -- snacks maps the explorer's keys from anvim's spec.
+      for lhs, spec in pairs(explorer_keys) do
+        local key = spec and keys.find("explorer", spec.mode or "n", lhs)
+        if spec and not (key and key[2] == spec.desc) then
+          problems[#problems + 1] = ("the explorer's %s is not in the view"):format(lhs)
+        end
+      end
+      return problems
+    ]],
+      clean
+    )
+    assert.are.same({}, problems)
+  end)
+
+  it("opens the key view with <leader>? and ? in the prompt, and closing it gives the window and mode back", function()
+    start()
+    local function opened(what)
+      wait(3000, [[return require("anvim.keyview").win() == vim.api.nvim_get_current_win()]], what .. " opened no view")
+      assert.are.same("n", lua([[return vim.api.nvim_get_mode().mode]]), what .. " left the view in insert mode")
+    end
+    lua([[
+      vim.cmd.stopinsert()
+      vim.api.nvim_set_current_win(require("anvim.layout").wins.code)
+    ]])
+    keys("<leader>?")
+    opened("<leader>? in the code window")
+    keys("q")
+    wait_where({ win = "code", mode = "n" }, "q in the key view")
+    -- A file buffer maps c for references, and <leader>c still reaches Claude's keys.
+    keys("<leader>cr")
+    wait_where({ win = "transcript", mode = "n" }, "<leader>cr in a file buffer")
+    keys("<C-h>")
+    wait_where({ win = "code", mode = "n" }, "<C-h> from read mode")
+    lua([[Snacks.picker.get({ source = "explorer" })[1]:focus("list")]])
+    wait_where({ win = "snacks_picker_list", mode = "n" }, "the tree has the cursor")
+    keys("<leader>?")
+    opened("<leader>? in the explorer")
+    keys("<Esc>")
+    wait_where({ win = "snacks_picker_list", mode = "n" }, "<Esc> in the key view")
+    lua([[
+      require("anvim.layout").focus_input({ insert = false })
+      vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "" })
+    ]])
+    wait_where({ win = "input", mode = "n" }, "the prompt")
+    keys("?")
+    opened("? in the prompt in normal mode")
+    keys("q")
+    wait_where({ win = "input", mode = "n" }, "q after ? in normal mode")
+    keys("i")
+    wait_where({ win = "input", mode = "i" }, "i in the prompt")
+    keys("?")
+    opened("? in the empty prompt in insert mode")
+    keys("q")
+    wait_where({ win = "input", mode = "i" }, "q after ? in insert mode")
+    keys("why?")
+    wait(2000, [[return vim.api.nvim_get_current_line() == "why?"]], "? in a prompt with text typed no ?")
+    assert.are.same({ win = "input", mode = "i" }, where())
+    assert(lua([[return require("anvim.keyview").win() == nil]]), "? in a prompt with text opened the view")
+    keys("<Esc>")
+    lua([[vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "" })]])
+  end)
+
+  it("gives back read mode, the compose window and <C-w>p after the key view, and insert mode after :q", function()
+    start()
+    local function opened(what)
+      wait(3000, [[return require("anvim.keyview").win() == vim.api.nvim_get_current_win()]], what .. " opened no view")
+    end
+    local function view()
+      return lua([[
+        local v = vim.fn.winsaveview()
+        return { lnum = v.lnum, topline = v.topline, read = vim.w.anvim_read == true }
+      ]])
+    end
+    -- Read mode comes back with its cursor and its view. snacks.scroll would
+    -- animate the moves.
+    lua([[
+      vim.cmd.stopinsert()
+      local transcript = require("anvim.transcript")
+      vim.b[transcript.buf()].snacks_scroll = false
+      for i = 1, 60 do
+        transcript.notice("info", "a line to scroll " .. i)
+      end
+      require("anvim.layout").focus_input({ insert = false })
+    ]])
+    keys("<leader>cr")
+    wait_where({ win = "transcript", mode = "n" }, "<leader>cr")
+    lua([[vim.fn.winrestview({ lnum = 12, topline = 9 })]])
+    local reading = view()
+    assert.are.same({ lnum = 12, topline = 9, read = true }, reading)
+    keys("<leader>?")
+    opened("<leader>? in read mode")
+    keys("q")
+    wait_where({ win = "transcript", mode = "n" }, "q after <leader>? in read mode")
+    assert.are.same(reading, view())
+    keys("q")
+    wait_where({ win = "input", mode = "n" }, "q in read mode")
+    -- New output keeps the transcript at its end only when it is there.
+    lua([[
+      local transcript = require("anvim.transcript")
+      vim.api.nvim_win_call(require("anvim.layout").wins.transcript, function()
+        vim.cmd("normal! G")
+      end)
+      vim.b[transcript.buf()].snacks_scroll = nil
+    ]])
+
+    -- The compose window stays open under the view, with its text.
+    lua([[vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "a draft" })]])
+    keys("<C-g>")
+    wait_where({ win = "anvim_input", mode = "n" }, "<C-g> in the prompt")
+    keys("<leader>?")
+    opened("<leader>? in the compose window")
+    -- Leaving the compose window would close it from the event loop.
+    vim.wait(200)
+    local compose = lua([[
+      local win = require("anvim.compose").win()
+      return win and vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(win), 0, -1, false) or false
+    ]])
+    assert.are.same({ "a draft" }, compose, "the compose window closed under the view")
+    keys("q")
+    wait(
+      3000,
+      [[return require("anvim.compose").win() == vim.api.nvim_get_current_win()]],
+      "q did not go back to the compose window"
+    )
+    keys("<C-g>")
+    wait_where({ win = "input", mode = "n" }, "<C-g> in the compose window")
+    lua([[vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "" })]])
+
+    -- <C-w>p goes to the window from before the view.
+    keys("<C-h>")
+    wait_where({ win = "code", mode = "n" }, "<C-h> from the prompt")
+    keys("<C-l>")
+    wait_where({ win = "input", mode = "n" }, "<C-l> from the code window")
+    keys("?")
+    opened("? in the prompt")
+    keys("q")
+    wait_where({ win = "input", mode = "n" }, "q in the key view")
+    keys("<C-w>p")
+    wait_where({ win = "code", mode = "n" }, "<C-w>p after the key view")
+
+    -- :q closes the view too, and gives back insert mode.
+    lua([[require("anvim.layout").focus_input({ insert = false })]])
+    wait_where({ win = "input", mode = "n" }, "the prompt")
+    keys("i")
+    wait_where({ win = "input", mode = "i" }, "i in the prompt")
+    keys("?")
+    opened("? in the empty prompt")
+    keys(":q<CR>")
+    wait_where({ win = "input", mode = "i" }, ":q in the key view")
+    keys("<Esc>")
+    wait_where({ win = "input", mode = "n" }, "<Esc> in the prompt")
+  end)
+
+  it("deletes Neovim's keys that only change text, keeps the ones that read, and maps <leader>cR", function()
+    start()
+    local out = lua([[
+      local function has(mode, lhs)
+        return vim.fn.maparg(lhs, mode) ~= ""
+      end
+      local ret = { gone = {}, kept = {} }
+      for _, k in ipairs({ "n gc", "x gc", "n gcc", "n [<Space>", "n ]<Space>", "n &" }) do
+        ret.gone[k] = has(k:sub(1, 1), k:sub(3))
+      end
+      for _, k in ipairs({ "o gc", "n ]d", "n [d", "n gO", "n gx", "n Y", "i <C-S>", "n <C-W>d" }) do
+        ret.kept[k] = has(k:sub(1, 1), k:sub(3))
+      end
+      ret.restart = vim.fn.maparg("<leader>cR", "n", false, true).desc
+      return ret
+    ]])
+    assert.are.same({
+      ["n gc"] = false,
+      ["x gc"] = false,
+      ["n gcc"] = false,
+      ["n [<Space>"] = false,
+      ["n ]<Space>"] = false,
+      ["n &"] = false,
+    }, out.gone)
+    assert.are.same({
+      ["o gc"] = true,
+      ["n ]d"] = true,
+      ["n [d"] = true,
+      ["n gO"] = true,
+      ["n gx"] = true,
+      ["n Y"] = true,
+      ["i <C-S>"] = true,
+      ["n <C-W>d"] = true,
+    }, out.kept)
+    assert.are.same("Restart Claude", out.restart)
   end)
 
   it("maps the LSP keys in buffers with a server only, gr without a wait, and no LSP key that edits", function()
@@ -1281,9 +1744,9 @@ describe("stack", function()
     assert.are.same(0, out.clients, "a server attached to the text file")
     assert.are.same(
       vim.tbl_extend("force", none, {
-        gd = { "Goto Definition", 0 },
-        gr = { "References", 1 },
-        gD = { "Goto Declaration", 0 },
+        gd = { "Go to the definition", 0 },
+        gr = { "Find the references", 1 },
+        gD = { "Go to the declaration", 0 },
       }),
       out.with
     )
@@ -1477,61 +1940,67 @@ describe("stack", function()
     end
   end)
 
-  it("enters and leaves read mode, with keys under <leader>k only", function()
+  it("enters and leaves read mode, with keys under <leader>c only", function()
     start()
     lua([[
       require("anvim.layout").focus_input()
       vim.cmd.stopinsert()
     ]])
     for _, key in ipairs({ "q", "<Esc>", "i", "A", "o" }) do
-      keys("<leader>kr")
-      wait_where({ win = "transcript", mode = "n" }, "<leader>kr")
+      keys("<leader>cr")
+      wait_where({ win = "transcript", mode = "n" }, "<leader>cr")
       keys(key)
       local typing = key ~= "q" and key ~= "<Esc>"
       wait_where({ win = "input", mode = typing and "i" or "n" }, key .. " in read mode")
       keys("<Esc>")
       wait_where({ win = "input", mode = "n" }, "<Esc> in the prompt")
     end
-    keys("<C-h><C-l><Esc><leader>kr")
-    wait_where({ win = "transcript", mode = "n" }, "<leader>kr")
+    keys("<C-h><C-l><Esc><leader>cr")
+    wait_where({ win = "transcript", mode = "n" }, "<leader>cr")
     keys("q<Esc><C-w>p")
     wait_where({ win = "code", mode = "n" }, "<C-w>p after read mode goes to the window before the prompt")
-    keys("<leader>kr")
-    wait_where({ win = "transcript", mode = "n" }, "<leader>kr")
+    keys("<leader>cr")
+    wait_where({ win = "transcript", mode = "n" }, "<leader>cr")
     keys("<C-h>")
     wait_where({ win = "code", mode = "n" }, "<C-h> from read mode")
     keys("gg<C-l>")
     wait_where({ win = "input", mode = "n" }, "leaving the transcript ended read mode")
     keys("<Esc>")
     local out = lua([[
-      local maps = {}
-      for _, map in ipairs(vim.api.nvim_get_keymap("n")) do
-        if map.lhs:sub(1, 2) == vim.g.mapleader .. "k" then
-          maps[map.lhs:sub(2)] = map.desc
+      local maps, old = {}, {}
+      for _, mode in ipairs({ "n", "x" }) do
+        for _, map in ipairs(vim.api.nvim_get_keymap(mode)) do
+          if map.lhs:sub(1, 2) == vim.g.mapleader .. "c" then
+            maps[mode .. " " .. map.lhs:sub(2)] = map.desc
+          elseif map.lhs:sub(1, 2) == vim.g.mapleader .. "k" then
+            old[#old + 1] = map.lhs
+          end
         end
       end
       local groups = {}
       for _, m in ipairs(require("which-key.config").mappings) do
-        if m.lhs == "<leader>k" then
+        if m.lhs == "<leader>c" then
           groups[#groups + 1] = { desc = m.desc, group = m.group }
         end
       end
-      return { maps = maps, groups = groups }
+      return { maps = maps, old = old, groups = groups }
     ]])
     assert.are.same({
-      k0 = "Focus the main agent",
-      k1 = "Focus agent 1",
-      k2 = "Focus agent 2",
-      k3 = "Focus agent 3",
-      k4 = "Focus agent 4",
-      ka = "Pick an agent to focus",
-      kj = "Jump to where Claude or the focused agent is",
-      km = "Choose the model",
-      kr = "Read the transcript",
-      ks = "Resume a session",
-      kt = "Claude's trail",
-      ky = "Yank Claude's last reply",
+      ["n c0"] = "Focus the main agent",
+      ["n c1"] = "Focus agent 1",
+      ["n c2"] = "Focus agent 2",
+      ["n c3"] = "Focus agent 3",
+      ["n c4"] = "Focus agent 4",
+      ["n ca"] = "Pick an agent to focus",
+      ["n cj"] = "Jump to where Claude or the focused agent is",
+      ["n cm"] = "Choose the model",
+      ["n cr"] = "Read the transcript",
+      ["n cs"] = "Resume a session",
+      ["n ct"] = "Pick a place from Claude's trail",
+      ["n cy"] = "Yank Claude's last reply",
+      ["n cR"] = "Restart Claude",
     }, out.maps)
+    assert.are.same({}, out.old, "a key under <leader>k is left")
     assert.are.same({ { desc = "claude", group = true } }, out.groups)
   end)
 

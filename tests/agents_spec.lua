@@ -370,6 +370,19 @@ describe("agents", function()
       end
     end
     state.model, state.branch = "claude-opus-5-5", "main"
+    -- The bypass label shows when the session started in another mode. The
+    -- follow status has a test of its own in input_spec.
+    local config, follow = require("anvim.config").options, require("anvim.follow")
+    local start_mode, mode, status, place = config.permission_mode, state.permission_mode, follow.status, follow.place
+    config.permission_mode, state.permission_mode = "default", "bypassPermissions"
+    follow.status, follow.place = function()
+      return ""
+    end, function() end
+    local undo = restore
+    restore = function()
+      config.permission_mode, state.permission_mode, follow.status, follow.place = start_mode, mode, status, place
+      undo()
+    end
     local file = helpers.tmp .. "/agents_footer.lua"
     vim.fn.writefile({ "return 1" }, file)
     require("anvim.context").clear()
@@ -398,9 +411,10 @@ describe("agents", function()
       [85] = { "⏺⏺ 2 agents", "⏺⏺", "⧉ In agents_footer.lua", "⏵⏵ bypass permissions on" },
       [75] = { "⏺⏺", "⧉ In agents_footer.lua", "⏵⏵ bypass permissions on" },
       [60] = { "⏺⏺", "⧉ In agents_footer.lua" },
-      [51] = { "⧉ In agents_footer.lua" },
-      [45] = { "⧉ In agents_f..." },
-      [40] = {},
+      [51] = { "⏺⏺", "⧉ In agents_footer.lua" },
+      [45] = { "⧉ In agents_footer.lua" },
+      [37] = { "⧉ In agents_f..." },
+      [30] = {},
     }) do
       local dots, text = footer(width)
       for _, part in ipairs(parts) do

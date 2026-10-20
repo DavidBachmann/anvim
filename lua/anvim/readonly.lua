@@ -13,11 +13,29 @@ local function refuse()
   vim.notify("anvim is read-only", vim.log.levels.WARN)
 end
 
+-- A quickfix buffer enters with no 'buftype' yet, so it got the keys of a
+-- file buffer, which go now.
+local function unlock(buf)
+  vim.b[buf].anvim_locked = nil
+  for _, key in ipairs(require("anvim.layout").insert_keys) do
+    pcall(vim.keymap.del, "n", key, { buffer = buf })
+  end
+  require("anvim.refs").unmap(buf)
+  api.nvim_clear_autocmds({ group = writes, buffer = buf })
+end
+
 function M.lock(buf)
-  if api.nvim_buf_is_valid(buf) and vim.bo[buf].buftype == "" then
+  if not api.nvim_buf_is_valid(buf) then
+    return
+  elseif vim.bo[buf].buftype ~= "" then
+    if vim.b[buf].anvim_locked then
+      unlock(buf)
+    end
+  else
+    vim.b[buf].anvim_locked = true
     vim.bo[buf].modifiable = false
     for _, key in ipairs(require("anvim.layout").insert_keys) do
-      vim.keymap.set("n", key, talk, { buffer = buf, desc = "Talk to Claude" })
+      require("anvim.keys").set("code", "n", key, talk, { buffer = buf })
     end
     require("anvim.refs").map(buf)
     -- A *Cmd autocmd replaces the write, so BufWritePre hooks such as format

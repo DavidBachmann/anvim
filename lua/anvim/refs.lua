@@ -83,23 +83,29 @@ end
 
 -- File buffer keys.
 function M.map(buf)
-  local function map(mode, lhs, rhs, desc, opts)
-    vim.keymap.set(mode, lhs, rhs, vim.tbl_extend("force", { buffer = buf, desc = desc }, opts or {}))
+  local function map(mode, lhs, rhs, opts)
+    require("anvim.keys").set("code", mode, lhs, rhs, vim.tbl_extend("force", { buffer = buf }, opts or {}))
   end
-  map("x", "c", "<Esc><Cmd>lua require('anvim.refs').visual()<CR>", "Point Claude at the selection")
+  map("x", "c", "<Esc><Cmd>lua require('anvim.refs').visual()<CR>")
   -- nowait: a global map such as a personal spec's `cs` would make `c` wait
   -- for 'timeoutlen'.
   map("n", "c", function()
     vim.o.operatorfunc = OPFUNC
     return "g@"
-  end, "Point Claude at lines", { expr = true, nowait = true })
+  end, { expr = true, nowait = true })
   -- `cc` takes the current line, and a count more lines. Other operators
   -- keep `c` as it is.
   map("o", "c", function()
     return vim.v.operator == "g@" and vim.o.operatorfunc == OPFUNC and "_" or "c"
-  end, "Current line", { expr = true })
+  end, { expr = true })
   -- The global <C-l> is for normal mode only.
-  map("x", "<C-l>", "<C-w>l", "Go to the prompt with the selection")
+  map("x", "<C-l>", "<C-w>l")
+end
+
+function M.unmap(buf)
+  for _, k in ipairs({ { "x", "c" }, { "n", "c" }, { "o", "c" }, { "x", "<C-l>" } }) do
+    pcall(vim.keymap.del, k[1], k[2], { buffer = buf })
+  end
 end
 
 return M

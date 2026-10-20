@@ -377,28 +377,28 @@ local function set_keys()
   end
   clear_keys()
   mapped = buf
-  local map = function(lhs, fn, desc)
-    vim.keymap.set("n", lhs, function()
+  local map = function(lhs, fn)
+    require("anvim.keys").set("permission", "n", lhs, function()
       local r = queue[1]
       if r and not typing then
         fn(r)
       end
-    end, { buffer = buf, desc = desc })
+    end, { buffer = buf })
   end
   for i = 1, 9 do
     map(tostring(i), function(r)
       choose(r, i, true)
-    end, "Choose " .. i)
+    end)
   end
   for _, lhs in ipairs({ "j", "<Down>" }) do
     map(lhs, function(r)
       move(r, 1)
-    end, "Next choice")
+    end)
   end
   for _, lhs in ipairs({ "k", "<Up>" }) do
     map(lhs, function(r)
       move(r, -1)
-    end, "Previous choice")
+    end)
   end
 end
 

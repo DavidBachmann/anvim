@@ -16,7 +16,9 @@ describe("transcript", function()
     local footer = vim.tbl_map(function(chunk)
       return chunk[1]
     end, input.footer(80))
-    assert(table.concat(footer):find("bypass permissions"), "footer shows the mode")
+    -- The session started in bypass mode, so the footer shows no mode label.
+    assert(not table.concat(footer):find("bypass", 1, true), table.concat(footer))
+    assert(table.concat(footer):find("◉ following", 1, true), table.concat(footer))
     assert(
       vim.wait(10000, function()
         return not state.busy

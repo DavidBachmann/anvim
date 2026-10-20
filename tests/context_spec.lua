@@ -65,10 +65,25 @@ local function moved(keys)
 end
 
 describe("context", function()
+  -- The footer shows the bypass label when the session started in another mode.
+  local config = require("anvim.config")
+  local start_mode, mode ---@type string, string
+  -- State that a case changes, to restore even when it fails.
+  local restore ---@type fun()?
+  before_each(function()
+    helpers.start()
+    start_mode, mode = config.options.permission_mode, state.permission_mode
+    config.options.permission_mode, state.permission_mode = "default", "bypassPermissions"
+  end)
   after_each(function()
     context.clear()
     state.waiting = nil
     state.branch = nil
+    config.options.permission_mode, state.permission_mode = start_mode, mode
+    if restore then
+      restore()
+      restore = nil
+    end
   end)
 
   it("pins the selection of each visual mode when visual mode ends", function()
@@ -82,7 +97,8 @@ describe("context", function()
     -- One mark that ends where the next line starts, so that 'hl_eol' covers the last line.
     assert.are.same({ { 1, 0, 4, 0, "AnvimSelection" } }, marks(buf))
     assert(footer():find("⧉ 3 lines selected", 1, true), footer())
-    -- In a narrow column, the mode label gets short, so that the chip stays.
+    -- In a narrow column, the mode label gets short and the follow status
+    -- goes, so that the chip stays.
     local narrow = footer(55)
     assert(narrow:find("⧉ 3 lines selected", 1, true), narrow)
     assert(narrow:find("⏵⏵ bypass $"), narrow)
@@ -251,14 +267,24 @@ describe("context", function()
   it("fits the chip into the footer: the hint goes first, then the branch, the long mode, then the chip", function()
     in_code()
     state.branch = "main"
+    -- The follow status has a test of its own in input_spec.
+    local follow = require("anvim.follow")
+    local status, place = follow.status, follow.place
+    follow.status, follow.place = function()
+      return ""
+    end, function() end
+    restore = function()
+      follow.status, follow.place = status, place
+    end
     local w = api.nvim_strwidth
     for width, want in pairs({
       [100] = { "git:(main)", "⧉ In context.lua", "(shift+tab to cycle)", "⏵⏵ bypass permissions on" },
       [80] = { "git:(main)", "⧉ In context.lua", "⏵⏵ bypass permissions on" },
       [62] = { "⧉ In context.lua", "⏵⏵ bypass permissions on" },
-      [58] = { "⧉ In context.lua" },
+      [58] = { "⧉ In context.lua", "⏵⏵ bypass permissions on" },
       [50] = { "⧉ In context.lua" },
-      [43] = { "⧉ In contex..." },
+      [43] = { "⧉ In context.lua" },
+      [35] = { "⧉ In contex..." },
       [30] = {},
     }) do
       local text = footer(width)
@@ -278,10 +304,11 @@ describe("context", function()
       assert(text:find("⏵⏵ bypass", 1, true), text)
       assert.are.same(width, w(text), text)
     end
-    -- While Claude waits, the waiting text stays, and the chip goes if both do not fit.
+    -- While Claude waits, the waiting text takes the label's place. In a
+    -- narrow column, the model goes, and the waiting text gets short.
     state.waiting = "Esc to deny"
     assert(footer(72):find("⧉ In context.lua  +⏺ Claude is waiting for you $"), footer(72))
-    assert.are.same(" anvim Opus 5.5" .. (" "):rep(11) .. "⏺ Claude is waiting for you ", footer(54))
+    assert.are.same(" anvim   ⧉ In context.lua" .. (" "):rep(19) .. "⏺ waiting ", footer(54))
   end)
 
   it("inserts references with visual c, c{motion}, cc and a count, where typing stopped", function()

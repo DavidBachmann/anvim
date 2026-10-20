@@ -397,7 +397,7 @@ function M.setup()
       press = nil
     end
   end, ns)
-  vim.keymap.set("n", "<leader>kr", M.read, { desc = "Read the transcript" })
+  require("anvim.keys").set("claude", "n", "<leader>cr", M.read)
 end
 
 return M

@@ -23,9 +23,11 @@ local highlights = {
   AnvimToolOk = { link = "DiagnosticOk" },
   AnvimToolError = { link = "DiagnosticError" },
   AnvimResult = { link = "Comment" },
+  AnvimModeManual = { link = "DiagnosticOk" },
   AnvimModeEdits = { link = "DiagnosticHint" },
   AnvimModePlan = { link = "DiagnosticInfo" },
   AnvimModeBypass = { link = "DiagnosticError" },
+  AnvimModeAuto = { link = "DiagnosticWarn" },
   AnvimInsert = { link = "DiffAdd" },
   AnvimRead = { link = "Visual" },
   AnvimTodoActive = { bold = true },
@@ -122,9 +124,14 @@ function M.setup(opts)
   api.nvim_create_user_command("AnvimSessions", sessions.pick, { desc = "Resume a session of this directory" })
   api.nvim_create_user_command("AnvimRestart", sessions.restart, { desc = "Restart Claude in this session" })
   api.nvim_create_user_command("AnvimModel", sessions.pick_model, { desc = "Choose Claude's model" })
-  vim.keymap.set("n", "<leader>ks", sessions.pick, { desc = "Resume a session" })
-  vim.keymap.set("n", "<leader>km", sessions.pick_model, { desc = "Choose the model" })
-  vim.keymap.set("n", "<leader>ky", sessions.yank, { desc = "Yank Claude's last reply" })
+  local keys = require("anvim.keys")
+  keys.set("claude", "n", "<leader>cs", sessions.pick)
+  keys.set("claude", "n", "<leader>cm", sessions.pick_model)
+  keys.set("claude", "n", "<leader>cy", sessions.yank)
+  keys.set("claude", "n", "<leader>cR", sessions.restart)
+  keys.set("global", "n", "<leader>?", function()
+    require("anvim.keyview").open()
+  end)
 end
 
 local started = false

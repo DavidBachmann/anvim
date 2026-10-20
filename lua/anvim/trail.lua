@@ -195,7 +195,7 @@ end
 function M.attach(sidecar)
   sidecar.on("tool_use", M.tool_use)
   sidecar.on("tool_result", M.tool_result)
-  vim.keymap.set("n", "<leader>kt", M.pick, { desc = "Claude's trail" })
+  require("anvim.keys").set("claude", "n", "<leader>ct", M.pick)
   api.nvim_create_user_command("AnvimTrail", M.pick, { desc = "Pick a place from Claude's trail" })
 end
 

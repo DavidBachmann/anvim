@@ -43,7 +43,8 @@ test("V2j and <C-l> pin the lines with a footer chip, and follow mode waits unti
     `require("anvim.sidecar").dispatch({ type = "tool_use", id = "ui1", name = "Read", input = { file_path = ... } })`,
     other,
   );
-  await ui.waitFor("⏸ pinned · Claude at other.lua:1 +1");
+  // In the footer, which takes the short form when the column is narrow.
+  await ui.waitFor(async () => /⏸ (pinned · Claude at )?other\.lua:1 \+1/.test(await anvim!.footer()));
   await ui.drain();
   expect(ui.frames(mark).some((f) => f.lines.some((line) => line.includes("local other = 1")))).toBe(false);
   expect(highlighted(code, 9, 13)).toEqual([10, 11, 12]);
@@ -52,12 +53,13 @@ test("V2j and <C-l> pin the lines with a footer chip, and follow mode waits unti
   await ui.input("<C-x>");
   await ui.waitFor("local other = 1");
   await ui.waitFor("⧉ In other.lua");
-  await ui.waitFor("◉ following");
-  expect(ui.screen()).not.toContain("⏸ pinned");
+  await ui.waitFor(async () => (await anvim!.footer()).includes("◉ following"));
+  expect(ui.screen()).not.toContain("⏸");
 });
 
-test("a narrow statusline keeps the pause sign and Claude's place in view", async () => {
-  anvim = await start({ cols: 70 });
+// The owner's start mode shows no label, which leaves the room to the follow status.
+test("a narrow footer keeps the pause sign and Claude's place, in the short form", async () => {
+  anvim = await start({ cols: 160, env: { ANVIM_MODE: "bypassPermissions" } });
   const { ui } = anvim;
   writeFileSync(join(anvim.dir, "other.lua"), "local other = 1\nreturn other\n");
   await anvim.toCode("matchparen.lua", { lnum: 10, topline: 1 });
@@ -68,11 +70,12 @@ test("a narrow statusline keeps the pause sign and Claude's place in view", asyn
     `require("anvim.sidecar").dispatch({ type = "tool_use", id = "un1", name = "Read", input = { file_path = ... } })`,
     join(anvim.dir, "other.lua"),
   );
-  await ui.waitFor("⏸ other.lua:1 +1");
+  await ui.waitFor(async () => (await anvim!.footer()).includes("⏸ other.lua:1 +1"));
+  const footer = await anvim.footer();
+  expect(footer).toContain("⧉ 2 lines selected");
+  expect(footer).not.toContain("pinned ·");
   // The global statusline is the last row.
-  const status = ui.lines().at(-1)!;
-  expect(status).toContain("⏸ other.lua:1 +1");
-  expect(status).not.toContain("<");
+  expect(ui.lines().at(-1)).not.toContain("other.lua");
 });
 
 test("a Write that starts while a selection is pinned streams in view once <C-x> unpins", async () => {
@@ -107,7 +110,7 @@ test("a Write that starts while a selection is pinned streams in view once <C-x>
   await field("file_path", "end", path);
   await field("content", "start");
   await field("content", "delta", "local made = 1\n");
-  await ui.waitFor("⏸ pinned · Claude at made_new.lua:1 +1");
+  await ui.waitFor(async () => /⏸ (pinned · Claude at )?made_new\.lua:1 \+1/.test(await anvim!.footer()));
   expect(inCode("---@param byte_col integer")).toBe(true);
   expect(inCode("local made = 1")).toBe(false);
 

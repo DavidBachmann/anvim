@@ -311,9 +311,9 @@ describe("focus", function()
     follow.set_focus("e5")
     assert.are.same({ "e5", "Comment", "◉ following Agent" }, { follow.focus, follow.group(), follow.status() })
     for slot, desc in pairs({ [0] = "Focus the main agent", [1] = "Focus agent 1", [4] = "Focus agent 4" }) do
-      assert.are.same(desc, vim.fn.maparg("<leader>k" .. slot, "n", false, true).desc)
+      assert.are.same(desc, vim.fn.maparg("<leader>c" .. slot, "n", false, true).desc)
     end
-    assert.are.same("Pick an agent to focus", vim.fn.maparg("<leader>ka", "n", false, true).desc)
+    assert.are.same("Pick an agent to focus", vim.fn.maparg("<leader>ca", "n", false, true).desc)
   end)
 
   it("lists the agents in a picker, and its choice takes the focus", function()

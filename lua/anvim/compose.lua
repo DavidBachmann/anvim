@@ -164,14 +164,17 @@ function M.open()
       save(buf)
     end,
   })
+  -- As snacks maps the keys of its windows, without a wait.
+  require("anvim.keys").set("compose", { "n", "i" }, "<C-g>", M.close, { buffer = buf, nowait = true })
   -- After a window command, the cursor is in the other window by the time
-  -- the event loop runs. After :q! the compose window is gone.
+  -- the event loop runs. After :q! the compose window is gone. The key view
+  -- gives the cursor back.
   api.nvim_create_autocmd("WinLeave", {
     buffer = buf,
     callback = function()
       vim.schedule(function()
-        local w = M.win()
-        if w and api.nvim_get_current_win() ~= w then
+        local w, current = M.win(), api.nvim_get_current_win()
+        if w and current ~= w and current ~= require("anvim.keyview").win() then
           M.close()
         end
       end)
@@ -197,11 +200,8 @@ function M.open()
     title = { { " ❯ ", "AnvimPrompt" }, { "Prompt ", "FloatTitle" } },
     footer = footer(),
     footer_keys = false,
-    keys = {
-      -- snacks maps q to a forced close, which drops the changes. Macros keep q.
-      q = false,
-      back = { "<C-g>", M.close, mode = { "n", "i" }, desc = "Back to the prompt" },
-    },
+    -- snacks maps q to a forced close, which drops the changes. Macros keep q.
+    keys = { q = false },
     on_close = on_close,
   })
   local line = lines[cursor[1]] or ""

@@ -75,8 +75,8 @@ return {
       on_attach = function(buffer)
         local gs = package.loaded.gitsigns
 
-        local function map(mode, l, r, desc)
-          vim.keymap.set(mode, l, r, { buffer = buffer, desc = desc, silent = true })
+        local function map(mode, l, r)
+          require("anvim.keys").set("code", mode, l, r, { buffer = buffer, silent = true })
         end
 
         map("n", "]h", function()
@@ -85,24 +85,24 @@ return {
           else
             gs.nav_hunk("next")
           end
-        end, "Next Hunk")
+        end)
         map("n", "[h", function()
           if vim.wo.diff then
             vim.cmd.normal({ "[c", bang = true })
           else
             gs.nav_hunk("prev")
           end
-        end, "Prev Hunk")
+        end)
         map("n", "]H", function()
           gs.nav_hunk("last")
-        end, "Last Hunk")
+        end)
         map("n", "[H", function()
           gs.nav_hunk("first")
-        end, "First Hunk")
-        map("n", "<leader>ghp", gs.preview_hunk_inline, "Preview Hunk Inline")
+        end)
+        map("n", "<leader>ghp", gs.preview_hunk_inline)
         map("n", "<leader>ghb", function()
           gs.blame_line({ full = true })
-        end, "Blame Line")
+        end)
       end,
     },
   },

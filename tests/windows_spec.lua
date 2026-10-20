@@ -96,8 +96,8 @@ describe("windows", function()
     for _, key in ipairs({ "q", "<Esc>", unpack(layout.insert_keys) }) do
       -- Without a main loop, the prompt's :startinsert stays pending and eats the keys.
       vim.cmd.stopinsert()
-      keys("<leader>kr")
-      assert.are.same(tr, current(), "<leader>kr")
+      keys("<leader>cr")
+      assert.are.same(tr, current(), "<leader>cr")
       assert(vim.w[tr].anvim_read, "read mode is on")
       keys(key)
       assert.are.same(prompt, current(), key .. " goes back to the prompt")
