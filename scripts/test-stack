@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Boots the real init.lua with the user's LazyVim config in a child Neovim.
+
+cd "$(dirname "$0")/.." || exit 1
+exec scripts/test tests/stack/*_spec.lua

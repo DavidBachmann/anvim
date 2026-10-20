@@ -12,6 +12,7 @@ vim.fn.mkdir(M.tmp, "p")
 local fixtures = M.root .. "/tests/fixtures"
 vim.fn.writefile(vim.fn.readfile(fixtures .. "/matchparen.lua"), M.tmp .. "/matchparen.lua")
 local recording = M.tmp .. "/session.jsonl"
+M.recording = recording
 local frames = vim.fn.readfile(fixtures .. "/edit-session.jsonl")
 for i, frame in ipairs(frames) do
   frames[i] = frame:gsub("/ANVIM_FIXTURE", M.tmp)

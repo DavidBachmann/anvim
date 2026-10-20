@@ -106,7 +106,10 @@ function M.start(start)
   }, function(obj)
     vim.schedule(function()
       proc = nil
-      M.dispatch({ type = "exit", code = obj.code })
+      -- While Neovim quits, its buffers are unloaded and the handlers would fail.
+      if vim.v.exiting == vim.NIL then
+        M.dispatch({ type = "exit", code = obj.code })
+      end
     end)
   end)
   M.send(start)

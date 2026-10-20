@@ -1,6 +1,6 @@
 std="vim"
-# .tests holds the test plugins, and selene does not read .gitignore.
-exclude = [".tests/*"]
+# .tests holds the test plugins and .claude holds agent worktrees. selene does not read .gitignore.
+exclude = [".tests/*", ".claude/*"]
 
 [lints]
 mixed_table="allow"

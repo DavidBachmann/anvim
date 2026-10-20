@@ -3,9 +3,14 @@
 local M = {}
 
 local api = vim.api
+local writes = api.nvim_create_augroup("anvim.readonly.write", {})
 
 local function talk()
   require("anvim.layout").focus_input()
+end
+
+local function refuse()
+  vim.notify("anvim is read-only", vim.log.levels.WARN)
 end
 
 function M.lock(buf)
@@ -14,6 +19,22 @@ function M.lock(buf)
     for _, key in ipairs({ "i", "a" }) do
       vim.keymap.set("n", key, talk, { buffer = buf, desc = "Talk to Claude" })
     end
+    -- A *Cmd autocmd replaces the write, so BufWritePre hooks such as format
+    -- on save never run.
+    local events = { "BufWriteCmd", "FileWriteCmd", "FileAppendCmd" }
+    local name = api.nvim_buf_get_name(buf)
+    api.nvim_clear_autocmds({ group = writes, buffer = buf, event = events })
+    api.nvim_create_autocmd(events, {
+      group = writes,
+      buffer = buf,
+      callback = function()
+        -- :saveas renames the buffer before it writes.
+        if name ~= "" and api.nvim_buf_get_name(buf) ~= name then
+          api.nvim_buf_set_name(buf, name)
+        end
+        refuse()
+      end,
+    })
   end
 end
 

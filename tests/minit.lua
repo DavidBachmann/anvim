@@ -20,5 +20,16 @@ require("lazy.minit").setup({
     { dir = vim.uv.cwd() },
     { "folke/snacks.nvim", opts = {} },
     { "nvim-mini/mini.icons", opts = {} },
+    -- Without file arguments, run the bare specs only. scripts/test-stack runs tests/stack.
+    {
+      "echasnovski/mini.test",
+      opts = {
+        collect = {
+          find_files = function()
+            return #arg > 0 and arg or vim.fn.globpath("tests", "*_spec.lua", true, true)
+          end,
+        },
+      },
+    },
   },
 })

@@ -7,6 +7,7 @@
 //   waitfor:<text>     wait until the screen shows text (20 s timeout)
 //   keys:<keys>        nvim_input, e.g. keys:hello<CR>
 //   lua:<code>         nvim_exec_lua
+//   resize:<WxH>       resize the UI, e.g. resize:160x40
 //   snap:<name>        write <name>.txt, <name>.hl.txt, <name>.svg and <name>.png (via headless Chrome)
 //   record:<ms>        log every flush for ms to frames.log, with a timing summary
 import { decodeMultiStream, encode } from "@msgpack/msgpack";
@@ -262,6 +263,7 @@ async function main() {
     if (kind === "wait") await Bun.sleep(Number(arg));
     else if (kind === "keys") await request("nvim_input", [arg]);
     else if (kind === "lua") await request("nvim_exec_lua", [arg, []]);
+    else if (kind === "resize") await request("nvim_ui_try_resize", arg.split("x").map(Number));
     else if (kind === "snap") snap(arg);
     else if (kind === "record") await record(Number(arg));
     else if (kind === "waitfor") {

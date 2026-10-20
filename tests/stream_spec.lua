@@ -21,6 +21,7 @@ describe("stream", function()
       field("e1", "Edit", "old_string", "end", "local b = 2")
       local buf = vim.fn.bufnr(file)
       assert.are.same(buf, vim.api.nvim_win_get_buf(layout.wins.code), "code window shows the edited file")
+      assert(not vim.diagnostic.is_enabled({ bufnr = buf }), "diagnostics are off during the preview")
       field("e1", "Edit", "new_string", "start")
       field("e1", "Edit", "new_string", "delta", "local b = 3\nlocal c")
       field("e1", "Edit", "new_string", "delta", " = 4")
@@ -53,6 +54,7 @@ describe("stream", function()
       })
       assert.are.same({ "local a = 1", "local b = 3", "local c = 4", "return a" }, buf_lines(buf))
       assert.are.same({}, hl_groups(buf, "anvim.stream"), "preview marks are gone")
+      assert(vim.diagnostic.is_enabled({ bufnr = buf }), "diagnostics are back after the reload")
       assert.are.same(2, hl_groups(buf, "anvim.follow").AnvimInsert, "added lines flash")
       assert.are.same(2, vim.api.nvim_win_get_cursor(layout.wins.code)[1], "cursor on the first added line")
     end)
@@ -92,5 +94,32 @@ describe("stream", function()
       assert.are.same(150, #buf_lines(buf))
       assert(not vim.api.nvim_buf_is_valid(preview), "preview buffer was deleted")
     end)
+  end)
+
+  it("releases a preview's buffer when the sidecar exits", function()
+    helpers.start()
+    local file = helpers.tmp .. "/crash.lua"
+    vim.fn.writefile({ "local a = 1", "return a" }, file)
+    local ended = {}
+    local id = vim.api.nvim_create_autocmd("User", {
+      pattern = "AnvimPreviewEnd",
+      callback = function(ev)
+        ended[#ended + 1] = ev.data.buf
+      end,
+    })
+    helpers.capture_sends(function()
+      sidecar.dispatch({ type = "tool_start", id = "c1", name = "Edit" })
+      field("c1", "Edit", "file_path", "end", file)
+      field("c1", "Edit", "old_string", "end", "local a = 1")
+      local buf = vim.fn.bufnr(file)
+      assert(not vim.diagnostic.is_enabled({ bufnr = buf }), "diagnostics are off during the preview")
+      sidecar.dispatch({ type = "exit", code = 1 })
+      assert(vim.diagnostic.is_enabled({ bufnr = buf }), "diagnostics stay off after the exit")
+      assert.are.same({ buf }, ended)
+      assert.are.same({ "local a = 1", "return a" }, buf_lines(buf), "the buffer shows the file again")
+    end)
+    vim.api.nvim_del_autocmd(id)
+    -- Only the event was fake. The replay sidecar still runs for the next specs.
+    require("anvim.state").process = "ready"
   end)
 end)

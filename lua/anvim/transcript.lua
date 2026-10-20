@@ -34,7 +34,9 @@ function M.buf()
   end
   bufnr = api.nvim_create_buf(false, true)
   api.nvim_buf_set_name(bufnr, "anvim://transcript")
-  vim.bo[bufnr].filetype = "markdown"
+  vim.treesitter.language.register("markdown", "anvim_transcript")
+  vim.bo[bufnr].filetype = "anvim_transcript"
+  pcall(vim.treesitter.start, bufnr, "markdown")
   vim.bo[bufnr].modifiable = false
   -- With breakindentopt=list:-1, wrapped lines align after the bullet.
   vim.bo[bufnr].formatlistpat = [[^\s*\%(⏺\|❯\|⎿\|⚠\)\?\s*]]
@@ -332,7 +334,12 @@ function M.attach(sidecar)
     M.notice(ev.level, ev.text)
   end)
   sidecar.on("exit", function(ev)
-    M.notice(ev.code == 0 and "warn" or "error", ("Sidecar exited (code %d). See %s"):format(ev.code, sidecar.log_path))
+    if bufnr and api.nvim_buf_is_loaded(bufnr) then
+      M.notice(
+        ev.code == 0 and "warn" or "error",
+        ("Sidecar exited (code %d). See %s"):format(ev.code, sidecar.log_path)
+      )
+    end
   end)
 end
 

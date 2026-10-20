@@ -30,7 +30,7 @@ local BURST_MS = 25
 ---@field waiting integer[] await_preview requests to answer when caught up
 ---@field marks integer[]
 ---@field cursor integer?
----@field busy boolean
+---@field held boolean
 ---@field dead boolean
 
 ---@type table<string, anvim.Preview>
@@ -41,10 +41,54 @@ local run
 
 local has_busy = vim.fn.exists("+busy") == 1
 
-local function set_busy(p, on)
-  if has_busy and p.buf and api.nvim_buf_is_valid(p.buf) and p.busy ~= on then
-    vim.bo[p.buf].busy = math.max(0, vim.bo[p.buf].busy + (on and 1 or -1))
-    p.busy = on
+-- Buffers that previews write into. While held, a buffer is busy and its
+-- diagnostics are off, because the LSP server sees half-written code.
+-- `User AnvimPreviewStart` and `AnvimPreviewEnd` let other plugins keep
+-- their hands off it.
+---@type table<integer, { n: integer, diagnostics: boolean }>
+local held = {}
+
+local function hold(p)
+  local buf = p.buf
+  if p.held or not (buf and api.nvim_buf_is_valid(buf)) then
+    return
+  end
+  p.held = true
+  local h = held[buf]
+  if not h then
+    h = { n = 0, diagnostics = vim.diagnostic.is_enabled({ bufnr = buf }) }
+    held[buf] = h
+    if h.diagnostics then
+      vim.diagnostic.enable(false, { bufnr = buf })
+    end
+    if has_busy then
+      vim.bo[buf].busy = vim.bo[buf].busy + 1
+    end
+    api.nvim_exec_autocmds("User", { pattern = "AnvimPreviewStart", data = { buf = buf }, modeline = false })
+  end
+  h.n = h.n + 1
+end
+
+local function release(p)
+  local buf = p.buf
+  local h = buf and held[buf]
+  if not (p.held and h) then
+    return
+  end
+  p.held = false
+  h.n = h.n - 1
+  if h.n > 0 then
+    return
+  end
+  held[buf] = nil
+  if api.nvim_buf_is_valid(buf) then
+    if h.diagnostics then
+      vim.diagnostic.enable(true, { bufnr = buf })
+    end
+    if has_busy then
+      vim.bo[buf].busy = math.max(0, vim.bo[buf].busy - 1)
+    end
+    api.nvim_exec_autocmds("User", { pattern = "AnvimPreviewEnd", data = { buf = buf }, modeline = false })
   end
 end
 
@@ -148,7 +192,6 @@ local function begin_insert(p)
     priority = 200,
   })
   p.tick = api.nvim_buf_get_changedtick(p.buf)
-  set_busy(p, true)
   run()
 end
 
@@ -252,6 +295,7 @@ local function open_write_preview(p)
   end
   vim.bo[buf].modifiable = false
   p.buf = buf
+  hold(p)
   p.head = { 0, 0 }
   begin_insert(p)
   follow.track(p.path, 1, buf)
@@ -270,6 +314,7 @@ function M.on_field(ev)
       open_write_preview(p)
     elseif vim.uv.fs_stat(p.path) then
       p.buf = follow.load(p.path)
+      hold(p)
     else
       kill(p)
     end
@@ -300,7 +345,7 @@ function M.on_start(ev)
       input_done = false,
       waiting = {},
       marks = {},
-      busy = false,
+      held = false,
       dead = false,
     }
   end
@@ -359,6 +404,7 @@ local function finish_write(p, ev)
     end
     follow.flash(buf, rows, "AnvimInsert")
   end
+  release(p)
   if preview and api.nvim_buf_is_valid(preview) then
     api.nvim_buf_delete(preview, { force = true })
   end
@@ -371,11 +417,11 @@ function M.on_result(ev)
   end
   previews[ev.id] = nil
   kill(p)
-  set_busy(p, false)
   if p.name == "Write" and p.path then
     finish_write(p, ev)
   elseif p.buf then
     reload(p.buf)
+    release(p)
     local rows = M.added_rows(type(ev.result) == "table" and ev.result.structuredPatch or nil)
     follow.flash(p.buf, rows, "AnvimInsert")
     if rows[1] and p.path then
@@ -384,7 +430,8 @@ function M.on_result(ev)
   end
 end
 
-function M.on_turn_end()
+-- Ends every open preview as failed, when the turn ends or the sidecar exits.
+function M.cancel_all()
   for id in pairs(previews) do
     M.on_result({ id = id, is_error = true })
   end
@@ -407,7 +454,8 @@ function M.attach()
   end)
   sidecar.on("await_preview", M.on_await)
   sidecar.on("tool_result", M.on_result)
-  sidecar.on("turn_end", M.on_turn_end)
+  sidecar.on("turn_end", M.cancel_all)
+  sidecar.on("exit", M.cancel_all)
 end
 
 return M

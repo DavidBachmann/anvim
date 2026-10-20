@@ -35,6 +35,10 @@ local function set_highlights()
   end
   local del = api.nvim_get_hl(0, { name = "DiffDelete", link = false })
   api.nvim_set_hl(0, "AnvimDelete", { bg = del.bg, strikethrough = true, default = true })
+  -- The blank row under the transcript takes the transcript's background.
+  local sep = api.nvim_get_hl(0, { name = "WinSeparator", link = false })
+  local nc = api.nvim_get_hl(0, { name = "NormalNC", link = false })
+  api.nvim_set_hl(0, "AnvimSeparator", { fg = sep.fg, bg = nc.bg, default = true })
 end
 
 local function refresh_branch()
@@ -73,11 +77,12 @@ end
 
 function M.setup(opts)
   config.setup(opts)
-  vim.o.statusline = "%!v:lua.require'anvim.statusline'.render()"
+  -- Wrap transcript lines at spaces and punctuation, not inside paths.
+  vim.o.breakat = " \t;:,!?"
   set_highlights()
   api.nvim_create_autocmd("ColorScheme", { callback = set_highlights })
   readonly.setup()
-  layout.setup_quit()
+  layout.setup()
   api.nvim_create_user_command("Anvim", M.start, { desc = "Open the anvim layout and start Claude" })
   api.nvim_create_user_command("AnvimInterrupt", input.interrupt, { desc = "Interrupt Claude" })
 end

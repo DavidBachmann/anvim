@@ -1,6 +1,7 @@
 -- Follow mode: while the cursor is in the prompt, the code window shows where
 -- Claude reads and writes. Elsewhere the user is in control, and the
 -- statusline says where Claude is.
+local input = require("anvim.input")
 local layout = require("anvim.layout")
 
 local M = {}
@@ -54,7 +55,7 @@ function M.track(path, line, buf)
     M.show(buf or M.load(path), M.agent.line)
   else
     M.behind = M.behind + 1
-    vim.cmd("redrawstatus!")
+    input.redraw()
   end
 end
 
@@ -64,7 +65,7 @@ function M.jump()
   if M.agent and vim.uv.fs_stat(M.agent.path) then
     M.show(M.load(M.agent.path), M.agent.line)
   end
-  vim.cmd("redrawstatus!")
+  input.redraw()
 end
 
 ---@param rows integer[] 0-based rows
@@ -107,20 +108,17 @@ local function on_read(ev)
   M.flash(buf, rows, "AnvimRead", 400)
 end
 
--- The code window's statusline segment.
-function M.status(win)
-  if win ~= layout.wins.code then
-    return ""
-  end
+-- Where Claude is, as plain text for the statusline. A global statusline
+-- shows the current window, so this does not depend on the window.
+function M.status()
   if M.enabled() then
-    return "%#AnvimClaude#◉ following "
+    return "◉ following"
   end
   if not M.agent then
     return ""
   end
   local where = ("%s:%d"):format(require("anvim.transcript").relpath(M.agent.path), M.agent.line)
-  local behind = M.behind > 0 and (" +%d"):format(M.behind) or ""
-  return ("%%#AnvimClaude#⏺ Claude at %s%s %%#Comment#(<leader>j) "):format(where:gsub("%%", "%%%%"), behind)
+  return ("⏺ Claude at %s%s"):format(where, M.behind > 0 and (" +%d"):format(M.behind) or "")
 end
 
 function M.attach(sidecar)
@@ -135,7 +133,7 @@ function M.attach(sidecar)
       if M.enabled() and M.behind > 0 then
         M.jump()
       end
-      vim.cmd("redrawstatus!")
+      input.redraw()
     end,
   })
   vim.keymap.set("n", "<leader>j", M.jump, { desc = "Jump to where Claude is" })

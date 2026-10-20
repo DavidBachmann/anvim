@@ -10,10 +10,10 @@ M.defaults = {
   ---@type string[]? Replaces the sidecar command, e.g. to replay a recording.
   sidecar_cmd = nil,
   layout = {
-    tree_width = 32,
     ---@type number Columns, or a fraction of the screen width.
     claude_width = 0.36,
-    input_height = 6,
+    -- Rows for the prompt and its footer. The window grows with the prompt.
+    input_height = { min = 2, max = 12 },
   },
   append_system_prompt = table.concat({
     "The user reads code in anvim, a read-only Neovim viewer, while you work.",

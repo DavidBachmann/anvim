@@ -13,7 +13,10 @@ describe("transcript", function()
     input.send("Add a comment")
     assert(state.busy, "busy right after send")
     assert(input.activity():find("Working"), "activity line shows the spinner")
-    assert(input.footer():find("bypass permissions"), "footer shows the mode")
+    local footer = vim.tbl_map(function(chunk)
+      return chunk[1]
+    end, input.footer(80))
+    assert(table.concat(footer):find("bypass permissions"), "footer shows the mode")
     assert(
       vim.wait(10000, function()
         return not state.busy
