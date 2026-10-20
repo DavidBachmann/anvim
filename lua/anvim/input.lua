@@ -407,8 +407,11 @@ function M.render()
 end
 
 function M.attach()
+  -- A turn that a prompt started counts its time from the send.
   sidecar.on("turn_start", function()
-    M.set_busy(true)
+    if not state.busy then
+      M.set_busy(true)
+    end
   end)
   sidecar.on("turn_end", function(ev)
     -- A slash command such as /clear ends a turn that asked no model.

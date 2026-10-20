@@ -54,10 +54,11 @@ local function command()
   return { opts.bun, M.dir .. "/src/main.ts" }
 end
 
--- Splits stdout into lines and decodes them off the main loop. Dispatch is
--- scheduled, so handlers may call any API.
-local function line_reader()
-  local pending = ""
+-- Splits stdout into lines and decodes them in the read callback. Dispatch is
+-- scheduled, so handlers may call any API. A line can be megabytes long, as
+-- a resumed session's history, so its chunks wait in a list until it ends.
+function M.line_reader()
+  local parts = {}
   return function(err, data)
     if err then
       M.log("stdout error: " .. err)
@@ -65,15 +66,16 @@ local function line_reader()
     if not data then
       return
     end
-    pending = pending .. data
-    local events = {}
+    local events, from = {}, 1
     while true do
-      local nl = pending:find("\n", 1, true)
+      local nl = data:find("\n", from, true)
       if not nl then
+        parts[#parts + 1] = data:sub(from)
         break
       end
-      local line = pending:sub(1, nl - 1)
-      pending = pending:sub(nl + 1)
+      parts[#parts + 1] = data:sub(from, nl - 1)
+      local line = table.concat(parts)
+      parts, from = {}, nl + 1
       if line ~= "" then
         local ok, ev = pcall(vim.json.decode, line, { luanil = { object = true, array = true } })
         if ok and type(ev) == "table" then
@@ -101,7 +103,7 @@ function M.start(start)
   proc = vim.system(command(), {
     stdin = true,
     cwd = start.cwd,
-    stdout = line_reader(),
+    stdout = M.line_reader(),
     stderr = function(_, data)
       if data then
         M.log(vim.trim(data))
