@@ -9,6 +9,12 @@ local api = vim.api
 
 ---@type { code: integer?, transcript: integer?, input: integer? }
 M.wins = {}
+---@type integer? The tab page that holds the layout.
+M.tab = nil
+---@type integer? The buffer that the code window showed when it closed.
+M.last_code_buf = nil
+---@type integer? The tree's width when the code window closed.
+local tree_width
 
 local function valid(win)
   return win and api.nvim_win_is_valid(win)
@@ -26,6 +32,9 @@ local function setup_transcript_win(win)
   wo.breakindent = true
   wo.breakindentopt = "list:-1"
   wo.cursorline = false
+  -- A drag puts the cursor where the mouse was pressed. With 'scrolloff', the
+  -- view would scroll under the mouse there.
+  wo.scrolloff = 0
   wo.winfixwidth = true
   wo.winfixbuf = true
   -- A global statusline puts a separator row under the transcript. Blank it,
@@ -33,10 +42,51 @@ local function setup_transcript_win(win)
   local vert = vim.opt.fillchars:get().vert or "│"
   wo.fillchars = (vim.go.fillchars ~= "" and vim.go.fillchars .. "," or "") .. "horiz: ,vertright:" .. vert
   wo.winhighlight = "WinSeparator:AnvimSeparator"
+  -- In 0.12 this only drops the window number. Window commands and mouse
+  -- clicks still enter it, so a WinEnter guard moves the cursor on.
+  api.nvim_win_set_config(win, { focusable = false })
+end
+
+-- Files and Write previews. Only the code window shows them.
+function M.is_code(buf)
+  return vim.bo[buf].buftype == "" or vim.b[buf].anvim_preview ~= nil
 end
 
 local function is_special(win)
   return win == M.wins.transcript or win == M.wins.input or vim.bo[api.nvim_win_get_buf(win)].buftype ~= ""
+end
+
+local function claude_width()
+  local width = config.options.layout.claude_width
+  return width < 1 and math.floor(vim.o.columns * width) or width
+end
+
+-- The explorer's sidebar split. Its list is a float on top of it.
+local function tree_win()
+  for _, win in ipairs(api.nvim_tabpage_list_wins(0)) do
+    local snacks_win = vim.w[win].snacks_win
+    if api.nvim_win_get_config(win).relative == "" and snacks_win and snacks_win.position == "left" then
+      return win
+    end
+  end
+end
+
+-- A full-height window between the tree and the Claude column. Splitting the
+-- transcript would only span the transcript's rows.
+local function open_code_win(buf)
+  local tree, win = tree_win(), nil
+  if tree then
+    local width = tree_width or api.nvim_win_get_width(tree)
+    tree_width = nil
+    win = api.nvim_open_win(buf, false, { split = "right", win = tree })
+    api.nvim_win_set_width(tree, width)
+  else
+    win = api.nvim_open_win(buf, false, { split = "left", win = -1 })
+  end
+  if valid(M.wins.transcript) then
+    api.nvim_win_set_width(M.wins.transcript, claude_width())
+  end
+  return win
 end
 
 -- The window that follow mode drives. Recreated if the user closed it.
@@ -50,9 +100,20 @@ function M.code_win()
       return win
     end
   end
-  local anchor = valid(M.wins.transcript) and M.wins.transcript or 0
-  M.wins.code = api.nvim_open_win(api.nvim_create_buf(true, false), false, { split = "left", win = anchor })
+  local buf = M.last_code_buf
+  if not (buf and api.nvim_buf_is_loaded(buf)) then
+    buf = api.nvim_create_buf(true, false)
+  end
+  M.wins.code = open_code_win(buf)
   return M.wins.code
+end
+
+-- Runs before the code window closes. Neovim then gives its columns to the
+-- tree, because the Claude column has 'winfixwidth'.
+function M.code_closing(buf)
+  M.last_code_buf = buf
+  local tree = tree_win()
+  tree_width = tree and api.nvim_win_get_width(tree)
 end
 
 -- The user's own explorer, with their layout, but without taking focus.
@@ -66,7 +127,7 @@ end
 function M.focus_input()
   if valid(M.wins.input) then
     api.nvim_set_current_win(M.wins.input)
-    vim.cmd.startinsert({ bang = true })
+    input.resume()
   end
 end
 
@@ -80,28 +141,48 @@ local function drop_when_hidden(buf)
   end
 end
 
-local function claude_width()
-  local width = config.options.layout.claude_width
-  return width < 1 and math.floor(vim.o.columns * width) or width
-end
-
-function M.open()
-  local opts = config.options.layout
-  M.wins.code = M.code_win()
-  drop_when_hidden(api.nvim_win_get_buf(M.wins.code))
+-- Reopens the windows that the user closed, and keeps the cursor where it is.
+-- A prompt or transcript window that lost its buffer, as after :bdelete, opens
+-- again with a new one.
+function M.repair()
+  for role, buf in pairs({ transcript = transcript.buf(), input = input.buf() }) do
+    local win = M.wins[role]
+    if valid(win) and api.nvim_win_get_buf(win) ~= buf then
+      pcall(api.nvim_win_close, win, true)
+    end
+  end
+  if valid(M.wins.code) and valid(M.wins.transcript) and valid(M.wins.input) then
+    return
+  end
   if not valid(M.wins.transcript) then
-    M.wins.transcript =
-      api.nvim_open_win(transcript.buf(), false, { split = "right", win = -1, width = claude_width() })
+    local opts = { split = "right", win = -1, width = claude_width() }
+    if valid(M.wins.input) then
+      opts = { split = "above", win = M.wins.input }
+    end
+    M.wins.transcript = api.nvim_open_win(transcript.buf(), false, opts)
     setup_transcript_win(M.wins.transcript)
   end
   if not valid(M.wins.input) then
     M.wins.input = api.nvim_open_win(input.buf(), false, {
       split = "below",
       win = M.wins.transcript,
-      height = opts.input_height.min + 1,
+      height = config.options.layout.input_height.min + 1,
     })
     input.setup_win(M.wins.input)
   end
+  M.code_win()
+  api.nvim_win_set_width(M.wins.transcript, claude_width())
+  input.render()
+end
+
+function M.open()
+  if valid(M.wins.code) then
+    api.nvim_set_current_tabpage(api.nvim_win_get_tabpage(M.wins.code))
+  end
+  M.tab = api.nvim_get_current_tabpage()
+  M.wins.code = M.code_win()
+  drop_when_hidden(api.nvim_win_get_buf(M.wins.code))
+  M.repair()
   api.nvim_set_current_win(M.wins.code)
   open_tree()
   vim.schedule(M.focus_input)
@@ -116,26 +197,6 @@ function M.setup()
     callback = function()
       if valid(M.wins.transcript) then
         api.nvim_win_set_width(M.wins.transcript, claude_width())
-      end
-    end,
-  })
-  -- :q in the last code window quits anvim instead of leaving the side panels.
-  api.nvim_create_autocmd("QuitPre", {
-    group = group,
-    callback = function()
-      local current = api.nvim_get_current_win()
-      if is_special(current) then
-        return
-      end
-      for _, win in ipairs(api.nvim_tabpage_list_wins(0)) do
-        if win ~= current and api.nvim_win_get_config(win).relative == "" and not is_special(win) then
-          return
-        end
-      end
-      for _, win in ipairs(api.nvim_tabpage_list_wins(0)) do
-        if win ~= current then
-          pcall(api.nvim_win_close, win, true)
-        end
       end
     end,
   })

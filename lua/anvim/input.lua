@@ -27,10 +27,15 @@ local mode_labels = {
 }
 
 function M.buf()
-  if bufnr and api.nvim_buf_is_valid(bufnr) then
+  if bufnr and api.nvim_buf_is_loaded(bufnr) and vim.b[bufnr].anvim_input then
     return bufnr
   end
+  -- :bdelete keeps the buffer and its name, but clears its options and maps.
+  if bufnr and api.nvim_buf_is_valid(bufnr) then
+    pcall(api.nvim_buf_delete, bufnr, { force = true })
+  end
   bufnr = api.nvim_create_buf(false, true)
+  vim.b[bufnr].anvim_input = true
   api.nvim_buf_set_name(bufnr, "anvim://input")
   vim.treesitter.language.register("markdown", "anvim_input")
   vim.bo[bufnr].filetype = "anvim_input"
@@ -46,6 +51,19 @@ function M.buf()
   map("n", "<Esc>", M.interrupt, "Interrupt Claude")
   map({ "i", "n" }, "<C-c>", M.interrupt, "Interrupt Claude")
   map({ "i", "n" }, "<S-Tab>", M.cycle_mode, "Cycle permission mode")
+  -- The transcript takes no focus, so the prompt scrolls it.
+  local function scroll(modes, keys)
+    for _, key in ipairs(keys) do
+      map(modes, key, function()
+        require("anvim.windows").scroll(key)
+      end, "Scroll the transcript")
+    end
+  end
+  scroll("n", { "<C-u>", "<C-d>", "<C-b>", "<C-f>" })
+  scroll({ "n", "i" }, { "<PageUp>", "<PageDown>" })
+  vim.keymap.set({ "n", "i" }, "<LeftDrag>", function()
+    return require("anvim.windows").drag_keys()
+  end, { buffer = bufnr, expr = true, desc = "Select in the transcript" })
   local group = api.nvim_create_augroup("anvim.input", {})
   api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, { group = group, buffer = bufnr, callback = M.render })
   api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
@@ -83,6 +101,36 @@ function M.setup_win(win)
   wo.winfixheight = true
   wo.winfixbuf = true
   M.render()
+end
+
+-- Starts insert mode where typing stopped. <Esc> leaves the cursor on the
+-- character before that place, so a plain :startinsert lands one short.
+-- With `at_cursor`, as after a click, insert mode starts at the cursor. While
+-- a request waits for an answer, the prompt stays in normal mode.
+---@param opts? { at_cursor: boolean? }
+function M.resume(opts)
+  local win = prompt_win()
+  if win ~= api.nvim_get_current_win() or state.waiting then
+    return
+  end
+  if opts and opts.at_cursor then
+    vim.cmd.startinsert()
+    return
+  end
+  local row, col = unpack(api.nvim_buf_get_mark(bufnr, "^"))
+  local cursor = api.nvim_win_get_cursor(win)
+  local line = api.nvim_get_current_line()
+  if row == cursor[1] and col <= #line then
+    local before = col > 0 and col - 1 + vim.str_utf_start(line, col) or 0
+    if cursor[2] == col or cursor[2] == before then
+      if col == #line then
+        vim.cmd.startinsert({ bang = true })
+        return
+      end
+      api.nvim_win_set_cursor(win, { row, col })
+    end
+  end
+  vim.cmd.startinsert()
 end
 
 function M.submit()
@@ -272,7 +320,12 @@ function M.render()
     local rows = api.nvim_win_text_height(win, {}).all
     local height = math.max(limits.min, math.min(rows, limits.max)) + (vim.wo[win].winbar ~= "" and 1 or 0)
     if api.nvim_win_get_height(win) ~= height then
+      local cmdheight = vim.o.cmdheight
       api.nvim_win_set_height(win, height)
+      -- With no window above or below, the rows go to the command line.
+      if vim.o.cmdheight ~= cmdheight then
+        vim.o.cmdheight = cmdheight
+      end
     end
     M.show_footer()
   end

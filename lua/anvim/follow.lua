@@ -133,10 +133,13 @@ function M.attach(sidecar)
       if M.enabled() and M.behind > 0 then
         M.jump()
       end
-      input.redraw()
+      -- :redrawstatus redraws the whole screen. Inside a window command, such
+      -- as a split that anvim is about to fold back, that shows a frame too early.
+      vim.schedule(input.redraw)
     end,
   })
   vim.keymap.set("n", "<leader>j", M.jump, { desc = "Jump to where Claude is" })
+  vim.keymap.set("n", "<leader>kj", M.jump, { desc = "Jump to where Claude is" })
 end
 
 return M

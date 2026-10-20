@@ -8,8 +8,10 @@
 //   keys:<keys>        nvim_input, e.g. keys:hello<CR>
 //   lua:<code>         nvim_exec_lua
 //   resize:<WxH>       resize the UI, e.g. resize:160x40
+//   mouse:<b>,<a>,<r>,<c>  nvim_input_mouse at 0-based row and col, e.g. mouse:left,press,5,100
 //   snap:<name>        write <name>.txt, <name>.hl.txt, <name>.svg and <name>.png (via headless Chrome)
-//   record:<ms>        log every flush for ms to frames.log, with a timing summary
+//   record:<ms>        log every flush that changes cells or moves the cursor for ms to frames.log,
+//                      with a timing summary. Use lua:vim.defer_fn(...) to act while it records.
 import { decodeMultiStream, encode } from "@msgpack/msgpack";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -222,6 +224,7 @@ async function record(ms: number) {
   const log: string[] = [];
   const start = performance.now();
   let prev = grid.map((r) => r.map((c) => c.text + c.hl));
+  let prevCursor = `${cursor.row},${cursor.col}`;
   let last = start;
   const gaps: number[] = [];
   onFlush = () => {
@@ -239,10 +242,12 @@ async function record(ms: number) {
       if (rowChanged) changed.push(r);
     });
     prev = grid.map((r) => r.map((c) => c.text + c.hl));
-    if (!cells) return;
+    const at = `${cursor.row},${cursor.col}`;
+    if (!cells && at === prevCursor) return;
+    prevCursor = at;
     gaps.push(now - last);
     last = now;
-    log.push(`+${Math.round(now - start)}ms cells=${cells} rows=${changed.join(",")}`);
+    log.push(`+${Math.round(now - start)}ms cells=${cells} rows=${changed.join(",")} cursor=${at}`);
     for (const r of changed.slice(0, 4)) log.push(`    ${r}: ${rowText(grid[r]!).trimEnd().slice(0, 160)}`);
   };
   await Bun.sleep(ms);
@@ -264,6 +269,10 @@ async function main() {
     else if (kind === "keys") await request("nvim_input", [arg]);
     else if (kind === "lua") await request("nvim_exec_lua", [arg, []]);
     else if (kind === "resize") await request("nvim_ui_try_resize", arg.split("x").map(Number));
+    else if (kind === "mouse") {
+      const [button, action, row, col] = arg.split(",");
+      await request("nvim_input_mouse", [button, action, "", 0, Number(row), Number(col)]);
+    }
     else if (kind === "snap") snap(arg);
     else if (kind === "record") await record(Number(arg));
     else if (kind === "waitfor") {

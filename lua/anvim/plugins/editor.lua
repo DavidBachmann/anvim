@@ -1,9 +1,31 @@
+local to_code = {
+  function()
+    vim.api.nvim_set_current_win(require("anvim.layout").code_win())
+  end,
+  desc = "Go to the code window",
+}
+
 return {
   {
     "saghen/blink.cmp",
     optional = true,
     opts = {
       sources = { per_filetype = { anvim_input = { "path", "buffer" } } },
+    },
+  },
+
+  -- The explorer's list is a float, and from a float <C-w>l goes to the
+  -- previous window, which can be the prompt. To its right is the code window.
+  -- LazyVim's <C-l> remaps to <C-w>l but does not reach this key, so map it too.
+  {
+    "folke/snacks.nvim",
+    optional = true,
+    opts = {
+      picker = {
+        sources = {
+          explorer = { win = { list = { keys = { ["<c-w>l"] = to_code, ["<c-l>"] = to_code } } } },
+        },
+      },
     },
   },
 

@@ -31,6 +31,10 @@ The screen has three columns: your explorer, code, and Claude. Type in the promp
 
 File buffers are read-only. `:w` does nothing but say so, and format on save never runs. Claude makes every change, and buffers reload when files change on disk.
 
+The cursor moves between the code window and the prompt in one step: `Ctrl-W l` or `Ctrl-L` from any row of the code window, and `Ctrl-W h` or `Ctrl-H` back. Entering the prompt starts insert mode where you stopped typing. The transcript takes no focus. A window key that would land on it skips it, a click on it goes to the prompt, and the mouse wheel scrolls it from anywhere. New output keeps the transcript at its end, unless you scrolled up. Then it stays put until you scroll back down or send a prompt. To yank or search the transcript, enter read mode with `<leader>kr`, or drag across it with the mouse.
+
+Only one window shows files, so anvim always knows which file you are looking at. A split, a picker's split action or `:diffsplit` opens the file in the code window instead. Help, quickfix, terminal and plugin windows open as usual. If you close the code window, the transcript or the prompt, anvim opens it again. `:q` in any of them quits anvim, also when other tabs are open.
+
 Claude can also use your editor. It points at code with `show_user`, which marks a range and puts a short note above it until your next prompt. It asks the language servers that run in anvim for diagnostics, definitions, references, hover text and symbols, so it greps less. These tools work in every permission mode, so they read only files inside the directory that anvim opened. `show_user` can point at any file, because its answer holds no file text.
 
 All of LazyVim's keys and your own work as usual. anvim adds these. `<leader>` is Space.
@@ -41,8 +45,13 @@ All of LazyVim's keys and your own work as usual. anvim adds these. `<leader>` i
 | `Shift-Enter`, `Alt-Enter` | prompt, insert mode | New line |
 | `Esc` (normal mode), `Ctrl-C` | prompt | Interrupt Claude |
 | `Shift-Tab` | prompt | Cycle the permission mode |
+| `PageUp`, `PageDown` | prompt | Scroll the transcript |
+| `Ctrl-U`, `Ctrl-D`, `Ctrl-B`, `Ctrl-F` | prompt, normal mode | Scroll the transcript |
 | `i`, `a` | file buffer | Go to the prompt |
-| `<leader>j` | anywhere | Jump to where Claude is |
+| `Ctrl-W l`, `Ctrl-L` | explorer | Go to the code window |
+| `<leader>j`, `<leader>kj` | anywhere | Jump to where Claude is |
+| `<leader>kr`, `:AnvimTranscript` | anywhere | Read the transcript: put the cursor in it to yank and search |
+| `q`, `Esc`, `i` | transcript in read mode | Go back to the prompt |
 
 anvim starts in bypass permissions mode. Permission prompts are not built yet, so in the other modes Claude cannot run tools that need approval.
 

@@ -15,6 +15,10 @@ M.defaults = {
     -- Rows for the prompt and its footer. The window grows with the prompt.
     input_height = { min = 2, max = 12 },
   },
+  input = {
+    -- Start insert mode whenever the cursor enters the prompt.
+    auto_insert = true,
+  },
   append_system_prompt = table.concat({
     "The user reads code in anvim, a read-only Neovim viewer, while you work.",
     "They cannot edit files themselves; you make every change.",

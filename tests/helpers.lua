@@ -29,6 +29,8 @@ function M.start()
     return start_win
   end
   vim.cmd.cd(M.tmp)
+  -- As in LazyVim. Without a UI, the mode message would go to the test output.
+  vim.o.showmode = false
   local anvim = require("anvim")
   anvim.setup({
     permission_mode = "bypassPermissions",

@@ -7,6 +7,7 @@ local sidecar = require("anvim.sidecar")
 local state = require("anvim.state")
 local stream = require("anvim.stream")
 local transcript = require("anvim.transcript")
+local windows = require("anvim.windows")
 
 local M = {}
 
@@ -84,8 +85,10 @@ function M.setup(opts)
   api.nvim_create_autocmd("ColorScheme", { callback = set_highlights })
   readonly.setup()
   layout.setup()
+  windows.setup()
   api.nvim_create_user_command("Anvim", M.start, { desc = "Open the anvim layout and start Claude" })
   api.nvim_create_user_command("AnvimInterrupt", input.interrupt, { desc = "Interrupt Claude" })
+  api.nvim_create_user_command("AnvimTranscript", windows.read, { desc = "Focus the transcript to yank and search" })
 end
 
 local started = false

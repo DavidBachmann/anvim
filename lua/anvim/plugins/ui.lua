@@ -85,6 +85,7 @@ return {
     opts = {
       spec = {
         { "<leader>j", icon = { icon = "⏺", color = "orange" } },
+        { "<leader>k", group = "claude", icon = { icon = "⏺", color = "orange" } },
       },
     },
   },

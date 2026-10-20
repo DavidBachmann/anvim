@@ -29,10 +29,15 @@ local primary_arg = {
 }
 
 function M.buf()
-  if bufnr and api.nvim_buf_is_valid(bufnr) then
+  if bufnr and api.nvim_buf_is_loaded(bufnr) and vim.b[bufnr].anvim_transcript then
     return bufnr
   end
+  -- :bdelete keeps the buffer and its name, but clears its options and maps.
+  if bufnr and api.nvim_buf_is_valid(bufnr) then
+    pcall(api.nvim_buf_delete, bufnr, { force = true })
+  end
   bufnr = api.nvim_create_buf(false, true)
+  vim.b[bufnr].anvim_transcript = true
   api.nvim_buf_set_name(bufnr, "anvim://transcript")
   vim.treesitter.language.register("markdown", "anvim_transcript")
   vim.bo[bufnr].filetype = "anvim_transcript"
@@ -40,14 +45,49 @@ function M.buf()
   vim.bo[bufnr].modifiable = false
   -- With breakindentopt=list:-1, wrapped lines align after the bullet.
   vim.bo[bufnr].formatlistpat = [[^\s*\%(⏺\|❯\|⎿\|⚠\)\?\s*]]
+  -- The cursor is here only in read mode.
+  for _, key in ipairs({ "q", "<Esc>", "i" }) do
+    vim.keymap.set("n", key, function()
+      require("anvim.layout").focus_input()
+    end, { buffer = bufnr, desc = "Back to the prompt" })
+  end
   return bufnr
+end
+
+-- Windows that show the transcript, except the one the user is in. With
+-- `tail`, only those whose view reaches the end: new output keeps them there,
+-- and leaves a window that the user scrolled up alone.
+local function follow_wins(tail)
+  local buf = M.buf()
+  local last = api.nvim_buf_line_count(buf)
+  local wins = {}
+  for _, win in ipairs(vim.fn.win_findbuf(buf)) do
+    if
+      win ~= api.nvim_get_current_win()
+      and (not tail or api.nvim_win_get_cursor(win)[1] == last or vim.fn.line("w$", win) >= last)
+    then
+      wins[#wins + 1] = win
+    end
+  end
+  return wins
+end
+
+local function scroll(wins)
+  local last = api.nvim_buf_line_count(M.buf())
+  for _, win in ipairs(wins) do
+    if api.nvim_win_is_valid(win) then
+      api.nvim_win_set_cursor(win, { last, 0 })
+    end
+  end
 end
 
 local function with_modifiable(fn)
   local buf = M.buf()
+  local tail = follow_wins(true)
   vim.bo[buf].modifiable = true
   local ok, err = pcall(fn, buf)
   vim.bo[buf].modifiable = false
+  scroll(tail)
   if not ok then
     error(err)
   end
@@ -55,18 +95,6 @@ end
 
 local function is_empty(buf)
   return api.nvim_buf_line_count(buf) == 1 and api.nvim_buf_get_lines(buf, 0, 1, false)[1] == ""
-end
-
--- Follows new output in every window that shows the transcript, except the
--- one the user is in.
-local function scroll()
-  local buf = M.buf()
-  local last = api.nvim_buf_line_count(buf)
-  for _, win in ipairs(vim.fn.win_findbuf(buf)) do
-    if win ~= api.nvim_get_current_win() then
-      api.nvim_win_set_cursor(win, { last, 0 })
-    end
-  end
 end
 
 -- Appends lines as a new item, one blank line after the previous item.
@@ -82,7 +110,6 @@ local function append_item(lines)
       api.nvim_buf_set_lines(buf, -1, -1, false, { "", unpack(lines) })
     end
   end)
-  scroll()
   return row
 end
 
@@ -221,6 +248,8 @@ function M.user(text)
     api.nvim_buf_set_extmark(M.buf(), ns, row + i, 0, { line_hl_group = "AnvimUser" })
   end
   hl(row, 0, #"❯", "AnvimPrompt")
+  -- A new prompt brings every view back to the end.
+  scroll(follow_wins(false))
 end
 
 function M.text_start()
@@ -242,7 +271,6 @@ function M.text_delta(text)
     local col = #api.nvim_buf_get_lines(buf, last, last + 1, false)[1]
     api.nvim_buf_set_text(buf, last, col, last, col, parts)
   end)
-  scroll()
 end
 
 function M.text_stop()
@@ -289,7 +317,6 @@ local function finish_tool(tool, is_error, summary, group)
     api.nvim_buf_set_lines(buf, row + 1, row + 1, false, { line })
   end)
   hl(row + 1, 0, #line, group or "AnvimResult")
-  scroll()
 end
 
 function M.tool_result(ev)
