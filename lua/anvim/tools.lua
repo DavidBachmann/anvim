@@ -22,17 +22,6 @@ local MAX_ITEMS = 50
 local MAX_HOVER_LINES = 40
 local MAX_TEXT = 120
 
-local highlights = {
-  AnvimShow = { link = "Visual" },
-  AnvimNote = { link = "DiagnosticInfo" },
-}
-
-local function set_highlights()
-  for name, spec in pairs(highlights) do
-    api.nvim_set_hl(0, name, vim.tbl_extend("force", spec, { default = true }))
-  end
-end
-
 local function relpath(path)
   return require("anvim.transcript").relpath(path)
 end
@@ -675,9 +664,7 @@ function M.summary(name, input, text)
 end
 
 function M.attach()
-  set_highlights()
   local group = api.nvim_create_augroup("anvim.tools", { clear = true })
-  api.nvim_create_autocmd("ColorScheme", { group = group, callback = set_highlights })
   api.nvim_create_autocmd("DiagnosticChanged", {
     group = group,
     callback = function(ev)

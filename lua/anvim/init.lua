@@ -29,6 +29,13 @@ local highlights = {
   AnvimInsert = { link = "DiffAdd" },
   AnvimRead = { link = "Visual" },
   AnvimTodoActive = { bold = true },
+  AnvimAsk = { link = "Title" },
+  AnvimChoice = { link = "Special" },
+  AnvimShow = { link = "Visual" },
+  AnvimNote = { link = "DiagnosticInfo" },
+  AnvimSelection = { link = "Visual" },
+  AnvimChip = { link = "Comment" },
+  AnvimChipSelection = { link = "AnvimClaude" },
 }
 
 local function set_highlights()
@@ -93,7 +100,10 @@ function M.setup(opts)
   -- Wrap transcript lines at spaces and punctuation, not inside paths.
   vim.o.breakat = " \t;:,!?"
   set_highlights()
-  api.nvim_create_autocmd("ColorScheme", { callback = set_highlights })
+  api.nvim_create_autocmd("ColorScheme", {
+    group = api.nvim_create_augroup("anvim.highlights", {}),
+    callback = set_highlights,
+  })
   readonly.setup()
   layout.setup()
   windows.setup()
@@ -107,9 +117,7 @@ function M.setup(opts)
   api.nvim_create_user_command("AnvimModel", sessions.pick_model, { desc = "Choose Claude's model" })
   vim.keymap.set("n", "<leader>ks", sessions.pick, { desc = "Resume a session" })
   vim.keymap.set("n", "<leader>km", sessions.pick_model, { desc = "Choose the model" })
-  vim.keymap.set("n", "<leader>ky", function()
-    sessions.yank()
-  end, { desc = "Yank Claude's last reply" })
+  vim.keymap.set("n", "<leader>ky", sessions.yank, { desc = "Yank Claude's last reply" })
 end
 
 local started = false

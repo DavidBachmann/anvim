@@ -67,16 +67,15 @@ local function on_close(self)
   -- explorer can change that window, so make it the prompt.
   self.win = nil
   local prompt, current = layout.wins.input, api.nvim_get_current_win()
-  local function hop(a, b)
-    vim.cmd(("noautocmd call nvim_set_current_win(%d)"):format(a))
-    vim.cmd(("noautocmd call nvim_set_current_win(%d)"):format(b))
-  end
+  local hop = require("anvim.windows").hop
   if current == w and prompt and api.nvim_win_is_valid(prompt) then
-    hop(prompt, w)
+    hop(prompt)
+    hop(w)
   elseif current == prompt and previous ~= w and previous and api.nvim_win_is_valid(previous) then
     -- A window key or a click went to the prompt, which made this window the
     -- previous one. Neovim forgets it once it closes.
-    hop(previous, prompt)
+    hop(previous)
+    hop(prompt)
   end
   if not (buf and api.nvim_buf_is_valid(buf) and w and api.nvim_win_is_valid(w)) or vim.bo[buf].modified then
     return

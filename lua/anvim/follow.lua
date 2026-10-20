@@ -10,7 +10,7 @@ local M = {}
 local api = vim.api
 local ns = api.nvim_create_namespace("anvim.follow")
 
----@type { path: string, line: integer }?
+---@type { path: string, line: integer, buf: integer? }?
 M.agent = nil
 M.behind = 0
 

@@ -50,9 +50,10 @@ local function reading(win)
 end
 
 -- Moves the cursor without autocmds.
-local function hop(win)
+function M.hop(win)
   vim.cmd(("noautocmd call nvim_set_current_win(%d)"):format(win))
 end
+local hop = M.hop
 
 -- Read mode lets the cursor into the transcript, to yank and search. Leaving
 -- the window ends it.

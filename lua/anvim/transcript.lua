@@ -172,7 +172,7 @@ local function with_modifiable(fn)
     vim.schedule(set_regions)
   end
   if not ok then
-    error(err)
+    error(err, 0)
   end
 end
 
@@ -237,9 +237,15 @@ function M.relpath(path)
   return vim.fs.relpath(state.cwd, path) or vim.fn.fnamemodify(path, ":~")
 end
 
+---@type { cwd: string, forms: string[] }?
+local forms_of
+
 -- The cwd as Claude may write it, the longer form first: on macOS, /tmp and
 -- /var are links into /private.
 local function cwd_forms()
+  if forms_of and forms_of.cwd == state.cwd then
+    return forms_of.forms
+  end
   local real = vim.uv.fs_realpath(state.cwd) or state.cwd
   local forms = { real }
   for _, form in ipairs({ state.cwd, real:match("^/private(/.+)") }) do
@@ -250,6 +256,7 @@ local function cwd_forms()
   table.sort(forms, function(a, b)
     return #a > #b
   end)
+  forms_of = { cwd = state.cwd, forms = forms }
   return forms
 end
 

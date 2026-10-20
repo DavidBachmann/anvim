@@ -46,12 +46,6 @@ local sel
 ---@type string? The last key that the user typed.
 local last_typed
 
-local function set_highlights()
-  api.nvim_set_hl(0, "AnvimSelection", { link = "Visual", default = true })
-  api.nvim_set_hl(0, "AnvimChip", { link = "Comment", default = true })
-  api.nvim_set_hl(0, "AnvimChipSelection", { link = "AnvimClaude", default = true })
-end
-
 -- Relative to the cwd, or absolute outside it.
 function M.relpath(path)
   return vim.fs.relpath(state.cwd, path) or path
@@ -243,9 +237,7 @@ function M.chip(room)
 end
 
 function M.attach()
-  set_highlights()
   local group = api.nvim_create_augroup("anvim.context", { clear = true })
-  api.nvim_create_autocmd("ColorScheme", { group = group, callback = set_highlights })
   api.nvim_create_autocmd("ModeChanged", { group = group, callback = on_mode_changed })
   -- Follow mode moves the code window's cursor while the user is in the
   -- prompt. Coming back is not a move of the user's, so it sets a new place.

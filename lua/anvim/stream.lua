@@ -99,7 +99,7 @@ local function with_modifiable(buf, fn)
   vim.bo[buf].modifiable = was
   vim.bo[buf].modified = false
   if not ok then
-    error(err)
+    error(err, 0)
   end
 end
 

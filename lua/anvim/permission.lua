@@ -19,17 +19,6 @@ local api = vim.api
 -- answer a request.
 M.guard_ms = 400
 
-local highlights = {
-  AnvimAsk = { link = "Title" },
-  AnvimChoice = { link = "Special" },
-}
-
-local function set_highlights()
-  for name, spec in pairs(highlights) do
-    api.nvim_set_hl(0, name, vim.tbl_extend("force", spec, { default = true }))
-  end
-end
-
 ---@class anvim.Choice
 ---@field label string
 ---@field desc string?
@@ -643,9 +632,7 @@ function M.cancel_all()
 end
 
 function M.attach()
-  set_highlights()
   local group = api.nvim_create_augroup("anvim.permission", {})
-  api.nvim_create_autocmd("ColorScheme", { group = group, callback = set_highlights })
   api.nvim_create_autocmd("InsertCharPre", {
     group = group,
     callback = function(ev)
