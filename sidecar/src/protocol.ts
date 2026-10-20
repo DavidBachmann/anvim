@@ -81,7 +81,16 @@ export type Event =
   | { type: "tool_input_end"; id: string }
   // Sent before an edit tool runs. The plugin answers preview_done once its
   // streamed preview has caught up, so the file never changes ahead of the view.
-  | { type: "await_preview"; req: number; tool_use_id: string }
+  // A subagent's input never streams, so its event carries the agent, the
+  // tool's name and its whole input (preview.ts).
+  | {
+      type: "await_preview";
+      req: number;
+      tool_use_id: string;
+      agent_id?: string;
+      name?: string;
+      input?: Record<string, unknown>;
+    }
   // An editor tool call (tools.ts). The plugin answers with editor_response.
   | { type: "editor_request"; req: number; method: string; params: Record<string, unknown> }
   // Claude Code asks before a tool runs. The plugin answers with permission_response.

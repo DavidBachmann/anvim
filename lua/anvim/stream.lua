@@ -2,6 +2,9 @@
 -- Edit: the old text is struck through and the new text grows after it, in
 -- the real buffer. Write: the content grows in a preview buffer. When the tool
 -- result arrives, the buffer reloads from disk and the change flashes.
+-- A subagent's edits arrive whole. While the user follows that agent, its
+-- preview types the new text in the same way.
+local agents = require("anvim.agents")
 local follow = require("anvim.follow")
 local sidecar = require("anvim.sidecar")
 
@@ -14,6 +17,11 @@ local TICK_MS = 16
 local MIN_CHARS = 2
 -- A delta that arrives this long after the previous one starts a new burst.
 local BURST_MS = 25
+-- A typed preview goes at about the speed of the main agent's streamed
+-- input, and takes at most TYPE_MAX_MS, so that it holds its agent briefly.
+local TYPE_BYTES_PER_S = 500
+local TYPE_MAX_MS = 2000
+local FLASH_MAX = 500
 
 ---@class anvim.Preview
 ---@field id string
@@ -32,6 +40,10 @@ local BURST_MS = 25
 ---@field cursor integer?
 ---@field held boolean
 ---@field dead boolean
+---@field agent string? The subagent whose whole edit this preview types.
+---@field deadline number? hrtime in ms when a typed preview must have caught up, from its first tick
+---@field group string? The cursor's color
+---@field before string[]? The text before the preview, for the flash when a result has no patch
 
 ---@type table<string, anvim.Preview>
 local previews = {}
@@ -150,6 +162,7 @@ end
 -- Strikes through old_string and puts the insert head right after it.
 local function place_edit(p, old)
   local lines = api.nvim_buf_get_lines(p.buf, 0, -1, false)
+  p.before = lines
   local s, e = (table.concat(lines, "\n") .. "\n"):find(old, 1, true)
   if not s then
     kill(p)
@@ -177,7 +190,7 @@ local function place_edit(p, old)
     priority = 200,
   })
   p.head = { erow, ecol }
-  follow.track(p.path, srow + 1)
+  follow.track(p.path, srow + 1, nil, p.agent)
 end
 
 local function begin_insert(p)
@@ -199,12 +212,12 @@ local function draw_cursor(p)
   local row, col = p.head[1], p.head[2]
   p.cursor = api.nvim_buf_set_extmark(p.buf, ns, row, col, {
     id = p.cursor,
-    virt_text = { { "▍", "AnvimClaude" } },
+    virt_text = { { "▍", p.group or "AnvimClaude" } },
     virt_text_pos = "inline",
     right_gravity = true,
   })
   local win = require("anvim.layout").wins.code
-  if follow.shows() and win and api.nvim_win_is_valid(win) and api.nvim_win_get_buf(win) == p.buf then
+  if follow.shows(p.agent) and win and api.nvim_win_is_valid(win) and api.nvim_win_get_buf(win) == p.buf then
     api.nvim_win_set_cursor(win, { row + 1, col })
   end
 end
@@ -241,8 +254,16 @@ end
 
 local function step()
   local active = false
+  local now = vim.uv.hrtime() / 1e6
   for _, p in pairs(previews) do
     if not p.dead and p.head and p.queue ~= "" then
+      if p.agent then
+        -- The rest spreads over the time left. Once the user stops following
+        -- the agent, it goes in at once. The time starts after the file has
+        -- loaded, so the pace stays steady.
+        p.deadline = p.deadline or now + math.min(#p.queue * 1000 / TYPE_BYTES_PER_S, TYPE_MAX_MS)
+        p.ticks = follow.shows(p.agent) and math.floor((p.deadline - now) / TICK_MS) or 0
+      end
       local n = math.max(MIN_CHARS, math.ceil(#p.queue / math.max(p.ticks, 1)))
       local chunk
       chunk, p.queue = take(p.queue, n)
@@ -285,7 +306,18 @@ local function finish_input(p)
   run()
 end
 
+local function file_lines(path)
+  -- bufnr() also matches part of a name, such as a.lua in a.lua.orig.
+  local buf = vim.fn.bufnr(path)
+  if buf > 0 and api.nvim_buf_is_loaded(buf) and api.nvim_buf_get_name(buf) == path then
+    return api.nvim_buf_get_lines(buf, 0, -1, false)
+  end
+  local ok, lines = pcall(vim.fn.readfile, path)
+  return ok and lines or {}
+end
+
 local function open_write_preview(p)
+  p.before = file_lines(p.path)
   local buf = api.nvim_create_buf(false, true)
   api.nvim_buf_set_name(buf, "anvim://write/" .. p.path)
   vim.b[buf].anvim_preview = p.path
@@ -298,7 +330,7 @@ local function open_write_preview(p)
   hold(p)
   p.head = { 0, 0 }
   begin_insert(p)
-  follow.track(p.path, 1, buf)
+  follow.track(p.path, 1, buf, p.agent)
 end
 
 local stream_keys = { Edit = "new_string", Write = "content" }
@@ -334,31 +366,84 @@ function M.on_field(ev)
   end
 end
 
+---@return anvim.Preview
+local function new(id, name)
+  return {
+    id = id,
+    name = name,
+    queue = "",
+    ticks = 4,
+    gap = 250,
+    input_done = false,
+    waiting = {},
+    marks = {},
+    held = false,
+    dead = false,
+  }
+end
+
 function M.on_start(ev)
   if stream_keys[ev.name] then
-    previews[ev.id] = {
-      id = ev.id,
-      name = ev.name,
-      queue = "",
-      ticks = 4,
-      gap = 250,
-      input_done = false,
-      waiting = {},
-      marks = {},
-      held = false,
-      dead = false,
-    }
+    previews[ev.id] = new(ev.id, ev.name)
   end
+end
+
+-- A subagent's edit comes whole, in the hook's input, which can come before
+-- or after its tool_use. Only the edits of the agent that the user follows
+-- get a preview and wait for it.
+---@return anvim.Preview?
+local function type_edit(ev)
+  local input = type(ev.input) == "table" and ev.input or {}
+  local path, text = input.file_path, stream_keys[ev.name] and input[stream_keys[ev.name]]
+  if not (follow.shows(ev.agent_id) and type(path) == "string" and type(text) == "string") then
+    return
+  elseif ev.name == "Edit" and not (type(input.old_string) == "string" and vim.uv.fs_stat(path)) then
+    return
+  end
+  local p = new(ev.tool_use_id, ev.name)
+  local agent = agents.get(ev.agent_id)
+  p.agent, p.path, p.group = ev.agent_id, path, agents.group(agent and agent.slot)
+  p.queue, p.input_done = text, true
+  previews[p.id] = p
+  if p.name == "Write" then
+    open_write_preview(p)
+  else
+    p.buf = follow.load(path)
+    hold(p)
+    place_edit(p, input.old_string)
+    if p.head then
+      begin_insert(p)
+    end
+  end
+  return p
 end
 
 function M.on_await(ev)
   local p = previews[ev.tool_use_id]
+  if not p and ev.agent_id then
+    local ok, res = pcall(type_edit, ev)
+    if ok then
+      p = res
+    else
+      -- The agent must not wait for a preview that broke.
+      sidecar.log(("typed preview failed: %s"):format(res))
+      if previews[ev.tool_use_id] then
+        M.on_result({ id = ev.tool_use_id, is_error = true })
+      end
+    end
+  end
   if p and not caught_up(p) then
     table.insert(p.waiting, ev.req)
     finish_input(p)
   else
     sidecar.send({ type = "preview_done", req = ev.req })
   end
+end
+
+-- Whether the tool call has a typed preview, which keeps its agent's place.
+function M.typed(id)
+  local p = previews[id]
+  return p ~= nil and p.agent ~= nil and not p.dead
 end
 
 ---@return integer[] 0-based rows that a structuredPatch added
@@ -375,6 +460,34 @@ function M.added_rows(patch)
         row = row + 1
       end
     end
+  end
+  return rows
+end
+
+-- 0-based rows of after that a diff from before adds, the first FLASH_MAX of them.
+local function diff_rows(before, after)
+  local function text(lines)
+    return #lines > 0 and table.concat(lines, "\n") .. "\n" or ""
+  end
+  local rows = {}
+  for _, h in ipairs(vim.text.diff(text(before), text(after), { result_type = "indices" })) do
+    for row = h[3] - 1, h[3] + h[4] - 2 do
+      if #rows == FLASH_MAX then
+        return rows
+      end
+      rows[#rows + 1] = row
+    end
+  end
+  return rows
+end
+
+-- The rows that an edit added, from its patch. A subagent's result has no
+-- patch, so a diff of the text before the preview and after the reload
+-- finds them.
+local function added(p, buf, ev)
+  local rows = M.added_rows(type(ev.result) == "table" and ev.result.structuredPatch or nil)
+  if #rows == 0 and p.before and not ev.is_error then
+    rows = diff_rows(p.before, api.nvim_buf_get_lines(buf, 0, -1, false))
   end
   return rows
 end
@@ -396,15 +509,10 @@ local function finish_write(p, ev)
     if showing then
       api.nvim_win_set_buf(showing, buf)
     end
-    local rows = M.added_rows(type(ev.result) == "table" and ev.result.structuredPatch or nil)
-    if #rows == 0 then
-      for row = 0, math.min(api.nvim_buf_line_count(buf), 500) - 1 do
-        rows[#rows + 1] = row
-      end
-    end
+    local rows = added(p, buf, ev)
     follow.flash(buf, rows, "AnvimInsert")
     -- The preview goes, so a catch-up lands on the file.
-    follow.track(p.path, (rows[1] or 0) + 1)
+    follow.track(p.path, (rows[1] or 0) + 1, nil, p.agent)
   end
   release(p)
   if preview and api.nvim_buf_is_valid(preview) then
@@ -424,18 +532,29 @@ function M.on_result(ev)
   elseif p.buf then
     reload(p.buf)
     release(p)
-    local rows = M.added_rows(type(ev.result) == "table" and ev.result.structuredPatch or nil)
+    local rows = added(p, p.buf, ev)
     follow.flash(p.buf, rows, "AnvimInsert")
     if rows[1] and p.path then
-      follow.track(p.path, rows[1] + 1)
+      follow.track(p.path, rows[1] + 1, nil, p.agent)
     end
   end
 end
 
--- Ends every open preview as failed, when the turn ends or the sidecar exits.
+-- Ends every open preview as failed, when the sidecar exits.
 function M.cancel_all()
   for id in pairs(previews) do
     M.on_result({ id = id, is_error = true })
+  end
+end
+
+-- A background agent's preview outlives the main turn. agents.lua handles
+-- turn_end first, so a foreground agent has ended by now.
+local function turn_end()
+  for id, p in pairs(previews) do
+    local agent = p.agent and agents.get(p.agent)
+    if not (agent and agent.status == "running") then
+      M.on_result({ id = id, is_error = true })
+    end
   end
 end
 
@@ -456,7 +575,7 @@ function M.attach()
   end)
   sidecar.on("await_preview", M.on_await)
   sidecar.on("tool_result", M.on_result)
-  sidecar.on("turn_end", M.cancel_all)
+  sidecar.on("turn_end", turn_end)
   sidecar.on("exit", M.cancel_all)
 end
 

@@ -201,9 +201,10 @@ end
 
 -- The line of an edit, from the file as it is before the edit or after it.
 function M.edit_line(path, input)
+  -- bufnr() also matches part of a name, such as a.lua in a.lua.orig.
   local buf = vim.fn.bufnr(path)
   local ok, lines
-  if buf > 0 and api.nvim_buf_is_loaded(buf) then
+  if buf > 0 and api.nvim_buf_is_loaded(buf) and api.nvim_buf_get_name(buf) == path then
     ok, lines = true, api.nvim_buf_get_lines(buf, 0, -1, false)
   else
     ok, lines = pcall(vim.fn.readfile, path)

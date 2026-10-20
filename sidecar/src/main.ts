@@ -1,6 +1,5 @@
 import {
   query,
-  type HookCallback,
   type Options,
   type PermissionMode,
   type Query,
@@ -11,6 +10,7 @@ import { appendFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { contextHook, PendingContexts } from "./context";
 import { PermissionBridge } from "./permissions";
+import { PreviewBridge } from "./preview";
 import type { Command, Event } from "./protocol";
 import * as sessions from "./sessions";
 import { EditorBridge, editorServer, SERVER } from "./tools";
@@ -59,27 +59,7 @@ let session: Query | null = null;
 const editor = new EditorBridge(emit);
 const permissions = new PermissionBridge(emit);
 const contexts = new PendingContexts();
-
-const PREVIEW_TIMEOUT_MS = 3000;
-const previews = new Map<number, () => void>();
-let nextReq = 1;
-
-const awaitPreview: HookCallback = async (_input, toolUseID, { signal }) => {
-  if (!toolUseID) return {};
-  const req = nextReq++;
-  await new Promise<void>((resolve) => {
-    const done = () => {
-      clearTimeout(timer);
-      previews.delete(req);
-      resolve();
-    };
-    const timer = setTimeout(done, PREVIEW_TIMEOUT_MS);
-    signal.addEventListener("abort", done, { once: true });
-    previews.set(req, done);
-    emit({ type: "await_preview", req, tool_use_id: toolUseID });
-  });
-  return {};
-};
+const previews = new PreviewBridge(emit);
 
 // The session to resume, after its history went out. Claude Code fails to
 // start on an id it cannot find, so a missing one starts a new session.
@@ -131,7 +111,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     allowDangerouslySkipPermissions: mode === "bypassPermissions",
     includePartialMessages: true,
     hooks: {
-      PreToolUse: [{ matcher: "Edit|Write|NotebookEdit", hooks: [awaitPreview] }],
+      PreToolUse: [{ matcher: "Edit|Write|NotebookEdit", hooks: [previews.hook] }],
       UserPromptSubmit: [{ hooks: [contextHook(contexts)] }],
     },
     systemPrompt: { type: "preset", preset: "claude_code", append: cmd.append_system_prompt },
@@ -199,7 +179,7 @@ async function handle(cmd: Command): Promise<void> {
       return;
     }
     case "preview_done":
-      previews.get(cmd.req)?.();
+      previews.done(cmd.req);
       return;
     case "editor_response":
       editor.respond(cmd);

@@ -255,10 +255,11 @@ local function on_read(ev, id)
 end
 
 -- A subagent's edits arrive whole, so its place is the edit's line. A Write of
--- a new file shows once the file exists.
+-- a new file shows once the file exists. A typed preview of the edit keeps
+-- the place itself, whichever of the hook and the tool_use comes first.
 local function on_agent_edit(agent, ev)
   local path = ev.input.file_path or ev.input.notebook_path
-  if type(path) ~= "string" then
+  if type(path) ~= "string" or require("anvim.stream").typed(ev.id) then
     return
   elseif not vim.uv.fs_stat(path) then
     writes[ev.id] = { agent = agent.id, path = path }
