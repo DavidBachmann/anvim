@@ -80,11 +80,15 @@ function M.buf()
   vim.bo[bufnr].modifiable = false
   -- With breakindentopt=list:-1, wrapped lines align after the bullet.
   vim.bo[bufnr].formatlistpat = [[^\s*\%(⏺\|❯\|⎿\|⚠\)\?\s*]]
-  -- The cursor is here only in read mode. Only i goes back to typing.
-  for _, key in ipairs({ "q", "<Esc>", "i" }) do
+  -- The cursor is here only in read mode. Insert commands go back to typing.
+  local layout = require("anvim.layout")
+  for _, key in ipairs({ "q", "<Esc>" }) do
     vim.keymap.set("n", key, function()
-      require("anvim.layout").focus_input({ insert = key == "i" })
+      layout.focus_input({ insert = false })
     end, { buffer = bufnr, desc = "Back to the prompt" })
+  end
+  for _, key in ipairs(layout.insert_keys) do
+    vim.keymap.set("n", key, layout.focus_input, { buffer = bufnr, desc = "Back to typing" })
   end
   return bufnr
 end

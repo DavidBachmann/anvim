@@ -133,6 +133,10 @@ local function open_tree()
   end
 end
 
+-- Insert commands. Where nothing can change, in a file buffer or in read
+-- mode, they go to the prompt and type there.
+M.insert_keys = { "i", "a", "I", "A", "o", "O" }
+
 ---@param opts? { insert: boolean? } With insert false, the prompt stays in normal mode.
 function M.focus_input(opts)
   if valid(M.wins.input) then

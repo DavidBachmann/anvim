@@ -25,8 +25,8 @@ M.defaults = {
   },
   input = {
     -- Start insert mode whenever the cursor enters the prompt, except at
-    -- start. Off, only insert commands start it, in the prompt or as i and a
-    -- in a file buffer.
+    -- start. Off, only insert commands start it, in the prompt or in a file
+    -- buffer.
     auto_insert = false,
   },
   append_system_prompt = table.concat({

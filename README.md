@@ -34,7 +34,7 @@ The screen has three columns: your explorer, code, and Claude. The explorer is 2
 
 File buffers are read-only. `:w` does nothing but say so, and format on save never runs. Claude makes every change, and buffers reload when files change on disk.
 
-The cursor moves between the code window and the prompt in one step: `Ctrl-W l` or `Ctrl-L` from any row of the code window, and `Ctrl-W h` or `Ctrl-H` back. Moving into the prompt leaves you in normal mode. Only insert commands start typing: `i`, `a` and the others in the prompt, or `i` and `a` in a file buffer, which go to the prompt and type where you stopped. The transcript takes no focus. A window key that would land on it skips it, a click on it goes to the prompt, and the mouse wheel scrolls it from anywhere. New output keeps the transcript at its end, unless you scrolled up. Then it stays put until you scroll back down or send a prompt. To yank or search the transcript, enter read mode with `<leader>kr`, or drag across it with the mouse.
+The cursor moves between the code window and the prompt in one step: `Ctrl-W l` or `Ctrl-L` from any row of the code window, and `Ctrl-W h` or `Ctrl-H` back. Moving into the prompt leaves you in normal mode. Only insert commands start typing: `i`, `a` and the others in the prompt. In a file buffer, `i`, `a`, `I`, `A`, `o` and `O` go to the prompt and type where you stopped. The transcript takes no focus. A window key that would land on it skips it, a click on it goes to the prompt, and the mouse wheel scrolls it from anywhere. New output keeps the transcript at its end, unless you scrolled up. Then it stays put until you scroll back down or send a prompt. To yank or search the transcript, enter read mode with `<leader>kr`, or drag across it with the mouse.
 
 For a long prompt, `Ctrl-G` in the prompt opens it in a large window in the middle of the screen, as Claude Code's `Ctrl-G` opens it in your editor. There `Enter` adds a line, and `@` and `/` complete as in the prompt. `Ctrl-G` again, `:wq` or `ZZ` puts the text back in the prompt, at the same place and in the same mode: after `Ctrl-G` while typing you go on typing, and after `:wq` you are in normal mode. `:w` puts it there and keeps the window open, and `:q!` drops your changes. Leaving the window keeps the text too. Follow mode goes on while you write.
 
@@ -57,7 +57,7 @@ All of LazyVim's keys and your own work as usual. anvim adds these. `<leader>` i
 | `Ctrl-X` | prompt | Unpin the selection |
 | `Ctrl-G` | prompt | Write the prompt in a large window. `Ctrl-G` there goes back |
 | `@`, `/` | prompt, insert mode | Complete a file, or a slash command at the start |
-| `i`, `a` | file buffer | Go to the prompt and type where you stopped |
+| `i`, `a`, `I`, `A`, `o`, `O` | file buffer | Go to the prompt and type where you stopped |
 | `c` | file buffer, visual mode | Put a reference to the selected lines in the prompt |
 | `c{motion}`, `cc` | file buffer | Put a reference to the lines of the motion in the prompt |
 | `Ctrl-L` | file buffer, visual mode | Go to the prompt and keep the selection |
@@ -71,7 +71,7 @@ All of LazyVim's keys and your own work as usual. anvim adds these. `<leader>` i
 | `<leader>km`, `:AnvimModel` | anywhere | Choose Claude's model |
 | `:AnvimRestart` | anywhere | Start Claude again, in the same session |
 | `q`, `Esc` | transcript in read mode | Go back to the prompt |
-| `i` | transcript in read mode | Go back to the prompt and type |
+| `i`, `a`, `I`, `A`, `o`, `O` | transcript in read mode | Go back to the prompt and type |
 
 ## Sessions
 

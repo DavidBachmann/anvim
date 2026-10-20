@@ -450,7 +450,7 @@ describe("LazyVim stack", function()
       end
       vim.api.nvim_feedkeys(vim.keycode("<C-s>"), "xt", false)
       local maps = {}
-      for _, key in ipairs({ "i", "a" }) do
+      for _, key in ipairs(layout.insert_keys) do
         local map = vim.fn.maparg(key, "n", false, true)
         maps[key] = { desc = map.desc, buffer = map.buffer }
       end
@@ -463,7 +463,7 @@ describe("LazyVim stack", function()
     assert.are.same(0, out.pre, "BufWritePre ran")
     assert.are.same("", out.errmsg)
     local talk = { desc = "Talk to Claude", buffer = 1 }
-    assert.are.same({ i = talk, a = talk }, out.maps)
+    assert.are.same({ i = talk, a = talk, I = talk, A = talk, o = talk, O = talk }, out.maps)
     assert.are.same(stat.mtime, vim.uv.fs_stat(file).mtime, "the file was written")
   end)
 
@@ -1166,11 +1166,12 @@ describe("LazyVim stack", function()
       require("anvim.layout").focus_input()
       vim.cmd.stopinsert()
     ]])
-    for _, key in ipairs({ "q", "<Esc>", "i" }) do
+    for _, key in ipairs({ "q", "<Esc>", "i", "A", "o" }) do
       keys("<leader>kr")
       wait_where({ win = "transcript", mode = "n" }, "<leader>kr")
       keys(key)
-      wait_where({ win = "input", mode = key == "i" and "i" or "n" }, key .. " in read mode")
+      local typing = key ~= "q" and key ~= "<Esc>"
+      wait_where({ win = "input", mode = typing and "i" or "n" }, key .. " in read mode")
       keys("<Esc>")
       wait_where({ win = "input", mode = "n" }, "<Esc> in the prompt")
     end

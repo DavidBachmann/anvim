@@ -16,7 +16,7 @@ end
 function M.lock(buf)
   if api.nvim_buf_is_valid(buf) and vim.bo[buf].buftype == "" then
     vim.bo[buf].modifiable = false
-    for _, key in ipairs({ "i", "a" }) do
+    for _, key in ipairs(require("anvim.layout").insert_keys) do
       vim.keymap.set("n", key, talk, { buffer = buf, desc = "Talk to Claude" })
     end
     require("anvim.refs").map(buf)

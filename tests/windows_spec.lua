@@ -93,7 +93,7 @@ describe("windows", function()
     layout.focus_input()
     local tr, prompt = layout.wins.transcript, layout.wins.input
     transcript.notice("warn", "something to yank")
-    for _, key in ipairs({ "q", "<Esc>", "i" }) do
+    for _, key in ipairs({ "q", "<Esc>", unpack(layout.insert_keys) }) do
       -- Without a main loop, the prompt's :startinsert stays pending and eats the keys.
       vim.cmd.stopinsert()
       keys("<leader>kr")
