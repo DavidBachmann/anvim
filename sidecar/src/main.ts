@@ -4,6 +4,7 @@ import {
   type Options,
   type PermissionMode,
   type Query,
+  type SDKMessage,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { appendFileSync } from "node:fs";
@@ -107,6 +108,17 @@ async function reportContext(): Promise<void> {
   }
 }
 
+// A message that the translator cannot read goes to the log. It must not end
+// the session.
+function translate(translator: Translator, msg: SDKMessage): Event[] {
+  try {
+    return translator.translate(msg);
+  } catch (err) {
+    process.stderr.write(`could not translate a ${msg.type} message: ${(err as Error)?.stack ?? err}\n`);
+    return [];
+  }
+}
+
 async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
   const mode = (cmd.permission_mode ?? "default") as PermissionMode;
   permissions.cwd = cmd.cwd;
@@ -143,7 +155,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
       turnOpen = false;
       contexts.turnEnd();
     }
-    for (const ev of translator.translate(msg)) emit(ev);
+    for (const ev of translate(translator, msg)) emit(ev);
     if (msg.type === "result") void reportContext();
   }
 }

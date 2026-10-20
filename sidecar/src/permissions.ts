@@ -23,7 +23,6 @@ export const REJECT = `${REJECTED} STOP what you are doing and wait for the user
 export const REJECT_WITH = `${REJECTED} To tell you how to proceed, the user said:\n`;
 export const CANCELLED = "The permission request was cancelled before the user answered.";
 
-
 type Pending = {
   tool: string;
   input: Input;

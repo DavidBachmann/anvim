@@ -77,6 +77,12 @@ describe("FieldStream", () => {
     expect(fs.done).toBe(true);
   });
 
+  test("an invalid raw value ends as undefined, and the next field still streams", () => {
+    const events = feed(['{"limit": 2x, "file_path": "/a.lua"}']);
+    expect(events).toContainEqual({ kind: "end", key: "limit", value: undefined });
+    expect(ends(events).file_path).toBe("/a.lua");
+  });
+
   test("empty object and leading empty chunk", () => {
     const fs = new FieldStream();
     expect(fs.push("")).toEqual([]);

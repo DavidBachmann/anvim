@@ -18,6 +18,16 @@ const ESCAPES: Record<string, string> = {
   t: "\t",
 };
 
+// Streamed tool input can be invalid JSON. Such a value ends as undefined,
+// and the tool_use message still carries the whole input.
+function parseRaw(raw: string): unknown {
+  try {
+    return JSON.parse(raw.trim());
+  } catch {
+    return undefined;
+  }
+}
+
 type State =
   | "before_object"
   | "expect_key"
@@ -165,7 +175,7 @@ export class FieldStream {
       return;
     }
     if (this.rawDepth === 0 && (ch === "," || ch === "}")) {
-      out.push({ kind: "end", key: this.key, value: JSON.parse(this.raw.trim()) });
+      out.push({ kind: "end", key: this.key, value: parseRaw(this.raw) });
       this.state = ch === "}" ? "done" : "expect_key";
       return;
     }
