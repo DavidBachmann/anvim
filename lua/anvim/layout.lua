@@ -41,6 +41,9 @@ local function setup_transcript_win(win)
   -- A drag puts the cursor where the mouse was pressed. With 'scrolloff', the
   -- view would scroll under the mouse there.
   wo.scrolloff = 0
+  -- LazyVim turns on 'smoothscroll', which can leave a wrapped line half
+  -- scrolled at the top, marked "<<<".
+  wo.smoothscroll = false
   wo.winfixwidth = true
   wo.winfixbuf = true
   -- A global statusline puts a separator row under the transcript. Blank it,
