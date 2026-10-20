@@ -157,6 +157,31 @@ describe("windows", function()
     layout.focus_input()
   end)
 
+  it("makes the code window snacks' main window, also when it shows no file and after it comes back", function()
+    local main = require("snacks.picker.core.main")
+    in_code()
+    vim.cmd.split()
+    assert.is_nil(vim.w[current()].snacks_main, "a split of the code window carries the mark")
+    settle()
+    local old = layout.wins.code
+    vim.cmd.close()
+    assert(
+      vim.wait(500, function()
+        return api.nvim_win_is_valid(layout.wins.code) and layout.wins.code ~= old
+      end, 10),
+      "the code window did not come back"
+    )
+    local preview = api.nvim_create_buf(false, true)
+    vim.b[preview].anvim_preview = helpers.tmp .. "/new_file.lua"
+    api.nvim_win_set_buf(layout.wins.code, preview)
+    layout.focus_input()
+    assert.are.same(layout.wins.code, main.new():find(), "a picker from the prompt jumps elsewhere")
+    api.nvim_set_current_win(layout.wins.code)
+    vim.cmd.edit(file)
+    api.nvim_buf_delete(preview, { force = true })
+    layout.focus_input()
+  end)
+
   it("keeps help, quickfix and terminal windows, and closes copies of its own", function()
     in_code()
     vim.cmd("help help")

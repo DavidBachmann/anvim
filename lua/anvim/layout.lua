@@ -99,6 +99,15 @@ local function open_code_win(buf)
   return win
 end
 
+-- snacks' pickers jump into a window that shows a file, or else into one with
+-- this mark. The code window can show a Write preview, which is no file, and
+-- without the mark a picker would jump into the Claude column.
+local function set_code_win(win)
+  vim.w[win].snacks_main = true
+  M.wins.code = win
+  return win
+end
+
 -- The window that follow mode drives. Recreated if the user closed it.
 function M.code_win()
   if valid(M.wins.code) then
@@ -106,16 +115,14 @@ function M.code_win()
   end
   for _, win in ipairs(api.nvim_tabpage_list_wins(0)) do
     if api.nvim_win_get_config(win).relative == "" and not is_special(win) then
-      M.wins.code = win
-      return win
+      return set_code_win(win)
     end
   end
   local buf = M.last_code_buf
   if not (buf and api.nvim_buf_is_loaded(buf)) then
     buf = api.nvim_create_buf(true, false)
   end
-  M.wins.code = open_code_win(buf)
-  return M.wins.code
+  return set_code_win(open_code_win(buf))
 end
 
 -- Runs before the code window closes. Neovim then gives its columns to the
