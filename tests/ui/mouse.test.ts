@@ -115,6 +115,13 @@ test("a click from insert mode in the prompt ends insert mode in read-only windo
   expect(await ui.exec_lua(`return vim.api.nvim_get_current_line()`)).toContain("match");
   await ui.input("<C-c>");
   await anvim.waitWhere("input", "n");
+  // snacks takes a closed picker down two scheduled turns later, and runs
+  // :stopinsert again then, in the window that has the cursor.
+  await ui.exec_lua(`
+    local done = false
+    vim.schedule(function() vim.schedule(function() done = true end) end)
+    vim.wait(1000, function() return done end)
+  `);
   // The tree's click and the picker left the prompt in insert mode. Typing goes on at its end.
   await ui.input("i");
   await anvim.waitWhere("input", "i");
