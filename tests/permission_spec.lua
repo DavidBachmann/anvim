@@ -507,6 +507,125 @@ describe("permission", function()
     end)
   end)
 
+  it("draws why anvim's own guard asks, in WarningMsg, without a remember choice", function()
+    helpers.start()
+    focus()
+    local ns = api.nvim_get_namespaces()["anvim.transcript"]
+    -- The highlight groups of the transcript's last line that reads text.
+    local function groups(text)
+      local buf = transcript.buf()
+      local lines = buf_lines(buf)
+      for row = #lines, 1, -1 do
+        if lines[row] == text then
+          local found = {}
+          for _, mark in ipairs(api.nvim_buf_get_extmarks(buf, ns, { row - 1, 0 }, { row - 1, -1 }, { details = true })) do
+            found[#found + 1] = mark[4].hl_group
+          end
+          return found
+        end
+      end
+      error(("no line %q"):format(text))
+    end
+    local cases = {
+      { "Bash", { command = "rm ~/x", dangerouslyDisableSandbox = true }, "runs outside the sandbox" },
+      { "Bash", { command = "touch ~/x" }, "runs outside the sandbox (excluded command)" },
+      { "Write", { file_path = "/etc/hosts", content = "x" }, "outside the trusted dirs: /etc/hosts" },
+      { "Edit", { file_path = helpers.tmp .. "/.claude/settings.json" }, "changes the sandbox's settings" },
+      { "Write", { file_path = helpers.tmp .. "/.mcp.json" }, "changes a config that runs outside the sandbox" },
+    }
+    helpers.capture_sends(function()
+      for _, case in ipairs(cases) do
+        local _, id = request(case[1], case[2], { reason = case[3], blocked_path = "/etc/hosts" })
+        assert.are.same({ "WarningMsg" }, groups("    " .. case[3]), case[3])
+        assert.are.same({
+          "  ❯ 1. Yes",
+          "    2. No, and tell Claude what to do differently (esc)",
+        }, tail(2))
+        -- The reason takes the place of the blocked path's line.
+        assert(not vim.tbl_contains(tail(8), "    outside the working directory: /etc/hosts"), case[3])
+        keys("<Esc>")
+        result(id, true)
+      end
+    end)
+  end)
+
+  it("replays a recorded sandbox session: a denial, an escape, a network request and an edit outside", function()
+    helpers.start()
+    focus()
+    local fixture = helpers.root .. "/tests/fixtures/sandbox-session.jsonl"
+    -- The recording's paths outside the project are in its home dir.
+    local home = vim.env.HOME
+    local home_repl = (home .. "/"):gsub("%%", "%%%%")
+    local blocks = {}
+    helpers.capture_sends(function(sent)
+      for _, frame in ipairs(vim.fn.readfile(fixture)) do
+        frame = frame:gsub("/ANVIM_FIXTURE", helpers.tmp):gsub("/Users/user/", home_repl)
+        local ev = vim.json.decode(frame:match("^%d+ (.*)$"), { luanil = { object = true, array = true } })
+        if ev.type:match("^tool_") or ev.type:match("^text_") or ev.type:match("^permission_") then
+          sidecar.dispatch(ev)
+        elseif ev.type == "await_preview" then
+          sidecar.dispatch(ev)
+          assert(
+            vim.wait(3000, function()
+              return vim.tbl_contains(sent, function(msg)
+                return msg.type == "preview_done" and msg.req == ev.req
+              end, { predicate = true })
+            end),
+            "preview did not catch up"
+          )
+        end
+        if ev.type == "permission_request" then
+          blocks[#blocks + 1] = tail(8)
+          -- The recording denied the escape and the Write, and allowed the rest.
+          keys((ev.reason and "<Esc>" or "1"))
+        end
+      end
+      local answers = vim.tbl_map(
+        function(msg)
+          return msg.behavior
+        end,
+        vim.tbl_filter(function(msg)
+          return msg.type == "permission_response"
+        end, sent)
+      )
+      assert.are.same({ "allow", "deny", "allow", "allow", "deny" }, answers)
+    end)
+    assert.are.same(5, #blocks)
+    -- The first touch asks as any Bash command does, and the sandbox denies it.
+    helpers.contains(blocks[1], "^    outside the working directory: ~/anvim%-sandbox%-probe/target%.txt$")
+    -- Claude retries outside the sandbox. anvim's guard asks, with no "don't ask again".
+    assert.are.same({
+      "  Bash command (unsandboxed)",
+      "    touch " .. home .. "/anvim-sandbox-probe/target.txt",
+      "    Create or update target.txt via touch",
+      "    runs outside the sandbox",
+      "  Do you want to proceed?",
+      "  ❯ 1. Yes",
+      "    2. No, and tell Claude what to do differently (esc)",
+    }, vim.list_slice(blocks[2], 2))
+    assert.are.same({
+      "  Network access",
+      "    example.com",
+      "  Do you want to allow this connection?",
+      "  ❯ 1. Yes",
+      "    2. Yes, and don't ask again for WebFetch(domain:example.com) in this project",
+      "    3. No, and tell Claude what to do differently (esc)",
+    }, vim.list_slice(blocks[4], 3))
+    assert.are.same({
+      "  Write file",
+      "    ~/anvim-sandbox-probe/notes.txt",
+      "    outside the trusted dirs: ~/anvim-sandbox-probe/notes.txt",
+      "  Do you want to create notes.txt?",
+      "  ❯ 1. Yes",
+      "    2. No, and tell Claude what to do differently (esc)",
+    }, vim.list_slice(blocks[5], 3), "Claude Code's description, the ~ path, shows no second time")
+    assert(not permission.waiting())
+    local lines = buf_lines(transcript.buf())
+    helpers.contains(lines, "Operation not permitted")
+    helpers.contains(lines, "^  ⎿  Rejected$")
+    helpers.contains(lines, "HTTP/1%.1 200 Connection Established")
+  end)
+
   it("opens on No and takes no single-key yes when Claude Code asks for care", function()
     helpers.start()
     focus()

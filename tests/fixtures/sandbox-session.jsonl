@@ -1,0 +1,92 @@
+1792592687083 {"type":"commands","commands":[]}
+1792592687087 {"type":"effort","level":"medium"}
+1792592688666 {"type":"commands","commands":[]}
+1792592689029 {"type":"init","session_id":"00000000-0000-0000-0000-000000000000","model":"claude-haiku-5-5","cwd":"/ANVIM_FIXTURE","permission_mode":"default","version":"2.1.304","slash_commands":[]}
+1792592689032 {"type":"status","status":"requesting"}
+1792592690350 {"type":"commands","commands":[]}
+1792592690593 {"type":"turn_start"}
+1792592690594 {"type":"tool_start","id":"toolu_01CvVVhHaiJwJjZmBxTkeSwR","name":"Bash"}
+1792592690612 {"type":"tool_field","id":"toolu_01CvVVhHaiJwJjZmBxTkeSwR","name":"Bash","key":"command","phase":"start"}
+1792592690612 {"type":"tool_field","id":"toolu_01CvVVhHaiJwJjZmBxTkeSwR","name":"Bash","key":"command","phase":"delta","text":"touch /Users/user/anvim-sandbox-probe/target.txt"}
+1792592690792 {"type":"tool_field","id":"toolu_01CvVVhHaiJwJjZmBxTkeSwR","name":"Bash","key":"command","phase":"end","value":"touch /Users/user/anvim-sandbox-probe/target.txt"}
+1792592690792 {"type":"tool_field","id":"toolu_01CvVVhHaiJwJjZmBxTkeSwR","name":"Bash","key":"description","phase":"start"}
+1792592690793 {"type":"tool_field","id":"toolu_01CvVVhHaiJwJjZmBxTkeSwR","name":"Bash","key":"description","phase":"delta","text":"Create or update target.txt via touch"}
+1792592691083 {"type":"tool_field","id":"toolu_01CvVVhHaiJwJjZmBxTkeSwR","name":"Bash","key":"description","phase":"end","value":"Create or update target.txt via touch"}
+1792592691093 {"type":"tool_use","id":"toolu_01CvVVhHaiJwJjZmBxTkeSwR","name":"Bash","input":{"command":"touch /Users/user/anvim-sandbox-probe/target.txt","description":"Create or update target.txt via touch"},"parent_id":null}
+1792592691097 {"type":"tool_input_end","id":"toolu_01CvVVhHaiJwJjZmBxTkeSwR"}
+1792592691118 {"type":"permission_request","req":1,"tool_use_id":"toolu_01CvVVhHaiJwJjZmBxTkeSwR","tool":"Bash","input":{"command":"touch /Users/user/anvim-sandbox-probe/target.txt","description":"Create or update target.txt via touch"},"remember":"Yes, and don't ask again for Bash(touch /Users/user/anvim-sandbox-probe/target.txt) in this project, access to ~/anvim-sandbox-probe during this session, all edits during this session","blocked_path":"/Users/user/anvim-sandbox-probe/target.txt","description":"Create or update target.txt via touch"}
+1792592692415 {"type":"tool_result","id":"toolu_01CvVVhHaiJwJjZmBxTkeSwR","is_error":true,"text":"Exit code 1\ntouch: /Users/user/anvim-sandbox-probe/target.txt: Operation not permitted","result":"Error: Exit code 1\ntouch: /Users/user/anvim-sandbox-probe/target.txt: Operation not permitted","parent_id":null}
+1792592692418 {"type":"status","status":"requesting"}
+1792592693591 {"type":"thinking_start"}
+1792592695481 {"type":"thinking_stop"}
+1792592695481 {"type":"text_start"}
+1792592695481 {"type":"text_delta","text":"The sandbox blocked the write because `/Users/user/anvim-sandbox-probe/` is outside the writable directories. This is the exact file you asked for, so I'll retry the same command outside the sandbox. It still goes through the permission prompt."}
+1792592695954 {"type":"text_stop"}
+1792592695954 {"type":"tool_start","id":"toolu_01RevgutpzuojnRgpjXjJBm7","name":"Bash"}
+1792592695955 {"type":"tool_field","id":"toolu_01RevgutpzuojnRgpjXjJBm7","name":"Bash","key":"command","phase":"start"}
+1792592695955 {"type":"tool_field","id":"toolu_01RevgutpzuojnRgpjXjJBm7","name":"Bash","key":"command","phase":"delta","text":"touch /Users/user/anvim-sandbox-probe/target.txt"}
+1792592696070 {"type":"tool_field","id":"toolu_01RevgutpzuojnRgpjXjJBm7","name":"Bash","key":"command","phase":"end","value":"touch /Users/user/anvim-sandbox-probe/target.txt"}
+1792592696070 {"type":"tool_field","id":"toolu_01RevgutpzuojnRgpjXjJBm7","name":"Bash","key":"description","phase":"start"}
+1792592696071 {"type":"tool_field","id":"toolu_01RevgutpzuojnRgpjXjJBm7","name":"Bash","key":"description","phase":"delta","text":"Create or update target.txt via touch"}
+1792592696193 {"type":"tool_field","id":"toolu_01RevgutpzuojnRgpjXjJBm7","name":"Bash","key":"description","phase":"end","value":"Create or update target.txt via touch"}
+1792592696193 {"type":"tool_field","id":"toolu_01RevgutpzuojnRgpjXjJBm7","name":"Bash","key":"dangerouslyDisableSandbox","phase":"start"}
+1792592696230 {"type":"tool_field","id":"toolu_01RevgutpzuojnRgpjXjJBm7","name":"Bash","key":"dangerouslyDisableSandbox","phase":"end","value":true}
+1792592696232 {"type":"tool_use","id":"toolu_01RevgutpzuojnRgpjXjJBm7","name":"Bash","input":{"command":"touch /Users/user/anvim-sandbox-probe/target.txt","description":"Create or update target.txt via touch","dangerouslyDisableSandbox":true},"parent_id":null}
+1792592696235 {"type":"tool_input_end","id":"toolu_01RevgutpzuojnRgpjXjJBm7"}
+1792592696247 {"type":"permission_request","req":2,"tool_use_id":"toolu_01RevgutpzuojnRgpjXjJBm7","tool":"Bash","input":{"command":"touch /Users/user/anvim-sandbox-probe/target.txt","description":"Create or update target.txt via touch","dangerouslyDisableSandbox":true},"description":"Create or update target.txt via touch","reason":"runs outside the sandbox"}
+1792592696651 {"type":"tool_result","id":"toolu_01RevgutpzuojnRgpjXjJBm7","is_error":true,"text":"The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.","result":"Error: The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.","parent_id":null}
+1792592696653 {"type":"status","status":"requesting"}
+1792592697742 {"type":"thinking_start"}
+1792592698093 {"type":"thinking_stop"}
+1792592698093 {"type":"text_start"}
+1792592698094 {"type":"text_delta","text":"The `touch` did not run. It failed in the sandbox with \"Operation not permitted\". The sandbox only allows writes under the project directory (`/ANVIM_FIXTURE`), and `target.txt` is one level up. I retried the same command with the sandbox turned off, and you declined that request, so I stopped there.\n\nTo create the file yourself, run:\n\n```\ntouch /Users/user/anvim-sandbox-probe/target.txt\n```\n\nIf you want me to run it from here, you can add `/Users/user/anvim-sandbox-probe` to the writable paths with `/sandbox`, then ask again."}
+1792592698976 {"type":"text_stop"}
+1792592698980 {"type":"turn_end","subtype":"success","is_error":false,"duration_ms":9979,"cost_usd":0.01134832,"num_turns":3}
+1792592698984 {"type":"effort","level":"medium"}
+1792592698995 {"type":"context","percent":5,"tokens":48859,"max":1000000}
+1792592700492 {"type":"init","session_id":"00000000-0000-0000-0000-000000000000","model":"claude-haiku-5-5","cwd":"/ANVIM_FIXTURE","permission_mode":"default","version":"2.1.304","slash_commands":[]}
+1792592700493 {"type":"status","status":"requesting"}
+1792592701593 {"type":"turn_start"}
+1792592701593 {"type":"tool_start","id":"toolu_0138DScfJRJwosmYd86D45Jx","name":"Bash"}
+1792592701631 {"type":"tool_field","id":"toolu_0138DScfJRJwosmYd86D45Jx","name":"Bash","key":"command","phase":"start"}
+1792592701631 {"type":"tool_field","id":"toolu_0138DScfJRJwosmYd86D45Jx","name":"Bash","key":"command","phase":"delta","text":"curl -sI https://example.com | head -1"}
+1792592701966 {"type":"tool_field","id":"toolu_0138DScfJRJwosmYd86D45Jx","name":"Bash","key":"command","phase":"end","value":"curl -sI https://example.com | head -1"}
+1792592701966 {"type":"tool_field","id":"toolu_0138DScfJRJwosmYd86D45Jx","name":"Bash","key":"description","phase":"start"}
+1792592701966 {"type":"tool_field","id":"toolu_0138DScfJRJwosmYd86D45Jx","name":"Bash","key":"description","phase":"delta","text":"Fetch HTTP status line from example.com"}
+1792592701966 {"type":"tool_field","id":"toolu_0138DScfJRJwosmYd86D45Jx","name":"Bash","key":"description","phase":"end","value":"Fetch HTTP status line from example.com"}
+1792592701967 {"type":"tool_use","id":"toolu_0138DScfJRJwosmYd86D45Jx","name":"Bash","input":{"command":"curl -sI https://example.com | head -1","description":"Fetch HTTP status line from example.com"},"parent_id":null}
+1792592701968 {"type":"tool_input_end","id":"toolu_0138DScfJRJwosmYd86D45Jx"}
+1792592701974 {"type":"permission_request","req":3,"tool_use_id":"toolu_0138DScfJRJwosmYd86D45Jx","tool":"Bash","input":{"command":"curl -sI https://example.com | head -1","description":"Fetch HTTP status line from example.com"},"remember":"Yes, and don't ask again for Bash(curl -sI https://example.com) in this project","description":"Fetch HTTP status line from example.com"}
+1792592702439 {"type":"permission_request","req":4,"tool_use_id":"d8d5b20d-5e76-48f5-b3b9-dc2de364a264","tool":"SandboxNetworkAccess","input":{"host":"example.com"},"remember":"Yes, and don't ask again for WebFetch(domain:example.com) in this project","description":"Allow network connection to example.com?"}
+1792592703068 {"type":"tool_result","id":"toolu_0138DScfJRJwosmYd86D45Jx","is_error":false,"text":"HTTP/1.1 200 Connection Established","result":{"stdout":"HTTP/1.1 200 Connection Established","stderr":"","interrupted":false,"isImage":false,"noOutputExpected":false},"parent_id":null}
+1792592703071 {"type":"status","status":"requesting"}
+1792592704140 {"type":"thinking_start"}
+1792592704917 {"type":"thinking_stop"}
+1792592704918 {"type":"text_start"}
+1792592704918 {"type":"text_delta","text":"The command ran and returned `HTTP/1.1 200 Connection Established`.\n\nThat line comes from the proxy that handles outbound connections here, not from example.com. `head -1` kept only the first line, so the real status from example.com is not shown. Running `curl -sI https://example.com` without `head` would show it."}
+1792592705433 {"type":"text_stop"}
+1792592705438 {"type":"turn_end","subtype":"success","is_error":false,"duration_ms":4953,"cost_usd":0.01259802,"num_turns":2}
+1792592705440 {"type":"effort","level":"medium"}
+1792592705446 {"type":"context","percent":5,"tokens":49253,"max":1000000}
+1792592706952 {"type":"init","session_id":"00000000-0000-0000-0000-000000000000","model":"claude-haiku-5-5","cwd":"/ANVIM_FIXTURE","permission_mode":"default","version":"2.1.304","slash_commands":[]}
+1792592706953 {"type":"status","status":"requesting"}
+1792592707913 {"type":"turn_start"}
+1792592707913 {"type":"tool_start","id":"toolu_01UueEX7bxdt7LomgFBjDi9J","name":"Write"}
+1792592708301 {"type":"tool_field","id":"toolu_01UueEX7bxdt7LomgFBjDi9J","name":"Write","key":"file_path","phase":"start"}
+1792592708301 {"type":"tool_field","id":"toolu_01UueEX7bxdt7LomgFBjDi9J","name":"Write","key":"file_path","phase":"delta","text":"/Users/user/anvim-sandbox-probe/notes.txt"}
+1792592708301 {"type":"tool_field","id":"toolu_01UueEX7bxdt7LomgFBjDi9J","name":"Write","key":"file_path","phase":"end","value":"/Users/user/anvim-sandbox-probe/notes.txt"}
+1792592708301 {"type":"tool_field","id":"toolu_01UueEX7bxdt7LomgFBjDi9J","name":"Write","key":"content","phase":"start"}
+1792592708301 {"type":"tool_field","id":"toolu_01UueEX7bxdt7LomgFBjDi9J","name":"Write","key":"content","phase":"delta","text":"hi"}
+1792592708301 {"type":"tool_field","id":"toolu_01UueEX7bxdt7LomgFBjDi9J","name":"Write","key":"content","phase":"end","value":"hi"}
+1792592708301 {"type":"tool_use","id":"toolu_01UueEX7bxdt7LomgFBjDi9J","name":"Write","input":{"file_path":"/Users/user/anvim-sandbox-probe/notes.txt","content":"hi"},"parent_id":null}
+1792592708303 {"type":"tool_input_end","id":"toolu_01UueEX7bxdt7LomgFBjDi9J"}
+1792592708305 {"type":"await_preview","req":1,"tool_use_id":"toolu_01UueEX7bxdt7LomgFBjDi9J"}
+1792592708354 {"type":"permission_request","req":5,"tool_use_id":"toolu_01UueEX7bxdt7LomgFBjDi9J","tool":"Write","input":{"file_path":"/Users/user/anvim-sandbox-probe/notes.txt","content":"hi"},"description":"~/anvim-sandbox-probe/notes.txt","reason":"outside the trusted dirs: ~/anvim-sandbox-probe/notes.txt"}
+1792592708758 {"type":"tool_result","id":"toolu_01UueEX7bxdt7LomgFBjDi9J","is_error":true,"text":"The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.","result":"Error: The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.","parent_id":null}
+1792592708760 {"type":"status","status":"requesting"}
+1792592709783 {"type":"text_start"}
+1792592709783 {"type":"text_delta","text":"The Write call was rejected, so `/Users/user/anvim-sandbox-probe/notes.txt` was not created. I have not retried. Tell me whether you want me to try again, or create the file another way."}
+1792592710133 {"type":"text_stop"}
+1792592710143 {"type":"turn_end","subtype":"success","is_error":false,"duration_ms":3201,"cost_usd":0.0137776,"num_turns":2}
+1792592710145 {"type":"effort","level":"medium"}
+1792592710150 {"type":"context","percent":5,"tokens":49690,"max":1000000}

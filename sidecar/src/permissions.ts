@@ -39,6 +39,8 @@ export class PermissionBridge {
   cwd = process.cwd();
   // A session that started in bypass mode can switch back to it after a plan.
   bypass = false;
+  // anvim's own asks (sandbox.ts), whose reason the request shows.
+  guard?: { take(toolUseID: string): string | undefined };
 
   constructor(private emit: (ev: Event) => void) {}
 
@@ -46,8 +48,15 @@ export class PermissionBridge {
     // Read-only editor tools need no prompt (tools.ts).
     if (isEditorTool(opts.mcpServer)) return Promise.resolve({ behavior: "allow", updatedInput: input });
     const req = this.next++;
+    // Claude Code passes the hook's reason as decisionReason, but a user's own
+    // hook can ask too, so the guard tells anvim's asks apart. A saved rule
+    // would not stop anvim's hook from asking again, so its asks offer no
+    // "don't ask again".
+    const reason = this.guard?.take(opts.toolUseID);
     const remember =
-      !opts.suppressAlwaysAllowRule && opts.suggestions?.length ? rememberLabel(opts.suggestions, this.cwd) : undefined;
+      !reason && !opts.suppressAlwaysAllowRule && opts.suggestions?.length
+        ? rememberLabel(opts.suggestions, this.cwd)
+        : undefined;
     const suggestions = remember ? opts.suggestions : undefined;
     return new Promise((resolve) => {
       const abort = () => {
@@ -76,6 +85,7 @@ export class PermissionBridge {
         description: opts.description,
         default_to_no: opts.defaultToNo || undefined,
         agent_id: opts.agentID,
+        reason,
       });
       if (opts.signal.aborted) abort();
       else opts.signal.addEventListener("abort", abort, { once: true });

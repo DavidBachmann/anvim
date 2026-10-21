@@ -129,6 +129,9 @@ export type Event =
       default_to_no?: boolean;
       // Set when a subagent runs the tool.
       agent_id?: string;
+      // Why anvim's own guard asks, such as "runs outside the sandbox"
+      // (sandbox.ts). Such a request has no remember.
+      reason?: string;
     }
   // The request was aborted, for example by an interrupt. The plugin drops it.
   | { type: "permission_cancel"; req: number }

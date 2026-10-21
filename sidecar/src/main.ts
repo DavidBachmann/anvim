@@ -12,7 +12,7 @@ import { contextHook, PendingContexts } from "./context";
 import { PermissionBridge } from "./permissions";
 import { PreviewBridge } from "./preview";
 import type { Command, EffortLevel, Event } from "./protocol";
-import { SandboxNotice, sandboxSetup } from "./sandbox";
+import { preToolUse, SandboxGuard, SandboxNotice, sandboxSetup } from "./sandbox";
 import * as sessions from "./sessions";
 import { EditorBridge, editorServer, SERVER } from "./tools";
 import { commandsEvent, modelsEvent, Translator } from "./translate";
@@ -106,6 +106,7 @@ function control(fn: (q: Query) => Promise<void>): Promise<void> {
 
 // What getSettings() answers. The SDK has the method, but not in its types.
 export type SettingsAnswer = {
+  effective?: Record<string, any>;
   sources?: { source: string; settings?: Record<string, any> | null }[];
   applied?: { model?: string; effort?: EffortLevel | null };
 };
@@ -181,7 +182,17 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
   permissions.cwd = cmd.cwd;
   permissions.bypass = mode === "bypassPermissions";
   // Only false turns the sandbox off, so a start without the field keeps it.
-  const sandbox = sandboxSetup(cmd.sandbox !== false, cmd.cwd);
+  const sandboxOn = cmd.sandbox !== false;
+  const sandbox = sandboxSetup(sandboxOn, cmd.cwd);
+  // With the sandbox off, its guards are off too. One switch has one meaning.
+  const guard = sandboxOn
+    ? new SandboxGuard({
+        cwd: cmd.cwd,
+        settings: async () => (session ? getSettings(session) : {}),
+        prompt: (tool, input, opts) => permissions.canUseTool(tool, input, { ...opts, requestId: "anvim-guard" }),
+      })
+    : undefined;
+  permissions.guard = guard;
   const notice = new SandboxNotice((text) => emit({ type: "notice", level: "warn", text }));
   const options: Options = {
     ...sandbox.options,
@@ -195,7 +206,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     // Foreground subagents send their text and thinking only with this.
     forwardSubagentText: true,
     hooks: {
-      PreToolUse: [{ matcher: "Edit|Write|NotebookEdit", hooks: [previews.hook] }],
+      PreToolUse: preToolUse(previews.hook, guard),
       UserPromptSubmit: [{ hooks: [contextHook(contexts)] }],
     },
     systemPrompt: { type: "preset", preset: "claude_code", append: cmd.append_system_prompt },

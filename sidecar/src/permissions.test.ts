@@ -112,6 +112,38 @@ describe("PermissionBridge", () => {
     expect((await result) as Record<string, unknown>).not.toHaveProperty("updatedPermissions");
   });
 
+  test("anvim's own ask shows its reason and offers nothing to remember", async () => {
+    const { bridge, ask } = setup();
+    const reasons = new Map([["toolu_1", "runs outside the sandbox"]]);
+    bridge.guard = {
+      take: (id) => {
+        const reason = reasons.get(id);
+        reasons.delete(id);
+        return reason;
+      },
+    };
+    const { result, request } = ask(
+      "Bash",
+      { command: "rm ~/x", dangerouslyDisableSandbox: true },
+      { suggestions: [mkdirRule], decisionReason: "runs outside the sandbox" },
+    );
+    expect(request.reason).toBe("runs outside the sandbox");
+    expect(request.remember).toBeUndefined();
+    bridge.respond({ type: "permission_response", req: 1, behavior: "allow", remember: true });
+    expect((await result) as Record<string, unknown>).not.toHaveProperty("updatedPermissions");
+  });
+
+  test("a user's own hook that asks keeps the remember choice, and shows no reason", async () => {
+    const { bridge, ask } = setup();
+    bridge.guard = { take: () => undefined };
+    const { request } = ask("Bash", { command: "mkdir -p out" }, {
+      suggestions: [mkdirRule],
+      decisionReason: "my hook wants a look",
+    });
+    expect(request.reason).toBeUndefined();
+    expect(request.remember).toBe("Yes, and don't ask again for Bash(mkdir -p out) in this project");
+  });
+
   test("denies with Claude Code's wording, and carries what the user typed", async () => {
     const { bridge, ask } = setup();
     const plain = ask("Bash", { command: "make" }).result;

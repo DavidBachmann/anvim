@@ -288,13 +288,19 @@ local function add_header(b, r)
     b.add("    " .. transcript.label(tool, inp))
   end
   local desc = ev.description
-  if type(desc) == "string" and desc ~= "" and not (path and vim.fs.basename(path) == desc) then
+  -- Claude Code describes an edit by the file's name, or by its ~ path outside the cwd.
+  local names_path = type(path) == "string"
+    and (vim.fs.basename(path) == desc or vim.fn.fnamemodify(path, ":~") == desc)
+  if type(desc) == "string" and desc ~= "" and not names_path then
     b.add("    " .. first_line(desc), "Comment")
   end
   -- Claude Code also names paths inside the cwd, such as a directory that
-  -- mkdir would create. Only a path outside it needs a warning.
+  -- mkdir would create. Only a path outside it needs a warning. anvim's own
+  -- guards say why they ask (sidecar/src/sandbox.ts).
   local blocked = ev.blocked_path
-  if type(blocked) == "string" and not inside_cwd(blocked) then
+  if type(ev.reason) == "string" and ev.reason ~= "" then
+    b.add("    " .. first_line(ev.reason), "WarningMsg")
+  elseif type(blocked) == "string" and not inside_cwd(blocked) then
     b.add("    outside the working directory: " .. vim.fn.fnamemodify(blocked, ":~"), "WarningMsg")
   end
   local name = type(path) == "string" and vim.fs.basename(path)
