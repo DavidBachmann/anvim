@@ -7,6 +7,7 @@ local agents = require("anvim.agents")
 local bashread = require("anvim.bashread")
 local input = require("anvim.input")
 local layout = require("anvim.layout")
+local state = require("anvim.state")
 
 local M = {}
 
@@ -26,6 +27,7 @@ local MAX_STEPS = 4
 ---@field line integer
 ---@field buf integer? A buffer to show instead of the file, such as a Write preview.
 ---@field behind integer Moves of its agent that the code window did not show.
+---@field ended boolean? The main agent's turn ended after this move, or before it.
 
 -- Each agent's place, by agent_id. The main agent's has the key "".
 ---@type table<string, anvim.Place>
@@ -172,6 +174,12 @@ function M.place()
   return places[M.focus or ""]
 end
 
+-- Every agent's place, by agent_id, and "" for the main agent. Callers only read it.
+---@return table<string, anvim.Place>
+function M.places()
+  return places
+end
+
 -- The focused subagent, while it runs. nil for the main agent.
 ---@return anvim.Agent?
 function M.focused()
@@ -225,6 +233,14 @@ local function move(path, line, buf, id, quiet)
   local old = places[id or ""]
   local place = { path = path, line = line or 1, buf = buf, behind = old and old.behind or 0 }
   places[id or ""] = place
+  -- Steps and previews that a turn's end flushes still move the main agent.
+  if not id and not state.busy then
+    place.ended = true
+  end
+  -- The tree marks each agent's file, and a move within the file changes no mark.
+  if not old or old.path ~= path or old.ended ~= place.ended then
+    agents.files_changed()
+  end
   if M.shows(id) and not quiet then
     place.behind = 0
     M.show(buf or M.load(path), place.line)
@@ -348,7 +364,21 @@ function M.forget()
   for key in pairs(steps) do
     stop_steps(key)
   end
+  local any = next(places) ~= nil
   places, writes, greps, waiting, batched, M.focus, focus_name = {}, {}, {}, {}, {}, nil, nil
+  if any then
+    agents.files_changed()
+  end
+end
+
+-- The main agent's place stays for the footer, but its mark in the tree goes
+-- with the turn, as its written files do.
+local function end_main()
+  local place = places[""]
+  if place and not place.ended then
+    place.ended = true
+    agents.files_changed()
+  end
 end
 
 ---@param rows integer[] 0-based rows
@@ -558,7 +588,7 @@ local function pick_items()
     width = math.max(width, api.nvim_strwidth(item.name))
   end
   for _, item in ipairs(list) do
-    local place = places[item.agent_id or ""] or (item.agent_id and agents.get(item.agent_id).place)
+    local place = places[item.agent_id or ""]
     item.name = item.name .. (" "):rep(width - api.nvim_strwidth(item.name))
     item.focused = item.agent_id == M.focus
     item.where = place and ("%s:%d"):format(relpath(place.path), place.line)
@@ -653,6 +683,7 @@ function M.attach(sidecar)
       stop_steps(key)
     end
     waiting, greps, batched = {}, {}, {}
+    end_main()
   end)
   sidecar.on("tool_result", function(ev)
     waiting[ev.id] = nil
@@ -675,6 +706,7 @@ function M.attach(sidecar)
     end
   end)
   sidecar.on("turn_end", function()
+    end_main()
     for id, write in pairs(writes) do
       if not runs_on(write.agent) then
         writes[id] = nil

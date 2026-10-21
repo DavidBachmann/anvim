@@ -11,6 +11,11 @@ local trail = require("anvim.trail")
 
 local api = vim.api
 
+local function place(id)
+  local p = follow.places()[id]
+  return p and { p.path, p.line }
+end
+
 local function file(name, n)
   local lines = {}
   for i = 1, n or 12 do
@@ -164,13 +169,13 @@ describe("bash reads", function()
     local before = code_file()
     bash("head -n 5 " .. a, "s1")
     assert.are.same(before, code_file(), "an agent without focus moves nothing")
-    assert.are.same({ path = a, line = 1 }, agents.get("s1").place)
+    assert.are.same({ a, 1 }, place("s1"))
     follow.focus_slot(1)
     assert.are.same(a, code_file(), "focus catches up")
     bash("tail -n 4 " .. b, "s1")
     assert.are.same({ b, 9 }, { code_file(), code_line() })
     assert.are.same({ 9, 10, 11, 12 }, flashed(b))
-    assert.are.same({ path = b, line = 9 }, agents.get("s1").place)
+    assert.are.same({ b, 9 }, place("s1"))
     bash("cat " .. a)
     assert.are.same(b, code_file(), "the main agent's read leaves a view that follows a subagent alone")
   end)

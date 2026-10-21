@@ -1,10 +1,11 @@
 -- The explorer's width. Without focus, it keeps the narrow width of its split.
 -- With focus, its list widens over the code window to fit its rows, like a
 -- drawer, and the code window keeps its place.
--- Each agent also puts a dot in its color on the files it writes to, and on
--- the closed folders above them, at the right edge as snacks shows git status.
+-- Each agent also marks its place and the files it writes to in its color,
+-- and the closed folders above them, at the right edge as snacks shows git status.
 local agents = require("anvim.agents")
 local config = require("anvim.config")
+local follow = require("anvim.follow")
 local layout = require("anvim.layout")
 local state = require("anvim.state")
 
@@ -60,21 +61,54 @@ local function real(path)
   end
 end
 
--- The slots that write to each file, and to each folder above it.
----@type { files: table<string, integer[]>, dirs: table<string, integer[]>, version: integer }
+-- Each agent with a slot marks the file of its place with a ⏺, and the other
+-- files that it writes to in its run with a •. Git status uses ● and ○.
+local GLYPHS = { place = "⏺", wrote = "•" }
+
+---@alias anvim.TreeMark { slot: integer, kind: 'place'|'wrote' }
+
+-- The marks of each file, and of each folder above it, in slot order.
+---@type { files: table<string, anvim.TreeMark[]>, dirs: table<string, anvim.TreeMark[]>, version: integer }
 local marks = { files = {}, dirs = {}, version = 0 }
 local stale = false
 local drawn = 0
 
-local function merge(map, path, slots)
-  local list = map[path] or {}
-  map[path] = list
-  for _, slot in ipairs(slots) do
-    if not vim.tbl_contains(list, slot) then
-      list[#list + 1] = slot
+-- One mark per agent: its place wins over the files it wrote.
+local function put(map, path, slot, kind)
+  local kinds = map[path] or {}
+  map[path] = kinds
+  if kind == "place" or not kinds[slot] then
+    kinds[slot] = kind
+  end
+end
+
+local function sorted(map)
+  local ret = {}
+  for path, kinds in pairs(map) do
+    local list = {}
+    for slot, kind in pairs(kinds) do
+      list[#list + 1] = { slot = slot, kind = kind }
+    end
+    table.sort(list, function(a, b)
+      return a.slot < b.slot
+    end)
+    ret[path] = list
+  end
+  return ret
+end
+
+-- The places of the agents with a slot. The main agent's goes with its turn.
+---@return { path: string, slot: integer }[]
+local function places()
+  local ret = {}
+  for id, place in pairs(follow.places()) do
+    local agent = id ~= "" and agents.get(id)
+    local slot = (id == "" and not place.ended) and 0 or (agent and agent.slot)
+    if slot then
+      ret[#ret + 1] = { path = place.path, slot = slot }
     end
   end
-  table.sort(list)
+  return ret
 end
 
 local function current()
@@ -83,32 +117,40 @@ local function current()
   end
   stale = false
   local files, dirs = {}, {}
-  local all = agents.marks()
-  if next(all) == nil then
-    reals = {}
-  end
-  for path, slots in pairs(all) do
+  local function add(path, slot, kind)
     -- The explorer keeps symlinks below the cwd as their own rows, so a file
-    -- gets its dots under both names.
+    -- gets its marks under both names.
     local given = vim.fs.normalize(vim.fn.isabsolutepath(path) == 1 and path or vim.fs.joinpath(state.cwd, path))
     local resolved = real(path)
     for _, name in ipairs(given == resolved and { given } or { given, resolved }) do
-      merge(files, name, slots)
+      put(files, name, slot, kind)
       for dir in vim.fs.parents(name) do
-        merge(dirs, dir, slots)
+        put(dirs, dir, slot, kind)
       end
     end
   end
+  for path, slots in pairs(agents.marks()) do
+    for _, slot in ipairs(slots) do
+      add(path, slot, "wrote")
+    end
+  end
+  for _, place in ipairs(places()) do
+    add(place.path, place.slot, "place")
+  end
+  if next(files) == nil then
+    reals = {}
+  end
+  files = sorted(files)
   if not vim.deep_equal(files, marks.files) then
-    marks = { files = files, dirs = dirs, version = marks.version + 1 }
+    marks = { files = files, dirs = sorted(dirs), version = marks.version + 1 }
   end
   return marks
 end
 
--- Like git status, a folder shows the slots below it only while it is closed.
+-- Like git status, a folder shows the marks below it only while it is closed.
 ---@param item snacks.picker.explorer.Item
----@return integer[]?
-function M.slots(item)
+---@return anvim.TreeMark[]?
+function M.marks(item)
   local all = current()
   if item.dir then
     return not item.open and all.dirs[item.file] or nil
@@ -119,15 +161,15 @@ end
 ---@type snacks.picker.format
 function M.format(item, picker)
   local ret = Snacks.picker.format.file(item, picker)
-  local slots = M.slots(item)
-  if slots then
+  local list = M.marks(item)
+  if list then
     local dots = {}
-    for i, slot in ipairs(slots) do
+    for i, mark in ipairs(list) do
       if i > MAX_DOTS then
         dots[#dots + 1] = { "+", "Comment" }
         break
       end
-      dots[#dots + 1] = { "⏺", agents.group(slot) }
+      dots[#dots + 1] = { GLYPHS[mark.kind], agents.group(mark.slot) }
     end
     dots[#dots + 1] = { " " }
     -- First, so that snacks still trims the row's trailing space.

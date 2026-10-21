@@ -114,6 +114,21 @@ local function fresh()
   transcript.clear()
 end
 
+-- The tree's marks on alpha.js and beta.js, as "slot:kind".
+local function tree_marks()
+  local ret = {}
+  for _, name in ipairs({ "alpha", "beta" }) do
+    local list = require("anvim.tree").marks({ file = helpers.tmp .. "/" .. name .. ".js" }) or {}
+    ret[name] = table.concat(
+      vim.tbl_map(function(mark)
+        return ("%d:%s"):format(mark.slot, mark.kind)
+      end, list),
+      " "
+    )
+  end
+  return ret
+end
+
 describe("background agents", function()
   after_each(function()
     permission.cancel_all()
@@ -149,6 +164,7 @@ describe("background agents", function()
     assert.are.same("AnvimAgent1", bullet(fast_line))
     assert.are.same("AnvimAgent2", bullet(slow_line))
     assert.is_false(state.busy)
+    assert.are.same({ alpha = "1:place", beta = "" }, tree_marks())
 
     -- Between turns only the agents work, and no turn starts.
     local fast_end = function(ev)
@@ -170,9 +186,11 @@ describe("background agents", function()
       item(slow_line)
     )
     assert.is_false(state.busy)
+    assert.are.same({ alpha = "1:place", beta = "2:place" }, tree_marks())
 
     sidecar.dispatch(events[i])
     i = i + 1
+    assert.are.same({ alpha = "", beta = "2:place" }, tree_marks())
     assert.are.same({ fast_line, "  ⎿  Done (2 tool uses · 35.8k tokens · 5.1s)" }, item(fast_line))
     assert.are.same("AnvimToolOk", bullet(fast_line))
     assert.are.same({ { "Add SLOW marker to beta.js", 2 } }, slots())
@@ -197,6 +215,7 @@ describe("background agents", function()
       return ev == nil
     end)
     assert.are.same({}, slots())
+    assert.are.same({ alpha = "", beta = "" }, tree_marks())
     assert.are.same({
       fast_line,
       "  ⎿  Done (2 tool uses · 35.8k tokens · 5.1s)",

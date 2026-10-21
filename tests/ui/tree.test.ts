@@ -114,8 +114,12 @@ const rowOf = (lines: string[], tree: Box, name: string, width = tree.width) =>
 // The dots on a grid row of the tree, with their foreground colors.
 const dots = (row: number, width: number) =>
   anvim!.ui.grid[row]!.slice(0, width).flatMap((cell) =>
-    cell.text === "⏺" || cell.text === "+" ? [{ text: cell.text, fg: anvim!.ui.attrs.get(cell.hl)?.rgb.foreground }] : [],
+    ["⏺", "•", "+"].includes(cell.text) ? [{ text: cell.text, fg: anvim!.ui.attrs.get(cell.hl)?.rgb.foreground }] : [],
   );
+
+// The dots on a grid row of the tree, each with the group of `hl` that has its color.
+const groups = (row: number, width: number, hl: Record<string, number>) =>
+  dots(row, width).map(({ text, fg }) => `${text} ${Object.keys(hl).find((name) => hl[name] === fg) ?? fg}`);
 
 // The column of a diagnostic's icon on a grid row of the tree, or -1.
 const diagnostic = (row: number, width: number) =>
@@ -126,7 +130,7 @@ const diagnostic = (row: number, width: number) =>
 const colors = (): Promise<Record<string, number>> =>
   anvim!.ui.exec_lua(`
     local ret = {}
-    for _, name in ipairs({ "AnvimClaude", "AnvimAgent1", "AnvimAgent2" }) do
+    for _, name in ipairs({ "AnvimClaude", "AnvimAgent1", "AnvimAgent2", "AnvimAgent3" }) do
       ret[name] = vim.api.nvim_get_hl(0, { name = name, link = false }).fg
     end
     return ret
@@ -138,7 +142,7 @@ const listView = () =>
     return { top = list.top, cursor = list.cursor, win = vim.api.nvim_win_get_cursor(list.win.win) }
   `);
 
-test("agents' dots mark the files they write to and the closed folders above them, and go when the agents end", async () => {
+test("agents' dots mark their places and the files they write to, and the closed folders above them, and go when the agents end", async () => {
   anvim = await start({ files: { "alpha.js": "a\n", "sub/beta.js": "b\n" } });
   const { ui, dir } = anvim;
   const tree = await anvim.box("tree");
@@ -170,13 +174,14 @@ test("agents' dots mark the files they write to and the closed folders above the
     mainEdit("m1", `${dir}/alpha.js`),
   );
   await ui.waitFor(() => dots(alpha, tree.width).length === 2 && dots(sub, tree.width).length === 1);
+  // The main agent writes alpha.js, and a1's place is there.
   expect(dots(alpha, tree.width)).toEqual([
-    { text: "⏺", fg: hl.AnvimClaude },
+    { text: "•", fg: hl.AnvimClaude },
     { text: "⏺", fg: hl.AnvimAgent1 },
   ]);
   expect(dots(sub, tree.width)).toEqual([{ text: "⏺", fg: hl.AnvimAgent2 }]);
   // The dots are the outermost mark, and the diagnostic moves left of them.
-  expect(cells(ui.lines()[alpha]!, tree.width - 3, 3)).toBe("⏺⏺ ");
+  expect(cells(ui.lines()[alpha]!, tree.width - 3, 3)).toBe("•⏺ ");
   expect(diagnostic(alpha, tree.width)).toBeLessThan(tree.width - 3);
 
   await dispatch({ type: "agent_end", agent_id: "a2", status: "completed", summary: "done" });
@@ -227,4 +232,73 @@ test("the focused tree widens to fit the dots, in the frame that shows them", as
   expect(moved.length).toBe(0);
   expect(await anvim.where()).toEqual({ win: "snacks_picker_list", mode: "n" });
   expect(await listView()).toEqual(view);
+});
+
+test("during a replay of three agents, each agent's place shows a ⏺ and the other files it wrote a •", async () => {
+  const files: Record<string, string> = {};
+  for (const name of ["alpha", "beta", "gamma"]) {
+    files[`${name}.js`] = `export function ${name}() {\n  return "${name}";\n}\n`;
+  }
+  // The replay stops while all three agents run, after alpha's edit.
+  const cut = (frames: string[]) =>
+    frames.slice(0, frames.findIndex((f) => f.includes('"type":"tool_result","id":"toolu_01FmrQ4dnbD1pfSoD99kDRHb"')) + 1);
+  anvim = await start({ recording: "agents-session.jsonl", frames: cut, files, env: { ANVIM_REPLAY_SPEED: "4" } });
+  const { ui, dir } = anvim;
+  const tree = await anvim.box("tree");
+  const row = (name: string) => rowOf(ui.lines(), tree, ` ${name}.js`);
+  await ui.waitFor(() => row("alpha") >= 0 && row("beta") >= 0 && row("gamma") >= 0);
+  const [alpha, beta, gamma] = [row("alpha"), row("beta"), row("gamma")];
+  const hl = await colors();
+  await ui.exec_lua(`require("anvim.input").send("Edit the three files")`);
+  await ui.waitFor(() => groups(gamma, tree.width, hl).length === 1, 10000);
+  expect([groups(alpha, tree.width, hl), groups(beta, tree.width, hl), groups(gamma, tree.width, hl)]).toEqual([
+    ["⏺ AnvimAgent1"],
+    ["⏺ AnvimAgent2"],
+    ["⏺ AnvimAgent3"],
+  ]);
+  await ui.waitFor(() => ui.exec_lua<boolean>(`return #require("anvim.agents").get("adc8e994a94d15f64").files == 1`));
+
+  // alpha's agent reads gamma.js: its place moves there, and alpha.js keeps a • for its edit.
+  await dispatch({
+    type: "tool_use",
+    id: "read_gamma",
+    name: "Read",
+    input: { file_path: `${dir}/gamma.js` },
+    parent_id: "toolu_01G1zf59XnZb8KKDJharP7iV",
+    agent_id: "adc8e994a94d15f64",
+  });
+  await ui.waitFor(() => groups(gamma, tree.width, hl).length === 2);
+  expect(groups(alpha, tree.width, hl)).toEqual(["• AnvimAgent1"]);
+  expect(groups(gamma, tree.width, hl)).toEqual(["⏺ AnvimAgent1", "⏺ AnvimAgent3"]);
+  expect(cells(ui.lines()[gamma]!, tree.width - 3, 3)).toBe("⏺⏺ ");
+
+  // A move within gamma.js leaves the tree's rows as they are.
+  const treeRows = (lines: string[]) =>
+    lines
+      .slice(tree.row, tree.row + tree.height)
+      .map((line) => cells(line, 0, tree.width))
+      .join("\n");
+  const before = treeRows(ui.lines());
+  const within = ui.mark();
+  await dispatch({
+    type: "tool_use",
+    id: "read_gamma_2",
+    name: "Read",
+    input: { file_path: `${dir}/gamma.js`, offset: 2 },
+    parent_id: "toolu_01G1zf59XnZb8KKDJharP7iV",
+    agent_id: "adc8e994a94d15f64",
+  });
+  await Bun.sleep(100);
+  await ui.drain();
+  expect(ui.frames(within).filter((f) => treeRows(f.lines) !== before).length).toBe(0);
+
+  await dispatch({ type: "agent_end", agent_id: "adc8e994a94d15f64", status: "completed", summary: "done" });
+  await ui.waitFor(() => groups(gamma, tree.width, hl).length === 1);
+  expect([groups(alpha, tree.width, hl), groups(beta, tree.width, hl), groups(gamma, tree.width, hl)]).toEqual([
+    [],
+    ["⏺ AnvimAgent2"],
+    ["⏺ AnvimAgent3"],
+  ]);
+  await dispatch(turnEnd);
+  await ui.waitFor(() => groups(beta, tree.width, hl).length + groups(gamma, tree.width, hl).length === 0);
 });

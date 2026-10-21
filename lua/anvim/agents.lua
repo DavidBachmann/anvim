@@ -1,7 +1,5 @@
 -- The session's subagents, by agent_id. Running agents get slots 1 to 4, the
 -- lowest free slot first, and each slot has a color. The main agent is slot 0.
-local bashread = require("anvim.bashread")
-
 local M = {}
 
 local api = vim.api
@@ -18,7 +16,6 @@ M.slots = 4
 ---@field background boolean
 ---@field depth integer
 ---@field parent string? The agent_id of the subagent that started it.
----@field place { path: string, line: integer }? Where it last read or wrote.
 ---@field files string[] The files it edited.
 ---@field tools integer Its tool calls.
 ---@field tokens integer?
@@ -43,10 +40,11 @@ local main = { slot = 0, files = {} }
 local edits = {}
 local order = 0
 
--- The files that agents write to changed.
-local function files_changed()
+-- The files that agents write to, or the files of their places, changed.
+function M.files_changed()
   api.nvim_exec_autocmds("User", { pattern = "AnvimAgentFiles", modeline = false })
 end
+local files_changed = M.files_changed
 
 -- Agents started, ended or changed slots, or the focus moved.
 function M.changed()
@@ -266,12 +264,7 @@ function M.tool_use(ev)
     return
   end
   agent.tools = agent.tools + 1
-  local reads = bashread.reads(ev)
-  local read = reads[#reads]
-  if read then
-    agent.place = { path = read.path, line = read.first or 1 }
-  elseif type(path) == "string" and edit_keys[ev.name] then
-    agent.place = { path = path, line = ev.name == "Edit" and M.edit_line(path, input) or 1 }
+  if edit_keys[ev.name] then
     start_edit(ev.id, agent, path)
   end
 end

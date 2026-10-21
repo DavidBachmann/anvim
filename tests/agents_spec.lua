@@ -8,6 +8,12 @@ local transcript = require("anvim.transcript")
 
 local api = vim.api
 
+-- The path and line of an agent's place, as follow mode keeps it.
+local function place_of(id)
+  local p = require("anvim.follow").places()[id]
+  return p and { p.path, p.line }
+end
+
 -- The events of a recorded turn, with the paths in the temp project. The
 -- events that need a real sidecar stay out.
 local function recording()
@@ -88,6 +94,21 @@ local function fresh()
   transcript.clear()
 end
 
+-- The tree's marks on each of the replay's files, as "slot:kind".
+local function tree_marks()
+  local ret = {}
+  for _, name in ipairs({ "alpha", "beta", "gamma" }) do
+    local list = require("anvim.tree").marks({ file = helpers.tmp .. "/" .. name .. ".js" }) or {}
+    ret[name] = table.concat(
+      vim.tbl_map(function(mark)
+        return ("%d:%s"):format(mark.slot, mark.kind)
+      end, list),
+      " "
+    )
+  end
+  return ret
+end
+
 describe("agents", function()
   local column_width ---@type integer?
   -- State that a case changes, to restore even when it fails.
@@ -132,14 +153,15 @@ describe("agents", function()
     assert.are.equal(a, agents.by_tool("toolu_01G1zf59XnZb8KKDJharP7iV"))
     assert.are.same("Edit alpha.js header", a.description)
     assert.are.same("general-purpose", a.type)
-    assert.are.same({ path = helpers.tmp .. "/alpha.js", line = 1 }, a.place)
+    assert.are.same({ helpers.tmp .. "/alpha.js", 1 }, place_of(a.id))
     assert.are.same({ helpers.tmp .. "/alpha.js" }, a.files)
     assert.are.same(2, a.tools)
     assert.are.same("Editing alpha.js", a.activity)
     -- beta's edit is still on its way.
     local b = agents.get(beta)
-    assert.are.same({ path = helpers.tmp .. "/beta.js", line = 1 }, b.place)
+    assert.are.same({ helpers.tmp .. "/beta.js", 1 }, place_of(b.id))
     assert.are.same({}, b.files)
+    assert.are.same({ alpha = "1:place", beta = "2:place", gamma = "3:place" }, tree_marks())
 
     assert.are.same("AnvimAgent1", bullet("^⏺ Agent%(Edit alpha%.js header%)"))
     assert.are.same("AnvimAgent2", bullet("^⏺ Agent%(Edit beta%.js header%)"))
@@ -150,12 +172,14 @@ describe("agents", function()
 
     sidecar.dispatch(events[i])
     assert.are.same({ { beta, 2 }, { gamma, 3 } }, slots(), "beta and gamma keep their slots")
+    assert.are.same({ alpha = "", beta = "2:place", gamma = "3:place" }, tree_marks())
     assert.are.same("AnvimToolPending", bullet("^⏺ Agent%(Edit alpha%.js header%)"))
     assert.are.same({ "AnvimAgent2", "AnvimAgent3" }, footer())
     for j = i + 1, #events do
       sidecar.dispatch(events[j])
     end
     assert.are.same({}, slots())
+    assert.are.same({ alpha = "", beta = "", gamma = "" }, tree_marks())
     assert.are.same("completed", agents.get(gamma).status)
     assert(agents.get(gamma).summary:find("gamma.js", 1, true), agents.get(gamma).summary)
     for _, name in ipairs({ "alpha", "beta", "gamma" }) do
@@ -295,21 +319,21 @@ describe("agents", function()
       })
     end
     use("p1", "Read", { file_path = file, offset = 2 })
-    assert.are.same({ path = file, line = 2 }, agents.get("p").place)
+    assert.are.same({ file, 2 }, place_of("p"))
     use("p2", "Edit", { file_path = file, old_string = "local c = 3\n", new_string = "local c = 4\n" })
-    assert.are.same({ path = file, line = 3 }, agents.get("p").place)
+    assert.are.same({ file, 3 }, place_of("p"))
     result("p2", true)
     assert.are.same({}, agents.get("p").files, "a failed edit edits nothing")
     -- The edit may have changed the file already.
     use("p3", "Edit", { file_path = file, old_string = "local x = 9", new_string = "return a" })
-    assert.are.same({ path = file, line = 4 }, agents.get("p").place)
+    assert.are.same({ file, 4 }, place_of("p"))
     result("p3", false)
     local other = helpers.tmp .. "/new.lua"
     use("p4", "Write", { file_path = other, content = "x" })
     result("p4", false)
     use("p5", "Edit", { file_path = file, old_string = "local a", new_string = "local A" })
     result("p5", false)
-    assert.are.same({ path = file, line = 1 }, agents.get("p").place)
+    assert.are.same({ file, 1 }, place_of("p"))
     assert.are.same({ file, other }, agents.get("p").files)
     assert.are.same(5, agents.get("p").tools)
   end)
