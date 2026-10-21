@@ -52,6 +52,46 @@ return {
       for i, component in ipairs(components) do
         table.insert(opts.sections.lualine_x, i, component)
       end
+      -- Follow mode is a mode of its own, in Claude's color. While the user
+      -- types in the prompt, it still reads FOLLOW, and the cursor shows insert
+      -- mode. The refresh is forced, so the block changes in the frame of the
+      -- mode change, as the line numbers do.
+      -- From a float, lualine writes only the float's statusline, and the
+      -- other windows keep the old block. So the next split that the cursor
+      -- enters gets a forced refresh too.
+      local stale = false
+      local function refresh()
+        stale = vim.api.nvim_win_get_config(0).relative ~= ""
+        require("lualine").refresh({ force = true, place = { "statusline" } })
+      end
+      local group = vim.api.nvim_create_augroup("anvim.lualine.mode", {})
+      vim.api.nvim_create_autocmd("User", { group = group, pattern = "AnvimMode", callback = refresh })
+      vim.api.nvim_create_autocmd("WinEnter", {
+        group = group,
+        callback = function()
+          if stale and vim.api.nvim_win_get_config(0).relative == "" then
+            refresh()
+          end
+        end,
+      })
+      -- lualine drops the section separator after a component with its own
+      -- background. A component's own separator stays, in its color.
+      local seps = opts.options and opts.options.section_separators
+        or require("lualine.config").get_config().options.section_separators
+      for i, component in ipairs(opts.sections.lualine_a) do
+        if component == "mode" or (type(component) == "table" and component[1] == "mode") then
+          opts.sections.lualine_a[i] = vim.tbl_extend("force", type(component) == "table" and component or {}, {
+            "mode",
+            separator = { right = type(seps) == "table" and seps.left or seps },
+            fmt = function(text)
+              return follow.mode() == "follow" and "FOLLOW" or text
+            end,
+            color = function()
+              return follow.mode() == "follow" and { bg = Snacks.util.color("AnvimClaude"), gui = "bold" } or nil
+            end,
+          })
+        end
+      end
       table.insert(opts.sections.lualine_c, {
         function()
           return "(writing)"

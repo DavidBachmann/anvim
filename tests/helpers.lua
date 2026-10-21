@@ -31,6 +31,7 @@ function M.start()
   vim.cmd.cd(M.tmp)
   -- As in anvim's options. Without a UI, the mode message would go to the test output.
   vim.o.showmode = false
+  vim.o.number, vim.o.relativenumber, vim.o.signcolumn = true, true, "yes"
   require("anvim.history").dir = M.tmp .. "/history"
   local anvim = require("anvim")
   anvim.setup({

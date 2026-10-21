@@ -12,8 +12,7 @@ local M = {}
 
 local api = vim.api
 local NAME = "anvim://compose"
-local CODE_OPTIONS =
-  { "number", "relativenumber", "statuscolumn", "signcolumn", "cursorline", "conceallevel", "concealcursor" }
+local CODE_OPTIONS = { "cursorline", "conceallevel", "concealcursor" }
 
 ---@type snacks.win?
 local win
@@ -100,10 +99,10 @@ function M.close()
 end
 
 -- A float copies the options of the window it opens from, here the prompt.
--- So it takes the numbers and columns of the code window instead, and wraps
--- prose. As in the prompt, a reference ends in a space, which 'list' would
--- mark. With 'winfixbuf', <C-o> and :edit cannot put another buffer in the
--- window.
+-- So it takes the gutter that the code window has in review mode, and wraps
+-- prose. As in the prompt, a reference ends in a
+-- space, which 'list' would mark. With 'winfixbuf', <C-o> and :edit cannot
+-- put another buffer in the window.
 local function window_options()
   local wo = {
     winbar = "",
@@ -118,7 +117,8 @@ local function window_options()
   for _, name in ipairs(CODE_OPTIONS) do
     wo[name] = vim.wo[code][name]
   end
-  return wo
+  -- In follow mode, which the compose window is in, the code window has another.
+  return vim.tbl_extend("force", wo, require("anvim.follow").review_options())
 end
 
 local function footer()

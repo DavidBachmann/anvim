@@ -75,10 +75,14 @@ local function wait(ms, code, msg)
   )
 end
 
-local function start()
-  if chan then
-    return
-  end
+-- Starts a child with its dirs under `dir`, and connects `chan` to it.
+-- With `personal`, its config dir holds a personal spec with those lines, as
+-- in ~/.config/anvim/lua/plugins.
+---@param dir string
+---@param personal string[]?
+---@param errors string[] Collects the child's stderr.
+---@return integer job
+local function spawn(dir, personal, errors)
   local env = vim.fn.environ()
   for key in pairs(env) do
     -- Without the cmux variables, the child posts no notifications. A shell
@@ -97,15 +101,20 @@ local function start()
   end
   env.NVIM_APPNAME = "anvim"
   for _, name in ipairs({ "config", "data", "state", "cache" }) do
-    env[("XDG_%s_HOME"):format(name:upper())] = xdg .. "/" .. name
+    env[("XDG_%s_HOME"):format(name:upper())] = dir .. "/" .. name
+  end
+  if personal then
+    local plugins = dir .. "/config/anvim/lua/plugins"
+    vim.fn.mkdir(plugins, "p")
+    vim.fn.writefile(personal, plugins .. "/personal.lua")
   end
   env.ANVIM_INSTALL_DIR = install
   env.ANVIM_NO_INSTALL = "1"
   env.ANVIM_REPLAY = helpers.recording
   env.ANVIM_REPLAY_SPEED = "50"
   env.ANVIM_MODEL = "haiku"
-  local addr = helpers.tmp .. "/child.sock"
-  job = vim.fn.jobstart({
+  local addr = dir .. ".sock"
+  local id = vim.fn.jobstart({
     vim.v.progpath,
     "--headless",
     "--listen",
@@ -124,7 +133,7 @@ local function start()
     on_stderr = function(_, data)
       for _, line in ipairs(data) do
         if line ~= "" then
-          stderr[#stderr + 1] = line
+          errors[#errors + 1] = line
         end
       end
     end,
@@ -142,6 +151,15 @@ local function start()
   wait(5000, "return vim.g.did_very_lazy == true", "VeryLazy did not run")
   wait(5000, [[return require("anvim.state").process == "ready"]], "sidecar not ready")
   wait(2000, [[return vim.api.nvim_get_current_win() == require("anvim.layout").wins.input]], "input not focused")
+  return id
+end
+
+-- The child that most cases share. It has no personal spec.
+local function start()
+  if chan then
+    return
+  end
+  job = spawn(xdg, nil, stderr)
   tree_width = lua([[
     for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
       local snacks_win = vim.w[win].snacks_win
@@ -486,6 +504,83 @@ describe("stack", function()
     wait_footer({ "⏺ ", "matchparen.lua:1 +1" }, "the footer at 200x48")
     assert(not statusline():find("matchparen.lua:1", 1, true), statusline())
     lua([[require("anvim.layout").focus_input()]])
+  end)
+
+  it("shows follow mode in the mode block, and line numbers only in review mode, as the config sets them", function()
+    start()
+    -- The mode block's text and color, the section separator after it, and
+    -- the code window's numbers.
+    local function block()
+      return lua([[
+        require("lualine").refresh({ force = true, place = { "statusline" } })
+        local win = vim.api.nvim_get_current_win()
+        local code = require("anvim.layout").wins.code
+        local stl = vim.api.nvim_eval_statusline(vim.wo[win].statusline, { winid = win, highlights = true })
+        local text = stl.str:match("^ (%u+) ")
+        local function at(byte)
+          local group
+          for _, h in ipairs(stl.highlights) do
+            if h.start <= byte then
+              group = h.group
+            end
+          end
+          return vim.api.nvim_get_hl(0, { name = group, link = false })
+        end
+        local sep = #text + 2
+        local left = require("lualine").get_config().options.section_separators.left
+        return {
+          text = text,
+          bg = at(0).bg,
+          sep_fg = at(sep).fg,
+          sep = stl.str:sub(sep + 1, sep + #left) == left,
+          number = vim.wo[code].number,
+          relativenumber = vim.wo[code].relativenumber,
+          statuscolumn = vim.wo[code].statuscolumn,
+          signcolumn = vim.wo[code].signcolumn,
+          mode = require("anvim.follow").mode(),
+        }
+      ]])
+    end
+    ---@param relativenumber boolean What the config sets.
+    local function check(relativenumber)
+      local claude = lua([[return vim.api.nvim_get_hl(0, { name = "AnvimClaude", link = false }).fg]])
+      lua([[require("anvim.layout").focus_input({ insert = false })]])
+      local got = block()
+      assert.are.same(
+        { "FOLLOW", "follow", false, false, "", "yes:2" },
+        { got.text, got.mode, got.number, got.relativenumber, got.statuscolumn, got.signcolumn }
+      )
+      assert.are.same(claude, got.bg, "the block is not in Claude's color")
+      assert.is_true(got.sep, "no section separator after the block")
+      assert.are.same(claude, got.sep_fg, "the separator after the block has another color")
+      keys("i")
+      wait(2000, [[return vim.api.nvim_get_mode().mode == "i"]], "not in insert mode")
+      assert.are.same("FOLLOW", block().text, "typing in the prompt left follow mode")
+      keys("<Esc>")
+      lua([[vim.api.nvim_set_current_win(require("anvim.layout").wins.code)]])
+      got = block()
+      assert.are.same(
+        { "NORMAL", "review", true, relativenumber, "yes" },
+        { got.text, got.mode, got.number, got.relativenumber, got.signcolumn }
+      )
+      assert(got.statuscolumn:find("snacks.statuscolumn", 1, true), got.statuscolumn)
+      assert.are_not.same(claude, got.bg)
+      assert.are_not.same(claude, got.sep_fg)
+      lua([[require("anvim.layout").focus_input({ insert = false })]])
+      assert.are.same("FOLLOW", block().text)
+    end
+    check(true)
+    -- A personal spec turns off 'relativenumber', in a child of its own.
+    local shared, errors = chan, {}
+    local id = spawn(helpers.tmp .. "/xdg-personal", { "vim.opt.relativenumber = false", "return {}" }, errors)
+    local ok, err = pcall(check, false)
+    pcall(vim.rpcnotify, chan, "nvim_command", "qa!")
+    if vim.fn.jobwait({ id }, 5000)[1] == -1 then
+      vim.fn.jobstop(id)
+    end
+    chan = shared
+    assert(ok, err)
+    assert.are.same({}, errors)
   end)
 
   it("focuses an agent with <leader>c1 and the picker, and the footer names it in its color", function()
@@ -1313,6 +1408,8 @@ describe("stack", function()
       wait_where({ win = "snacks_picker_list", mode = "n" }, "<leader>e from " .. from)
       vim.wait(200)
       assert(lua([[return Snacks.picker.get({ source = "explorer" })[1] ~= nil]]), "<leader>e closed the explorer")
+      -- The list is a float on the explorer's split, not on top of the prompt.
+      assert.are.same("review", lua([[return require("anvim.follow").mode()]]), "the explorer from " .. from)
     end
     local maps = lua([[
       local maps = {}

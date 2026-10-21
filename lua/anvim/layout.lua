@@ -108,6 +108,8 @@ end
 local function set_code_win(win)
   vim.w[win].snacks_main = true
   M.wins.code = win
+  -- A new window copies the line numbers of the window it opened from.
+  require("anvim.follow").apply(win)
   return win
 end
 

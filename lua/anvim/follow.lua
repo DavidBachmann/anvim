@@ -75,6 +75,97 @@ function M.shows(id)
   return id == M.focus and M.following()
 end
 
+---@alias anvim.Mode 'follow'|'review'
+
+-- Follow mode is a mode of its own, next to Vim's: the cursor is in the
+-- prompt or the compose window, and no selection is pinned. Anywhere else,
+-- the user reviews code.
+---@type anvim.Mode
+local mode = "review"
+-- Whether the last window that set the mode was the prompt.
+local in_prompt = false
+
+-- The code window's gutter in follow mode. The number column grows at 10, 100
+-- and 1000 lines, and would push a growing Write preview to the right. Two
+-- sign columns of their own keep the text where it is, without the
+-- statuscolumn, whose plugin can keep the old width for a frame.
+local FOLLOW = { number = false, relativenumber = false, statuscolumn = "", signcolumn = "yes:2" }
+
+---@type { number: boolean, relativenumber: boolean, statuscolumn: string, signcolumn: string }?
+local review
+
+---@return anvim.Mode
+function M.mode()
+  return mode
+end
+
+-- The code window's gutter in review mode, as the config sets it. It is read
+-- once, at start, from the code window's global values.
+---@return { number: boolean, relativenumber: boolean, statuscolumn: string, signcolumn: string }
+function M.review_options()
+  if not review then
+    review = api.nvim_win_call(layout.code_win(), function()
+      local ret = {}
+      for name in pairs(FOLLOW) do
+        ret[name] = vim.go[name]
+      end
+      return ret
+    end)
+  end
+  return review
+end
+
+-- Sets the gutter of the mode. These set the window's global values too, so
+-- a buffer that no window has shown gets them. Any other buffer brings back
+-- the options of its last window, so BufWinEnter applies them again.
+---@param win integer?
+function M.apply(win)
+  if not (win and api.nvim_win_is_valid(win)) then
+    return
+  end
+  for name, value in pairs(mode == "follow" and FOLLOW or M.review_options()) do
+    if vim.wo[win][name] ~= value then
+      vim.wo[win][name] = value
+    end
+  end
+end
+
+-- A float that opened on top, such as a picker, the key view or
+-- vim.ui.select, keeps the mode of the window it opened from. A float that
+-- sits on a split belongs to that split, as the explorer's list does. So
+-- follow the `relative = "win"` anchors down to the window under them.
+local function on_top(win)
+  for _ = 1, 10 do
+    local config = api.nvim_win_get_config(win)
+    if config.relative == "" then
+      return false
+    elseif config.relative ~= "win" or not (config.win and api.nvim_win_is_valid(config.win)) then
+      return true
+    end
+    win = config.win
+  end
+  return true
+end
+
+-- Computes the mode. When it changed, sets the code window's gutter and fires
+-- `User AnvimMode`. It never redraws, so window events can call it.
+function M.update()
+  local win = api.nvim_get_current_win()
+  -- A split that shows the prompt's buffer is the prompt for a moment. snacks
+  -- makes the explorer's split so, inside nvim_win_call(), and the cursor
+  -- goes back to the prompt without autocmds.
+  local prompt = M.enabled() or vim.b[api.nvim_win_get_buf(win)].anvim_input == true
+  if prompt or not on_top(win) then
+    in_prompt = prompt
+  end
+  local new = in_prompt and not M.paused() and "follow" or "review"
+  if new ~= mode then
+    mode = new
+    M.apply(layout.wins.code)
+    api.nvim_exec_autocmds("User", { pattern = "AnvimMode", modeline = false })
+  end
+end
+
 -- The focused agent's place.
 ---@return anvim.Place?
 function M.place()
@@ -118,6 +209,8 @@ function M.show(buf, line, col)
   if api.nvim_win_get_buf(win) ~= buf then
     vim.bo[buf].buflisted = vim.bo[buf].buftype == ""
     api.nvim_win_set_buf(win, buf)
+    -- From a non-nested autocmd, the new buffer gets no BufWinEnter.
+    M.apply(win)
     local name = vim.b[buf].anvim_preview or api.nvim_buf_get_name(buf)
     if name ~= "" then
       reveal_in_tree(name)
@@ -614,9 +707,20 @@ function M.attach(sidecar)
   api.nvim_create_autocmd("WinEnter", {
     group = group,
     callback = function()
+      M.update()
       vim.schedule(M.resume)
     end,
   })
+  api.nvim_create_autocmd("BufWinEnter", {
+    group = group,
+    callback = function()
+      M.apply(layout.wins.code)
+    end,
+  })
+  -- Other moves of the cursor without autocmds come before the redraw too.
+  api.nvim_create_autocmd("SafeState", { group = group, callback = M.update })
+  M.review_options()
+  M.update()
   api.nvim_create_autocmd("User", { group = group, pattern = "AnvimAgents", callback = on_agents })
   local keys = require("anvim.keys")
   keys.set("claude", "n", "<leader>j", M.jump)

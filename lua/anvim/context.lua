@@ -75,10 +75,12 @@ local function code()
   end
 end
 
--- The footer shows the change at once, with whether follow mode waits for the
--- pin. The catch-up redraws the statusline, and a :redrawstatus inside a
--- window command would show a frame too early, so it waits for the event loop.
+-- The footer and the mode show the change at once, with whether follow mode
+-- waits for the pin. The catch-up redraws the statusline, and a :redrawstatus
+-- inside a window command would show a frame too early, so it waits for the
+-- event loop.
 local function changed()
+  require("anvim.follow").update()
   require("anvim.input").render()
   vim.schedule(function()
     require("anvim.follow").resume()
@@ -291,6 +293,7 @@ function M.attach()
       if sel and ev.buf == sel.buf then
         drop()
         vim.schedule(function()
+          require("anvim.follow").update()
           require("anvim.follow").resume()
         end)
       end

@@ -1,0 +1,45 @@
+1792449658514 {"type":"init","session_id":"00000000-0000-0000-0000-000000000000","model":"claude-opus-5-5","cwd":"/ANVIM_FIXTURE","permission_mode":"bypassPermissions","version":"2.1.304","slash_commands":[]}
+1792449658516 {"type":"status","status":"requesting"}
+1792449660511 {"type":"turn_start"}
+1792449662511 {"type":"tool_start","id":"toolu_01WriteMadeLuaFixture000","name":"Write"}
+1792449662511 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"file_path","phase":"start"}
+1792449662551 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"file_path","phase":"end","value":"/ANVIM_FIXTURE/made.lua"}
+1792449662552 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"start"}
+1792449662602 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"-- Counts the wor"}
+1792449662652 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"ds in a buffer.\nlocal M = {}\n\nl"}
+1792449662702 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"ocal api = v"}
+1792449662752 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"im.api\n\n---@param buf integer\n---@retu"}
+1792449662802 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"rn table<string, integer"}
+1792449662852 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":">\nfunction"}
+1792449662902 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":" M.count(buf)\n  local counts "}
+1792449662952 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"= {}\n  for _, line in ipairs(api.nv"}
+1792449663002 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"im_buf_get_line"}
+1792449663052 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"s(buf, 0, -1, false)) do\n    for word in"}
+1792449663102 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":" line:gmatch(\"%w+\") do"}
+1792449663152 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"\n      counts"}
+1792449663202 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"[word] = (counts[word] or 0) + 1\n"}
+1792449663252 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"    end\n  end\n  return coun"}
+1792449663302 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"ts\nend\n\n---@param c"}
+1792449663352 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"ounts table<string, integer>\n---@ret"}
+1792449663402 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"urn string["}
+1792449663452 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"]\nfunction M.top(counts, n)\n  "}
+1792449663502 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"local words = vim.tbl_key"}
+1792449663552 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"s(counts)\n  ta"}
+1792449663602 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"ble.sort(words, function(a, b)\n    retu"}
+1792449663652 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"rn counts[a] > counts"}
+1792449663702 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"[b]\n  end)\n  ret"}
+1792449663752 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"urn vim.list_slice(words, 1, n)\nen"}
+1792449663802 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"delta","text":"d\n\nreturn M\n"}
+1792449663803 {"type":"tool_field","id":"toolu_01WriteMadeLuaFixture000","name":"Write","key":"content","phase":"end","value":"-- Counts the words in a buffer.\nlocal M = {}\n\nlocal api = vim.api\n\n---@param buf integer\n---@return table<string, integer>\nfunction M.count(buf)\n  local counts = {}\n  for _, line in ipairs(api.nvim_buf_get_lines(buf, 0, -1, false)) do\n    for word in line:gmatch(\"%w+\") do\n      counts[word] = (counts[word] or 0) + 1\n    end\n  end\n  return counts\nend\n\n---@param counts table<string, integer>\n---@return string[]\nfunction M.top(counts, n)\n  local words = vim.tbl_keys(counts)\n  table.sort(words, function(a, b)\n    return counts[a] > counts[b]\n  end)\n  return vim.list_slice(words, 1, n)\nend\n\nreturn M\n"}
+1792449663803 {"type":"tool_use","id":"toolu_01WriteMadeLuaFixture000","name":"Write","input":{"file_path":"/ANVIM_FIXTURE/made.lua","content":"-- Counts the words in a buffer.\nlocal M = {}\n\nlocal api = vim.api\n\n---@param buf integer\n---@return table<string, integer>\nfunction M.count(buf)\n  local counts = {}\n  for _, line in ipairs(api.nvim_buf_get_lines(buf, 0, -1, false)) do\n    for word in line:gmatch(\"%w+\") do\n      counts[word] = (counts[word] or 0) + 1\n    end\n  end\n  return counts\nend\n\n---@param counts table<string, integer>\n---@return string[]\nfunction M.top(counts, n)\n  local words = vim.tbl_keys(counts)\n  table.sort(words, function(a, b)\n    return counts[a] > counts[b]\n  end)\n  return vim.list_slice(words, 1, n)\nend\n\nreturn M\n"},"parent_id":null}
+1792449663803 {"type":"tool_input_end","id":"toolu_01WriteMadeLuaFixture000"}
+1792449663805 {"type":"await_preview","req":1,"tool_use_id":"toolu_01WriteMadeLuaFixture000"}
+1792449666803 {"type":"tool_result","id":"toolu_01WriteMadeLuaFixture000","is_error":false,"text":"File created successfully at: /ANVIM_FIXTURE/made.lua","result":{"type":"create","filePath":"/ANVIM_FIXTURE/made.lua","content":"-- Counts the words in a buffer.\nlocal M = {}\n\nlocal api = vim.api\n\n---@param buf integer\n---@return table<string, integer>\nfunction M.count(buf)\n  local counts = {}\n  for _, line in ipairs(api.nvim_buf_get_lines(buf, 0, -1, false)) do\n    for word in line:gmatch(\"%w+\") do\n      counts[word] = (counts[word] or 0) + 1\n    end\n  end\n  return counts\nend\n\n---@param counts table<string, integer>\n---@return string[]\nfunction M.top(counts, n)\n  local words = vim.tbl_keys(counts)\n  table.sort(words, function(a, b)\n    return counts[a] > counts[b]\n  end)\n  return vim.list_slice(words, 1, n)\nend\n\nreturn M\n","structuredPatch":[],"originalFile":null}}
+1792449666806 {"type":"status","status":"requesting"}
+1792449668303 {"type":"text_start"}
+1792449668304 {"type":"text_delta","text":"I wrote `made.lua`"}
+1792449668305 {"type":"text_delta","text":": it counts the words"}
+1792449668306 {"type":"text_delta","text":" in a buffer and lists"}
+1792449668307 {"type":"text_delta","text":" the most common ones."}
+1792449668357 {"type":"text_stop"}
+1792449668362 {"type":"turn_end","subtype":"success","is_error":false,"duration_ms":7851,"cost_usd":0.01,"num_turns":2}
