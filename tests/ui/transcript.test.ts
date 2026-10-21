@@ -22,8 +22,7 @@ async function tasksSession() {
 
 const send = async (text: string) => {
   await anvim!.ui.input(text);
-  await anvim!.ui.exec_lua(`require("blink.cmp").hide()`);
-  await anvim!.ui.waitFor(() => anvim!.ui.exec_lua(`return not require("blink.cmp").is_menu_visible()`));
+  await anvim!.hideMenu();
   await anvim!.ui.input("<CR>");
 };
 

@@ -8,6 +8,8 @@ local opt = vim.opt
 opt.autowrite = true
 -- Yanks go to the system clipboard, except over SSH, as in LazyVim.
 opt.clipboard = vim.env.SSH_CONNECTION and "" or "unnamedplus"
+-- Icons first in the completion menu, as in the explorer.
+opt.completeitemalign = "kind,abbr,menu"
 opt.completeopt = "menu,menuone,noselect"
 -- Markdown in the code window keeps its backticks and stars. The transcript
 -- sets its own.
@@ -38,6 +40,8 @@ opt.list = true
 opt.mouse = "a"
 opt.number = true
 opt.pumblend = 10
+-- The menu only: Neovim has no option for a border on its info popup.
+opt.pumborder = "rounded"
 opt.pumheight = 10
 opt.relativenumber = true
 opt.ruler = false
@@ -64,7 +68,10 @@ opt.undofile = true
 opt.undolevels = 10000
 opt.updatetime = 200
 opt.virtualedit = "block"
-opt.wildmode = "longest:full,full"
+-- The command line shows its menu as the user types (autocmds.lua), with no
+-- item selected, so that Enter runs what was typed.
+opt.wildmode = "noselect:lastused,full"
+opt.wildoptions = "pum,fuzzy"
 opt.winminwidth = 5
 opt.wrap = false
 

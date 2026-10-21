@@ -24,6 +24,16 @@ vim.api.nvim_create_autocmd("TextYankPost", {
   end,
 })
 
+-- The command line's completion menu shows as the user types a command, but
+-- not a search.
+vim.api.nvim_create_autocmd("CmdlineChanged", {
+  group = augroup("cmdline_complete"),
+  pattern = ":",
+  callback = function()
+    vim.fn.wildtrigger()
+  end,
+})
+
 vim.api.nvim_create_autocmd("FileType", {
   group = augroup("close_with_q"),
   pattern = { "checkhealth", "gitsigns-blame", "help", "lspinfo", "notify", "qf", "startuptime" },

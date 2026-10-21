@@ -368,7 +368,7 @@ describe("sessions", function()
     assert.are.same("[model]", completion.commands[1].argument_hint)
     assert.are.same("[level]", completion.commands[3].argument_hint)
     -- Claude Code's hint offers words that do more than set a level.
-    local menu = vim.inspect(completion.command_items(0, 1))
+    local menu = vim.inspect(completion.command_items(""))
     assert.is_nil(menu:find("ultracode", 1, true), menu)
     completion.commands = before
   end)

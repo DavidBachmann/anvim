@@ -32,9 +32,7 @@ async function promptText() {
   return cells(anvim!.ui.lines()[input.row + 1]!, input.col + 2, input.width - 2).trimEnd();
 }
 
-// blink.cmp may show its menu while the user types prose, and <CR> would take
-// an item there.
-const hideMenu = () => anvim!.ui.exec_lua(`require("blink.cmp").hide()`);
+const hideMenu = () => anvim!.hideMenu();
 
 test("a replayed request: prose, digits and enter typed in insert mode never answer, and esc, a pause and 1 allow", async () => {
   // The recording ends with the request, so the replay waits for the answer.
@@ -169,7 +167,6 @@ test("a no with a reason after a click away leaves the prompt where typing stopp
   await anvim.waitWhere("input", "i");
   await anvim.type("no");
   await hideMenu();
-  await ui.waitFor(() => ui.exec_lua<boolean>(`return not require("blink.cmp").is_menu_visible()`));
   // The guard: a pause after the last typed character.
   await Bun.sleep(500);
   await ui.input("<CR>");

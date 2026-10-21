@@ -62,9 +62,24 @@ function M.buf()
       end
     end
   end
-  map({ "i", "n" }, "<CR>", or_answer("<CR>", M.submit))
-  map("i", "<S-CR>", "<CR>")
-  map("i", "<M-CR>", "<CR>")
+  map("n", "<CR>", M.enter)
+  -- With the completion menu open, <CR> takes its highlighted item. A slash
+  -- command that needs no argument then goes out, as in Claude Code. A menu
+  -- with no highlighted item closes, and the prompt goes out.
+  map("i", "<CR>", function()
+    local accept, send = require("anvim.completion").enter()
+    local enter = "<Cmd>lua require('anvim.input').enter()<CR>"
+    if accept then
+      return "<C-y>" .. (send and enter or "")
+    end
+    return (vim.fn.pumvisible() == 1 and "<C-e>" or "") .. enter
+  end, { expr = true })
+  -- Neovim's own <CR> takes the menu's item, so the menu closes first.
+  local function newline()
+    return vim.fn.pumvisible() == 1 and "<C-e><CR>" or "<CR>"
+  end
+  map("i", "<S-CR>", newline, { expr = true })
+  map("i", "<M-CR>", newline, { expr = true })
   map("n", "<Esc>", or_answer("<Esc>", M.interrupt))
   map({ "i", "n" }, "<C-c>", M.interrupt)
   map({ "i", "n" }, "<S-Tab>", M.cycle_mode)
@@ -228,6 +243,13 @@ function M.shortcuts()
   end
   local lines = api.nvim_buf_get_lines(bufnr, 0, 2, false)
   return #lines == 1 and lines[1] == ""
+end
+
+-- <CR> answers a waiting permission request, or sends the prompt.
+function M.enter()
+  if not require("anvim.permission").key("<CR>") then
+    M.submit()
+  end
 end
 
 function M.submit()

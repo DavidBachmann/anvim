@@ -222,6 +222,27 @@ local function keys(k)
   lua([[vim.api.nvim_feedkeys(vim.keycode(...), "t", false)]], k)
 end
 
+-- Waits until the completion menu shows with its first item highlighted, and
+-- returns the item.
+local function menu_first(msg)
+  wait(
+    3000,
+    [[return vim.fn.pumvisible() == 1 and vim.fn.complete_info({ "selected" }).selected == 0]],
+    msg or "no menu with its first item highlighted"
+  )
+  return lua([[return vim.fn.complete_info({ "completed" }).completed]])
+end
+
+-- Closes the completion menu, which would take <CR>.
+local function hide_menu()
+  lua([[
+    if vim.fn.pumvisible() == 1 then
+      vim.api.nvim_feedkeys(vim.keycode("<C-e>"), "n", false)
+    end
+  ]])
+  wait(2000, [[return vim.fn.pumvisible() == 0]], "the menu did not close")
+end
+
 -- The anvim window with the cursor, or the filetype of another window, and the mode.
 local function where()
   return lua([[
@@ -558,6 +579,8 @@ describe("stack", function()
       wait(2000, [[return vim.api.nvim_get_mode().mode == "i"]], "not in insert mode")
       assert.are.same("FOLLOW", block().text, "typing in the prompt left follow mode")
       keys("<Esc>")
+      -- The next request can come before the typed key.
+      wait(2000, [[return vim.api.nvim_get_mode().mode == "n"]], "<Esc> did not end insert mode")
       lua([[vim.api.nvim_set_current_win(require("anvim.layout").wins.code)]])
       got = block()
       assert.are.same(
@@ -909,13 +932,13 @@ describe("stack", function()
     wait(2000, [[return vim.api.nvim_get_mode().mode == "n"]])
     lua([[vim.api.nvim_input("A")]])
     wait(2000, [[return vim.api.nvim_get_mode().mode == "i"]], "not in insert mode")
-    lua([[require("blink.cmp").show({ providers = { "buffer" } })]])
-    wait(3000, [[return require("blink.cmp").is_menu_visible()]], "the menu did not open")
+    keys("<C-Space>")
+    menu_first("<C-Space> opened no menu")
     lua([[vim.api.nvim_input("<CR>")]])
     wait(2000, [[return vim.api.nvim_get_current_line():find("^matchparen") ~= nil]], "the item was not accepted")
     local word = lua([[return vim.api.nvim_get_current_line()]])
     assert.are.same({}, lua([[return _G.sent]]), "the prompt was sent")
-    lua([[require("blink.cmp").hide()]])
+    assert.are.same(0, lua([[return vim.fn.pumvisible()]]), "the menu stayed open")
     lua([[vim.api.nvim_input("<CR>")]])
     wait(2000, [[return #_G.sent > 0]], "the prompt was not sent")
     local sent = lua([[
@@ -942,31 +965,30 @@ describe("stack", function()
     ]])
     wait(2000, [[return vim.api.nvim_get_mode().mode == "i" and vim.api.nvim_get_current_line() == ""]])
     lua([[vim.api.nvim_input("/compa")]])
-    wait(3000, [[return require("blink.cmp").is_menu_visible()]], "no menu after /compa")
+    assert.are.same("/compact ", menu_first("no menu after /compa").word)
     lua([[vim.api.nvim_input("<CR>")]])
     wait(2000, [[return #_G.sent > 0]], "Enter on /compact did not send it")
     sent = lua([[return _G.sent]])
     assert.are.same({ "prompt", "/compact" }, { sent[1].type, sent[1].text })
-    wait(2000, [[return vim.api.nvim_get_current_line() == "" and not require("blink.cmp").is_menu_visible()]])
+    wait(2000, [[return vim.api.nvim_get_current_line() == "" and vim.fn.pumvisible() == 0]])
     lua([[
       require("anvim.input").set_busy(false)
       vim.api.nvim_input("/bat")
     ]])
-    wait(3000, [[return require("blink.cmp").is_menu_visible()]], "no menu after /bat")
+    assert.are.same("/batch ", menu_first("no menu after /bat").word)
     lua([[vim.api.nvim_input("<CR>")]])
     wait(2000, [[return vim.api.nvim_get_current_line() == "/batch "]], "Enter did not complete /batch")
     lua([[vim.wait(300)]])
     assert.are.same(1, #lua([[return _G.sent]]), "Enter sent /batch, which needs an argument")
     lua([[
       require("anvim.sidecar").send = _G.send
-      require("blink.cmp").hide()
       vim.cmd.stopinsert()
       vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
       require("anvim.input").set_busy(false)
     ]])
   end)
 
-  it("<Up> moves in blink's menu while it is open, and goes back through past prompts otherwise", function()
+  it("<Up> moves in the completion menu while it is open, and goes back through past prompts otherwise", function()
     start()
     lua([[
       local sidecar = require("anvim.sidecar")
@@ -975,7 +997,7 @@ describe("stack", function()
       sidecar.send = function() end
       vim.cmd.stopinsert()
       vim.api.nvim_set_current_win(require("anvim.layout").wins.input)
-      for _, text in ipairs({ "first past prompt", "second past prompt" }) do
+      for _, text in ipairs({ "first past prompt", "second past matchpar" }) do
         vim.api.nvim_buf_set_lines(input.buf(), 0, -1, false, { text })
         input.submit()
       end
@@ -985,20 +1007,28 @@ describe("stack", function()
     wait(2000, [[return vim.api.nvim_get_mode().mode == "n"]])
     lua([[vim.api.nvim_input("A")]])
     wait(2000, [[return vim.api.nvim_get_mode().mode == "i"]], "not in insert mode")
-    lua([[require("blink.cmp").show({ providers = { "buffer" } })]])
-    wait(3000, [[return require("blink.cmp").is_menu_visible()]], "the menu did not open")
+    keys("<C-Space>")
+    menu_first("<C-Space> opened no menu")
+    -- Past the first item, <Up> highlights none, and the next <Up> the last one.
     lua([[vim.api.nvim_input("<Up>")]])
-    wait(2000, [[return require("blink.cmp").get_selected_item() ~= nil]], "<Up> selected no item")
+    wait(
+      2000,
+      [[return vim.fn.pumvisible() == 1 and vim.fn.complete_info({ "selected" }).selected == -1]],
+      "<Up> did not move"
+    )
+    lua([[vim.api.nvim_input("<Up>")]])
+    wait(2000, [[return vim.fn.complete_info({ "selected" }).selected > 0]], "<Up> did not go to the last item")
     local line = lua([[return vim.api.nvim_get_current_line()]])
-    assert(not line:find("past prompt"), "<Up> went to a past prompt while the menu was open: " .. line)
-    -- hide() closes the menu from a scheduled callback.
-    lua([[require("blink.cmp").hide()]])
-    wait(2000, [[return not require("blink.cmp").is_menu_visible()]], "the menu did not close")
+    assert.are.same("matchpar", line, "<Up> went to a past prompt while the menu was open")
+    hide_menu()
     lua([[
       vim.api.nvim_buf_set_lines(0, 0, -1, false, { "my draft" })
       vim.api.nvim_input("<Up>")
     ]])
-    wait(2000, [[return vim.api.nvim_get_current_line() == "second past prompt"]], "<Up> did not go back")
+    wait(2000, [[return vim.api.nvim_get_current_line() == "second past matchpar"]], "<Up> did not go back")
+    -- A past prompt is no typing, so it opens no menu, though it ends in a
+    -- word that the code window completes.
+    assert.are.same(0, lua([[return vim.fn.pumvisible()]]), "the past prompt opened the menu")
     lua([[vim.api.nvim_input("<Down>")]])
     wait(2000, [[return vim.api.nvim_get_current_line() == "my draft"]], "<Down> did not bring the draft back")
     lua([[
@@ -1095,7 +1125,7 @@ describe("stack", function()
       ]])
       keys("Awhat is this?")
       wait(2000, [[return vim.api.nvim_get_current_line() == "what is this?"]], "the prompt was not typed")
-      lua([[require("blink.cmp").hide()]])
+      hide_menu()
       keys("<CR>")
       wait(2000, [[return #_G.sent > 0]], "the prompt was not sent")
       return lua([[
@@ -1254,12 +1284,8 @@ describe("stack", function()
     lua([[vim.api.nvim_input("A")]])
     wait(2000, [[return vim.api.nvim_get_mode().mode == "i"]], "not in insert mode")
     keys("look at @matchp")
-    wait(3000, [[return require("blink.cmp").is_menu_visible()]], "the menu did not open")
-    local first = lua([[
-      local item = require("blink.cmp").get_items()[1]
-      return { item.source_id, item.label }
-    ]])
-    assert.are.same({ "anvim", "matchparen.lua" }, first)
+    local first = menu_first("the menu did not open")
+    assert.are.same({ "matchparen.lua", "@matchparen.lua " }, { first.abbr, first.word })
     keys("<CR>")
     wait(2000, [[return vim.api.nvim_get_current_line() == "look at @matchparen.lua "]], "the file was not accepted")
     lua([[vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "" })]])
@@ -1303,27 +1329,11 @@ describe("stack", function()
     ]])
       assert.are.same({ size = { 100, 30 }, border = true, above_tree = true, mode = "i", number = true }, look)
       keys("<Esc>osee @matchp")
-      wait(
-        3000,
-        [[
-          local cmp = require("blink.cmp")
-          local item = cmp.get_items()[1]
-          return cmp.is_menu_visible() and item ~= nil and item.label == "matchparen.lua"
-        ]],
-        "matchparen.lua is not the first item after @"
-      )
+      assert.are.same("matchparen.lua", menu_first("no menu after @").abbr, "matchparen.lua is not the first item")
       keys("<CR>")
       wait(2000, [[return vim.api.nvim_get_current_line() == "see @matchparen.lua "]], "Enter did not accept the file")
       keys("<Esc>ggO/compa")
-      wait(
-        3000,
-        [[
-          local cmp = require("blink.cmp")
-          local item = cmp.get_items()[1]
-          return cmp.is_menu_visible() and item ~= nil and item.label == "/compact"
-        ]],
-        "/compact is not the first item"
-      )
+      assert.are.same("/compact", menu_first("no menu after /compa").abbr, "/compact is not the first item")
       keys("<CR>")
       wait(2000, [[return vim.api.nvim_get_current_line() == "/compact "]], "Enter did not complete /compact")
       lua([[vim.wait(300)]])
@@ -1562,17 +1572,8 @@ describe("stack", function()
       vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "" })
     ]])
     wait_where({ win = "input", mode = "n" }, "the prompt")
-    -- blink.cmp maps its keys at the prompt's first InsertEnter.
-    keys("i")
-    wait_where({ win = "input", mode = "i" }, "i in the prompt")
-    keys("<Esc>")
-    wait_where({ win = "input", mode = "n" }, "<Esc> in the prompt")
     keys("<C-g>")
     wait_where({ win = "anvim_input", mode = "n" }, "<C-g> in the prompt")
-    keys("i")
-    wait_where({ win = "anvim_input", mode = "i" }, "i in the compose window")
-    keys("<Esc>")
-    wait_where({ win = "anvim_input", mode = "n" }, "<Esc> in the compose window")
     snap("compose", "compose", "vim.api.nvim_get_current_buf()")
     keys("<C-g>")
     wait_where({ win = "input", mode = "n" }, "<C-g> in the compose window")
@@ -1610,8 +1611,6 @@ describe("stack", function()
       for name, s in pairs(snaps) do
         found[name] = index(s.maps)
       end
-      -- anvim's own prompt maps, from before blink.cmp mapped over some of them.
-      local own = require("anvim_test_prompt")[prompt] or {}
       local problems = {}
       -- Each key of the view exists, and anvim's own maps have its description.
       for _, place in ipairs(keys.places) do
@@ -1624,12 +1623,8 @@ describe("stack", function()
           for _, lhs in ipairs(key.static and {} or keys.lhs(key)) do
             for _, mode in ipairs(keys.modes(key)) do
               local id, desc = mode .. " " .. vim.keycode(lhs), nil
-              if ctx == "prompt" and not key.default then
-                desc = own[id] or found.prompt[id]
-              else
-                for _, name in ipairs(names) do
-                  desc = desc or found[name][id]
-                end
+              for _, name in ipairs(names) do
+                desc = desc or found[name][id]
               end
               if desc == nil then
                 problems[#problems + 1] = ("%s: no %s map %s"):format(place.id, mode, lhs)
@@ -1653,9 +1648,6 @@ describe("stack", function()
       for lhs in pairs(explorer_keys) do
         ours[vim.keycode(lhs)] = true
       end
-      -- blink.cmp's snippet and signature keys. The prompt has neither, and
-      -- the keys fall back to the prompt's own: <S-Tab> cycles the mode.
-      local blink_only = { ["i <Tab>"] = true, ["i <S-Tab>"] = true, ["i <C-K>"] = true }
       local function listed(ctx, mode, lhs)
         for _, place in ipairs(keys.places) do
           for _, key in ipairs(place.keys) do
@@ -1668,6 +1660,10 @@ describe("stack", function()
             end
           end
         end
+      end
+      -- The compose window has the prompt's completion, and its map.
+      local function shared(ctx, m)
+        return ctx == "compose" and m.src:find("/lua/anvim/completion%.lua$") ~= nil and listed("prompt", m.mode, m.lhs)
       end
       local function allowed(ctx, m)
         local id = m.mode .. " " .. vim.keycode(m.lhs)
@@ -1683,9 +1679,8 @@ describe("stack", function()
         elseif ctx == "explorer" and not ours[vim.keycode(m.lhs)] then
           -- The explorer's own keys, which its ? lists.
           return true
-        elseif (ctx == "prompt" or ctx == "compose") and m.desc:find("^blink%.cmp: ") then
-          -- The compose window has the prompt's completion.
-          return listed("prompt", m.mode, m.lhs) or blink_only[m.mode .. " " .. m.lhs] or false
+        elseif shared(ctx, m) then
+          return true
         end
         return false
       end
@@ -1701,7 +1696,7 @@ describe("stack", function()
       local seen = {}
       for _, m in ipairs(require("anvim_test_maps")) do
         seen[m.ctx] = true
-        if not listed(m.ctx, m.mode, m.lhs) then
+        if not listed(m.ctx, m.mode, m.lhs) and not shared(m.ctx, m) then
           problems[#problems + 1] = ("%s map %s in %s from %s is not in the view"):format(m.mode, m.lhs, m.ctx, m.src)
         end
       end
@@ -2457,7 +2452,7 @@ describe("stack", function()
     type_keys("also fix ", 50)
     ask(78, "rm -rf build")
     type_keys("the test in step 2", 50)
-    lua([[require("blink.cmp").hide()]])
+    hide_menu()
     -- Past the guard, so only insert mode keeps enter from answering.
     vim.wait(500)
     lua([[vim.api.nvim_input("<CR>")]])
@@ -2528,7 +2523,7 @@ describe("stack", function()
     type_keys("ship it", 50)
     ask(80, "make deploy")
     vim.wait(1000)
-    lua([[require("blink.cmp").hide()]])
+    hide_menu()
     lua([[vim.api.nvim_input("<Esc>")]])
     vim.wait(150)
     lua([[vim.api.nvim_input("<CR>")]])

@@ -117,18 +117,17 @@ function M.newer()
   end
 end
 
--- Insert mode <Up> and <Down>: history on the first or last line, else the
--- usual move. As expr maps, they also work as blink.cmp's fallback while its
--- menu is closed.
+-- Insert mode <Up> and <Down>: a move in the completion menu while it shows,
+-- history on the first or last line, else the usual move.
 function M.up_keys()
-  if api.nvim_win_get_cursor(0)[1] == 1 then
+  if vim.fn.pumvisible() == 0 and api.nvim_win_get_cursor(0)[1] == 1 then
     return "<Cmd>lua require('anvim.history').older()<CR>"
   end
   return "<Up>"
 end
 
 function M.down_keys()
-  if api.nvim_win_get_cursor(0)[1] == api.nvim_buf_line_count(0) then
+  if vim.fn.pumvisible() == 0 and api.nvim_win_get_cursor(0)[1] == api.nvim_buf_line_count(0) then
     return "<Cmd>lua require('anvim.history').newer()<CR>"
   end
   return "<Down>"

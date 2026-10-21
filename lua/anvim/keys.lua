@@ -136,12 +136,11 @@ M.places = {
       { "@", "Complete a file", static = true },
       { "/", "Complete a slash command", static = true },
       { "?", "Show anvim's keys", mode = { "n", "i" } },
-      -- blink.cmp's keys for its completion menu.
-      { "<C-Space>", "Show the completion menu", mode = "i", default = true },
-      { "<C-e>", "Close the completion menu", mode = "i", default = true },
-      { "<C-y>", "Accept the item", mode = "i", default = true },
-      { { "<C-n>", "<C-p>" }, "Next and previous item", mode = "i", default = true },
-      { { "<C-b>", "<C-f>" }, "Scroll the item's documentation", mode = "i", default = true },
+      { "<C-Space>", "Show the completion menu", mode = "i" },
+      -- Neovim's own keys for its completion menu, which are no maps.
+      { "<C-e>", "Close the completion menu", mode = "i", static = true },
+      { "<C-y>", "Take the highlighted item", mode = "i", static = true },
+      { { "<C-n>", "<C-p>" }, "Next and previous item", mode = "i", static = true },
     },
   },
   {

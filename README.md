@@ -174,8 +174,7 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 | `?` | Show every key of anvim, in normal mode or in an empty prompt |
 | `Ctrl-Space`, `Ctrl-E` | Show and close the completion menu, in insert mode |
 | `Ctrl-N`, `Ctrl-P`, `Up`, `Down` | Next and previous item, while the menu is open |
-| `Ctrl-Y`, `Enter` | Accept the item |
-| `Ctrl-B`, `Ctrl-F` | Scroll the item's documentation, in insert mode |
+| `Ctrl-Y`, `Enter` | Accept the highlighted item. A word menu that opens as you type highlights none, so `Enter` sends |
 
 ### Compose window
 

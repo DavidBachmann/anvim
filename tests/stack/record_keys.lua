@@ -48,25 +48,6 @@ local function ctx(buf)
   return "other"
 end
 
--- blink.cmp maps some of the prompt's insert keys over anvim's at the
--- prompt's first InsertEnter. This autocmd comes before blink's, so it sees
--- anvim's own maps. The spec reads them with require("anvim_test_prompt").
-local prompt = {} ---@type table<integer, table<string, string>>
-package.loaded["anvim_test_prompt"] = prompt
-vim.api.nvim_create_autocmd("InsertEnter", {
-  callback = function(ev)
-    if vim.b[ev.buf].anvim_input and not prompt[ev.buf] then
-      local own = {}
-      for _, mode in ipairs({ "n", "x", "o", "i" }) do
-        for _, m in ipairs(vim.api.nvim_buf_get_keymap(ev.buf, mode)) do
-          own[mode .. " " .. vim.keycode(m.lhs)] = m.desc or ""
-        end
-      end
-      prompt[ev.buf] = own
-    end
-  end,
-})
-
 ---@diagnostic disable-next-line: duplicate-set-field
 vim.keymap.set = function(mode, lhs, rhs, opts)
   local src = caller()

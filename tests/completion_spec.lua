@@ -4,51 +4,64 @@ local completion = require("anvim.completion")
 local helpers = require("helpers")
 local sidecar = require("anvim.sidecar")
 
-local source = completion.new()
-
----@return table response
-local function complete(line, row)
-  local got
-  source:get_completions({ line = line, cursor = { row or 1, #line } }, function(response)
-    got = response
+-- The start column and the items for a line before the cursor. The file list
+-- comes from a process, so file items can come later.
+---@return integer start, table[] items
+local function complete(line, row, manual)
+  local start, items
+  vim.wait(3000, function()
+    start, items = select(2, completion.items((row or 1) - 1, line, manual))
+    return #items > 0 or not line:find("@")
   end)
-  assert(
-    vim.wait(3000, function()
-      return got ~= nil
-    end),
-    "no completions for " .. line
-  )
-  return got
+  return start, items
 end
 
-local function by_label(items)
+local function by_abbr(items)
   local out = {}
   for _, item in ipairs(items) do
-    out[item.label] = item
+    out[item.abbr or item.word] = item
   end
   return out
 end
 
 describe("completion", function()
-  it("offers files and directories after @, and nothing for a mail address", function()
+  it("offers files and directories after @, and words after an @ in a mail address", function()
     helpers.start()
     vim.fn.mkdir(helpers.tmp .. "/comp/sub", "p")
     vim.fn.writefile({ "return 1" }, helpers.tmp .. "/comp/a.lua")
     vim.fn.writefile({ "return 2" }, helpers.tmp .. "/comp/sub/b.lua")
-    assert(source:get_trigger_characters()[1] == "@")
 
-    local items = by_label(complete("look at @comp/").items)
+    local start, list = complete("look at @comp/")
+    local items = by_abbr(list)
+    assert.are.same(8, start)
     assert.are.same({ "comp/a.lua", "comp/sub/", "comp/sub/b.lua" }, vim.fn.sort(vim.tbl_keys(items)))
-    assert.are.same({
-      newText = "@comp/a.lua ",
-      range = { start = { line = 0, character = 8 }, ["end"] = { line = 0, character = 14 } },
-    }, items["comp/a.lua"].textEdit)
-    assert.are.same("a.lua", items["comp/a.lua"].filterText)
+    -- Shallow paths first.
+    assert.are.same(
+      { "comp/a.lua", "comp/sub/", "comp/sub/b.lua" },
+      vim.tbl_map(function(item)
+        return item.abbr
+      end, list)
+    )
+    assert.are.same("@comp/a.lua ", items["comp/a.lua"].word)
+    assert.are.same(1, items["comp/a.lua"].equal)
     -- A directory goes on to its files, so it ends without a space.
-    assert.are.same("@comp/sub/", items["comp/sub/"].textEdit.newText)
+    assert.are.same("@comp/sub/", items["comp/sub/"].word)
+    assert.are.same("dir", items["comp/sub/"].user_data.anvim)
 
-    assert(by_label(complete("@").items)["matchparen.lua"], "the whole project after a lone @")
-    assert.are.same({}, complete("mail me@comp").items)
+    -- The query matches fuzzily, in either case.
+    assert.are.same(
+      { "comp/sub/b.lua" },
+      vim.tbl_map(function(item)
+        return item.abbr
+      end, select(2, complete("@comp/sub/B")))
+    )
+    assert(by_abbr(select(2, complete("@")))["matchparen.lua"], "the whole project after a lone @")
+    assert.is_nil(completion.context(0, "mail me@comp"))
+    start, list = complete("mail me@comp")
+    assert.are.same(#"mail me@", start)
+    for _, item in ipairs(list) do
+      assert(not item.word:find("^@"), item.word)
+    end
   end)
 
   it("offers slash commands with their descriptions at the start of the prompt only", function()
@@ -60,18 +73,24 @@ describe("completion", function()
         { name = "compact", description = "" },
       },
     })
-    local items = by_label(complete("/re").items)
+    local start, list = complete("/")
+    local items = by_abbr(list)
     -- anvim runs /model, /resume and /effort itself, and adds them.
+    assert.are.same(0, start)
     assert.are.same({ "/compact", "/effort", "/model", "/resume", "/review" }, vim.fn.sort(vim.tbl_keys(items)))
-    assert.are.same({
-      newText = "/review ",
-      range = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 3 } },
-    }, items["/review"].textEdit)
-    assert.are.same({ description = "Review a pull request" }, items["/review"].labelDetails)
-    assert.are.same("review", items["/review"].filterText)
-    assert.is_nil(items["/compact"].labelDetails)
-    assert.are.same({}, complete("say /re").items)
-    assert.are.same({}, complete("/re", 2).items)
+    assert.are.same("/review ", items["/review"].word)
+    assert.are.same("Review a pull request", items["/review"].menu)
+    assert.are.same("Review a pull request\n\n/review <pr>", items["/review"].info)
+    assert.are.same({ anvim = "command", send = false }, items["/review"].user_data)
+    assert.is_nil(items["/compact"].menu)
+    assert.is_true(items["/compact"].user_data.send)
+    -- The typed name filters the list.
+    assert.are.same({ "/resume", "/review" }, vim.fn.sort(vim.tbl_keys(by_abbr(select(2, complete("/re"))))))
+    for _, case in ipairs({ { "say /re" }, { "/re", 2 } }) do
+      for _, item in ipairs(select(2, complete(case[1], case[2]))) do
+        assert(not item.word:find("^/"), item.word)
+      end
+    end
   end)
 
   it("hides the built-ins that do nothing here, and keeps the rest", function()
@@ -108,13 +127,11 @@ describe("completion", function()
     assert.are.same({}, completion.terminal)
     init({ "color", "doctor", "focus", "reload-plugins" })
 
-    local labels = vim.tbl_map(function(item)
-      return item.label
-    end, complete("/").items)
+    local items = by_abbr(completion.command_items(""))
     assert.are.same(
       { "/__remote-workflow", "/color", "/doctor", "/ultrareview" },
       vim.tbl_filter(function(label)
-        return not vim.tbl_contains(labels, label)
+        return not items[label]
       end, {
         "/__remote-workflow",
         "/color",
@@ -130,9 +147,8 @@ describe("completion", function()
     )
     -- anvim's own /model takes the place of Claude Code's, so Enter sends it
     -- and opens the picker, as /effort does.
-    local items = by_label(complete("/").items)
-    assert.are.same({ true, true }, { items["/model"].data.send, items["/effort"].data.send })
-    assert.are.same("Choose Claude's model", items["/model"].labelDetails.description)
+    assert.are.same({ true, true }, { items["/model"].user_data.send, items["/effort"].user_data.send })
+    assert.are.same("Choose Claude's model", items["/model"].menu)
 
     assert.are.same("/color works only in Claude Code's terminal. Run `claude` for it.", completion.unusable("color"))
     assert.are.same(
@@ -153,22 +169,42 @@ describe("completion", function()
     completion.commands, completion.terminal = commands, terminal
   end)
 
-  it("leaves out the other providers in a reference or a slash command", function()
+  it("offers the words that start with the typed part, from the file buffers in the windows", function()
     helpers.start()
-    local win = require("anvim.layout").wins.input
-    local buf = require("anvim.input").buf()
-    vim.api.nvim_set_current_win(win)
-    vim.cmd.stopinsert()
-    for line, want in pairs({
-      ["see @lua/an"] = { "anvim" },
-      ["/rev"] = { "anvim" },
-      ["see lua"] = { "anvim", "path", "buffer" },
-      ["me@lua"] = { "anvim", "path", "buffer" },
-    }) do
-      vim.api.nvim_buf_set_lines(buf, 0, -1, false, { line })
-      vim.api.nvim_win_set_cursor(win, { 1, #line })
-      assert.are.same(want, completion.providers(), line)
-    end
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "" })
+    -- The transcript is no file buffer, so its words never show.
+    require("anvim.transcript").notice("info", "The zebrine zebroid")
+    local path = helpers.tmp .. "/words.txt"
+    vim.fn.writefile({ "The zebrafish swims past Zeb, and Davíð waves" }, path)
+    local code = require("anvim.layout").code_win()
+    local before = vim.api.nvim_win_get_buf(code)
+    vim.api.nvim_win_call(code, function()
+      vim.cmd.edit(path)
+    end)
+    local start, list = complete("a zeb")
+    assert.are.same(2, start)
+    assert.are.same(
+      { "zebrafish", "Zeb" },
+      vim.tbl_map(function(item)
+        return item.word
+      end, list)
+    )
+    assert.is_nil(list[1].menu)
+    -- An upper case letter matches only itself.
+    assert.are.same(
+      { "Zeb" },
+      vim.tbl_map(function(item)
+        return item.word
+      end, select(2, complete("a Ze")))
+    )
+    -- Words with letters past ASCII stay whole.
+    start, list = complete("and dav")
+    assert.are.same(#"and ", start)
+    assert.are.same("Davíð", list[1].word)
+    -- After a space, only <C-Space> asks for words.
+    assert.are.same({}, select(2, complete("a ")))
+    start, list = complete("a ", 1, true)
+    assert.are.same(2, start)
+    assert(#list > 0, "no words for <C-Space>")
+    vim.api.nvim_win_set_buf(code, before)
   end)
 end)

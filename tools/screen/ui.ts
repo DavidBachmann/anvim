@@ -215,7 +215,11 @@ export class Ui {
     // Cells are never changed in place, so the rows can share them.
     this.shown = this.grid.map((row) => row.slice());
     this.log.push({ t: performance.now(), lines, cursor: { ...this.cursor }, mode: this.mode, changed, cells });
+    this.onFlush?.();
   }
+
+  // Runs at each flush, while `grid` is the frame that Neovim drew.
+  onFlush?: () => void;
 
   request<T = any>(method: string, ...params: unknown[]): Promise<T> {
     if (this.exitCode !== null) return Promise.reject(new Error(`nvim exited with ${this.exitCode}`));

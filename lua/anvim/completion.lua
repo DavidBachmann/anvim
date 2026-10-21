@@ -1,16 +1,17 @@
--- A blink.cmp source for the prompt: files and directories after `@`, and
--- slash commands at the start of the prompt.
+-- Completion in the prompt and the compose window, in Neovim's own menu, as
+-- the user types: files and directories after `@`, slash commands at the
+-- start of the prompt, and elsewhere words from the windows' buffers.
 local state = require("anvim.state")
 
 local M = {}
 
-local MAX_ITEMS = 5000
+local api = vim.api
+
+local MAX_ITEMS = 200
 -- Entries, files and directories, that a walk of a project outside git visits.
 local MAX_WALK = 20000
 -- A list stays this long, even after files may have changed.
 local FRESH_MS = 5000
--- LSP CompletionItemKind values, as blink.cmp uses them.
-local KIND = { file = 17, folder = 19, command = 14 }
 
 ---@class anvim.SlashCommand
 ---@field name string without the slash
@@ -38,7 +39,6 @@ local paid = { ultrareview = true }
 local PAID = "anvim starts no paid cloud review. Run /ultrareview or /code-review ultra in Claude Code."
 ---@class anvim.FileList
 ---@field paths string[] relative to the cwd, shallow ones first
----@field lower string[] the same paths in lower case
 ---@field at integer vim.uv.now() when listed
 
 ---@type anvim.FileList?
@@ -83,7 +83,7 @@ local function file_list(paths)
     end
     return a < b
   end)
-  return { paths = paths, lower = vim.tbl_map(string.lower, paths), at = vim.uv.now() }
+  return { paths = paths, at = vim.uv.now() }
 end
 
 -- Calls back with the project's files. The list is made again when files
@@ -116,66 +116,84 @@ local function with_files(cb)
   end
 end
 
-local function edit(row, from, to, text)
-  return {
-    newText = text,
-    range = { start = { line = row, character = from }, ["end"] = { line = row, character = to } },
-  }
-end
-
--- Whether the characters of query appear in s in that order. blink.cmp
--- matches fuzzily too, so this only drops what it would never show.
-local function has_chars(s, query)
-  local at = 0
-  for i = 1, #query do
-    at = s:find(query:sub(i, i), at + 1, true)
-    if not at then
-      return false
-    end
-  end
-  return true
-end
+-- The candidates under one directory: each file's path below it, and the
+-- directories on the way, which end in a slash. Shallow ones first.
+---@type { list: anvim.FileList, dir: string, rests: string[] }?
+local under
 
 ---@param list anvim.FileList
----@param token string what follows the `@`, such as lua/anvim/st
----@param row integer 0-based
----@param at integer 0-based column of the `@`
----@param cursor integer 0-based cursor column
-function M.file_items(list, token, row, at, cursor)
-  local dir = token:match("^(.*/)") or ""
-  local query = token:sub(#dir + 1):lower()
-  local items, dirs = {}, {}
-  local function item(path, kind)
-    local rest = path:sub(#dir + 1)
-    items[#items + 1] = {
-      label = path,
-      filterText = rest,
-      kind = kind,
-      -- Shallow paths first while the query is empty.
-      sortText = ("%02d%s"):format(select(2, rest:gsub("/", "")), rest),
-      textEdit = edit(row, at, cursor, "@" .. path .. (kind == KIND.folder and "" or " ")),
-    }
+---@return string[]
+local function rests(list, dir)
+  if under and under.list == list and under.dir == dir then
+    return under.rests
   end
-  -- Filter first, so that a file past the cap still comes up by name. A
-  -- directory that matches has only matching files under it.
-  for i, path in ipairs(list.paths) do
-    if #items >= MAX_ITEMS then
-      break
-    end
-    local lower = list.lower[i]
-    if path:sub(1, #dir) == dir and has_chars(lower:sub(#dir + 1), query) then
-      item(path, KIND.file)
-      local sub = lower:sub(#dir + 1)
-      local slash = sub:find("/", 1, true)
+  local out, depth, seen = {}, {}, {}
+  local function add(rest)
+    out[#out + 1] = rest
+    depth[rest] = select(2, rest:gsub("/", ""))
+  end
+  for _, path in ipairs(list.paths) do
+    if path:sub(1, #dir) == dir then
+      local rest = path:sub(#dir + 1)
+      add(rest)
+      local slash = rest:find("/", 1, true)
       while slash do
-        local d = dir .. path:sub(#dir + 1, #dir + slash)
-        if not dirs[d] and has_chars(sub:sub(1, slash), query) then
-          dirs[d] = true
-          item(d, KIND.folder)
+        local d = rest:sub(1, slash)
+        if not seen[d] then
+          seen[d] = true
+          add(d)
         end
-        slash = sub:find("/", slash + 1, true)
+        slash = rest:find("/", slash + 1, true)
       end
     end
+  end
+  table.sort(out, function(a, b)
+    if depth[a] ~= depth[b] then
+      return depth[a] < depth[b]
+    end
+    return a < b
+  end)
+  under = { list = list, dir = dir, rests = out }
+  return out
+end
+
+-- mini.icons gives each row the icon that the explorer shows.
+local function icon(path, is_dir)
+  local ok, icons = pcall(require, "mini.icons")
+  if ok then
+    return icons.get(is_dir and "directory" or "file", path)
+  end
+end
+
+-- The items for what follows an `@`. Neovim filters none of them (`equal`),
+-- because they match fuzzily, which its prefix match would undo.
+---@param list anvim.FileList
+---@param token string what follows the `@`, such as lua/anvim/st
+---@return table[] complete-items
+function M.file_items(list, token)
+  local dir = token:match("^(.*/)") or ""
+  local query = token:sub(#dir + 1)
+  local all = rests(list, dir)
+  -- Match every path, so that a file past the cap still comes up by name:
+  -- the limit of matchfuzzy() stops at the first matches. A lower case query
+  -- matches either case. The menu gets the best matches only, because each
+  -- item makes complete() slower.
+  local picked = query == "" and vim.list_slice(all, 1, MAX_ITEMS)
+    or vim.list_slice(vim.fn.matchfuzzy(all, query:lower()), 1, MAX_ITEMS)
+  local items = {}
+  for _, rest in ipairs(picked) do
+    local path = dir .. rest
+    local is_dir = rest:sub(-1) == "/"
+    local glyph, hl = icon(path, is_dir)
+    items[#items + 1] = {
+      -- A directory goes on to its files, so it ends without a space.
+      word = "@" .. path .. (is_dir and "" or " "),
+      abbr = path,
+      kind = glyph,
+      kind_hlgroup = hl,
+      equal = 1,
+      user_data = { anvim = is_dir and "dir" or "file" },
+    }
   end
   return items
 end
@@ -230,7 +248,10 @@ function M.unusable(name, arg)
   return c and c.builtin and refused(c.name, name) or nil
 end
 
-function M.command_items(row, cursor)
+-- The items for a slash command, `query` being the typed name. They show the
+-- description in the menu and, with the argument hint, in the info popup.
+---@return table[] complete-items
+function M.command_items(query)
   -- A row's own name runs Claude Code's row of that name, when it has one.
   local hidden = {}
   for _, c in ipairs(M.commands) do
@@ -238,24 +259,26 @@ function M.command_items(row, cursor)
       hidden[c.name] = true
     end
   end
+  local shown = vim.tbl_filter(function(c)
+    return not hidden[c.name]
+  end, M.commands)
+  if query ~= "" then
+    shown = vim.fn.matchfuzzy(shown, query:lower(), { key = "name" })
+  end
+  shown = vim.list_slice(shown, 1, MAX_ITEMS)
   local items = {}
-  for _, c in ipairs(M.commands) do
+  for _, c in ipairs(shown) do
     local desc = c.description ~= "" and c.description or nil
-    if not hidden[c.name] then
-      items[#items + 1] = {
-        -- Enter sends it, as in Claude Code, unless it needs an argument.
-        data = { anvim_command = true, send = not needs_argument(c.argument_hint) },
-        label = "/" .. c.name,
-        filterText = c.name,
-        kind = KIND.command,
-        labelDetails = desc and { description = vim.fn.strcharpart(desc, 0, 48) } or nil,
-        documentation = desc and {
-          kind = "plaintext",
-          value = desc .. (c.argument_hint and ("\n\n/" .. c.name .. " " .. c.argument_hint) or ""),
-        } or nil,
-        textEdit = edit(row, 0, cursor, "/" .. c.name .. " "),
-      }
-    end
+    items[#items + 1] = {
+      word = "/" .. c.name .. " ",
+      abbr = "/" .. c.name,
+      menu = desc and vim.fn.strcharpart(desc, 0, 48) or nil,
+      info = desc and desc .. (c.argument_hint and ("\n\n/" .. c.name .. " " .. c.argument_hint) or "") or nil,
+      equal = 1,
+      dup = 1,
+      -- Enter sends it, as in Claude Code, unless it needs an argument.
+      user_data = { anvim = "command", send = not needs_argument(c.argument_hint) },
+    }
   end
   return items
 end
@@ -268,51 +291,220 @@ local function at_token(before)
   end
 end
 
-local function command_start(row, before)
-  return row == 0 and before:match("^/[%w_:%-]*$") ~= nil
-end
-
--- The prompt's blink.cmp providers. In a reference or a slash command, words
--- from the buffer are noise.
-function M.providers()
-  local row, col = unpack(vim.api.nvim_win_get_cursor(0))
-  local before = vim.api.nvim_get_current_line():sub(1, col)
-  if at_token(before) or command_start(row - 1, before) then
-    return { "anvim" }
-  end
-  return { "anvim", "path", "buffer" }
-end
-
--- blink.cmp source
-
-function M.new()
-  return setmetatable({}, { __index = M })
-end
-
-function M:enabled()
-  return vim.bo.filetype == "anvim_input"
-end
-
-function M:get_trigger_characters()
-  return { "@", "/" }
-end
-
-function M:get_completions(ctx, callback)
-  local row, cursor = ctx.cursor[1] - 1, ctx.cursor[2]
-  local before = ctx.line:sub(1, cursor)
-  local function done(items)
-    callback({ items = items, is_incomplete_forward = true, is_incomplete_backward = true })
-  end
-  if command_start(row, before) then
-    return done(M.command_items(row, cursor))
+-- What the text before the cursor completes: a file after `@` or a slash
+-- command at the start of the prompt, from its 0-based start column. Nil for
+-- words.
+---@param row integer 0-based
+---@return "file"|"command"|nil, integer? start, string? token
+function M.context(row, before)
+  local name = row == 0 and before:match("^/([%w_:%-]*)$")
+  if name then
+    return "command", 0, name
   end
   local at, token = at_token(before)
   if at then
-    return with_files(function(list)
-      done(M.file_items(list, token, row, at - 1, cursor))
-    end)
+    return "file", at - 1, token
   end
-  callback({ items = {}, is_incomplete_forward = false, is_incomplete_backward = false })
+end
+
+-- The characters of a word. Bytes from 128 on are the parts of UTF-8
+-- characters, so words with letters such as ð stay whole.
+local WORD_CHAR = "[%w_\128-\255]"
+-- A buffer with more lines gives no words.
+local MAX_LINES = 20000
+---@type table<integer, { tick: integer, words: string[] }>
+local word_cache = {}
+
+-- The words of a buffer with at least two characters, in their order.
+---@return string[]
+local function buffer_words(buf)
+  local tick = api.nvim_buf_get_changedtick(buf)
+  local cached = word_cache[buf]
+  if cached and cached.tick == tick then
+    return cached.words
+  end
+  local words, seen = {}, {}
+  if api.nvim_buf_line_count(buf) <= MAX_LINES then
+    for _, line in ipairs(api.nvim_buf_get_lines(buf, 0, -1, false)) do
+      for word in line:gmatch(WORD_CHAR .. WORD_CHAR .. "+") do
+        if not seen[word] then
+          seen[word] = true
+          words[#words + 1] = word
+        end
+      end
+    end
+  end
+  word_cache[buf] = { tick = tick, words = words }
+  return words
+end
+
+-- The words that start with the token, from the file buffers in the windows,
+-- such as the code window. The prompt and the transcript give none: their
+-- words would turn Enter after prose into a word. A lower case token matches
+-- either case.
+---@param token string the part of a word before the cursor
+---@return table[] complete-items
+function M.word_items(token)
+  local bufs = {}
+  for _, win in ipairs(api.nvim_tabpage_list_wins(0)) do
+    local buf = api.nvim_win_get_buf(win)
+    if vim.bo[buf].buftype == "" and not vim.tbl_contains(bufs, buf) then
+      bufs[#bufs + 1] = buf
+    end
+  end
+  for buf in pairs(word_cache) do
+    if not api.nvim_buf_is_valid(buf) then
+      word_cache[buf] = nil
+    end
+  end
+  local lower = token == token:lower()
+  local items, seen = {}, { [token] = true }
+  for _, buf in ipairs(bufs) do
+    for _, word in ipairs(buffer_words(buf)) do
+      local head = word:sub(1, #token)
+      if not seen[word] and (lower and head:lower() or head) == token then
+        seen[word] = true
+        items[#items + 1] = { word = word, equal = 1 }
+        if #items >= MAX_ITEMS then
+          return items
+        end
+      end
+    end
+  end
+  return items
+end
+
+-- The text before the cursor in the current window, with row 0-based.
+local function before_cursor()
+  local row, col = unpack(api.nvim_win_get_cursor(0))
+  return row - 1, api.nvim_get_current_line():sub(1, col)
+end
+
+-- Whether the user typed a character since the last update. Other changes,
+-- such as a past prompt that <Up> brings back, open no menu.
+local typed = false
+-- The text before the cursor at the last update.
+---@type string?
+local updated_for
+-- Whether the last update showed the menu.
+local shown = false
+
+-- The kind of the menu, its 0-based start column and its items for the text
+-- before the cursor.
+---@param row integer 0-based
+---@param manual? boolean From <C-Space>: words also without a typed part of one.
+---@return "file"|"command"|nil kind, integer start, table[] items
+function M.items(row, before, manual)
+  local kind, start, token = M.context(row, before)
+  if kind == "command" then
+    return kind, start, M.command_items(token)
+  elseif kind == "file" then
+    -- A stale list shows until the new one comes. Without a list, the menu
+    -- opens once the first one comes.
+    local buf, listed = api.nvim_get_current_buf(), files ~= nil
+    with_files(function()
+      if not listed then
+        M.show(buf)
+      end
+    end)
+    return kind, start, files and M.file_items(files, token) or {}
+  end
+  token = before:match(WORD_CHAR .. "*$")
+  return nil, #before - #token, (token ~= "" or manual) and M.word_items(token) or {}
+end
+
+-- Shows the menu for the text before the cursor, or closes it when nothing
+-- matches. Neovim's 'autocomplete' always highlights no item ("noselect"),
+-- and mixes the items of its sources. complete() with "noinsert" highlights
+-- the first item, so that Enter takes it, as in Claude Code.
+---@param manual? boolean
+function M.update(manual)
+  local row, before = before_cursor()
+  local now = row .. ":" .. before
+  -- Neovim ends the completion on each backspace, so a deletion while the
+  -- menu showed opens it again.
+  local deleted = shown and updated_for ~= nil and #now < #updated_for and updated_for:sub(1, #now) == now
+  -- complete() fires TextChangedP, and so does <C-n>, which inserts its item.
+  -- Neither is typing.
+  if not (manual or typed or deleted) then
+    return
+  end
+  typed, updated_for = false, now
+  local kind, start, items = M.items(row, before, manual)
+  shown = #items > 0
+  if shown then
+    -- A word menu that opens as the user types highlights no item, so that
+    -- Enter after prose sends it. <C-n> or <Down> picks a word.
+    vim.bo.completeopt = (kind or manual) and "menuone,noinsert,popup" or "menuone,noselect,popup"
+    vim.fn.complete(start + 1, items)
+  elseif vim.fn.pumvisible() == 1 then
+    vim.fn.complete(#before + 1, {})
+  end
+end
+
+-- Opens the menu from the event loop, when the buffer is still in insert mode.
+function M.show(buf)
+  vim.schedule(function()
+    if api.nvim_get_current_buf() == buf and api.nvim_get_mode().mode:sub(1, 1) == "i" then
+      M.update(true)
+    end
+  end)
+end
+
+-- Whether <CR> takes the menu's highlighted item, and whether the prompt goes
+-- out after it: a slash command that needs no argument does.
+---@return boolean accept, boolean send
+function M.enter()
+  if vim.fn.pumvisible() == 0 then
+    return false, false
+  end
+  local info = vim.fn.complete_info({ "selected", "completed" })
+  if info.selected < 0 then
+    return false, false
+  end
+  local data = info.completed and info.completed.user_data
+  return true, type(data) == "table" and data.send == true
+end
+
+-- Completion for a buffer of the prompt's filetype.
+function M.setup(buf)
+  vim.bo[buf].completeopt = "menuone,noinsert,popup"
+  local group = api.nvim_create_augroup("anvim.completion." .. buf, { clear = true })
+  local function on(event, callback)
+    api.nvim_create_autocmd(event, { group = group, buffer = buf, callback = callback })
+  end
+  on({ "TextChangedI", "TextChangedP" }, function()
+    M.update()
+  end)
+  on("InsertCharPre", function()
+    typed = true
+  end)
+  on("InsertEnter", function()
+    typed, shown = false, false
+    with_files(function() end)
+  end)
+  -- Insert mode goes on in a window that a key or a click enters, such as the
+  -- compose window, and so would the completion. What the user typed here
+  -- opens no menu there.
+  on("WinLeave", function()
+    typed, shown = false, false
+    if api.nvim_get_mode().mode:sub(1, 1) == "i" and vim.fn.complete_info({ "mode" }).mode ~= "" then
+      vim.fn.complete(vim.fn.col("."), {})
+    end
+  end)
+  -- A taken or closed menu stays closed on a backspace. A directory goes on
+  -- with its contents.
+  on("CompleteDone", function()
+    local reason = vim.v.event.reason
+    shown = shown and reason ~= "accept" and reason ~= "cancel"
+    local data = vim.v.completed_item.user_data
+    if reason == "accept" and type(data) == "table" and data.anvim == "dir" then
+      M.show(buf)
+    end
+  end)
+  require("anvim.keys").set("prompt", "i", "<C-Space>", function()
+    M.update(true)
+  end, { buffer = buf })
 end
 
 function M.attach(sidecar)
@@ -332,10 +524,20 @@ function M.attach(sidecar)
     stale = true
   end
   sidecar.on("turn_end", changed)
-  vim.api.nvim_create_autocmd("FocusGained", {
-    group = vim.api.nvim_create_augroup("anvim.completion", { clear = true }),
-    callback = changed,
+  local group = api.nvim_create_augroup("anvim.completion", { clear = true })
+  api.nvim_create_autocmd("FocusGained", { group = group, callback = changed })
+  api.nvim_create_autocmd("FileType", {
+    group = group,
+    pattern = "anvim_input",
+    callback = function(ev)
+      M.setup(ev.buf)
+    end,
   })
+  for _, buf in ipairs(api.nvim_list_bufs()) do
+    if vim.bo[buf].filetype == "anvim_input" then
+      M.setup(buf)
+    end
+  end
 end
 
 return M

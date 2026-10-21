@@ -75,6 +75,11 @@ local function set_highlights()
   set_derived("AnvimTodoDone", { fg = comment.fg, strikethrough = true })
   local del = api.nvim_get_hl(0, { name = "DiffDelete", link = false })
   set_derived("AnvimDelete", { bg = del.bg, strikethrough = true })
+  -- The completion menu's border, as the other floats draw theirs. A
+  -- colorscheme's own stays.
+  if vim.deep_equal(api.nvim_get_hl(0, { name = "PmenuBorder" }), { link = "Pmenu" }) then
+    api.nvim_set_hl(0, "PmenuBorder", { link = "FloatBorder" })
+  end
   -- snacks defines the list's groups only when the explorer opens. Until then,
   -- these links, which are snacks' own, resolve AnvimNormal.
   api.nvim_set_hl(0, "SnacksPickerList", { link = "SnacksPicker", default = true })
