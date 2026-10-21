@@ -38,6 +38,11 @@ local highlights = {
   AnvimSelection = { link = "Visual" },
   AnvimChip = { link = "Comment" },
   AnvimChipSelection = { link = "AnvimClaude" },
+  -- The Claude column's background is the tree's. The explorer's list maps
+  -- NormalFloat to SnacksPickerList.
+  AnvimNormal = { link = "SnacksPickerList" },
+  -- The activity line's rule. WinSeparator can fade into the tree's background.
+  AnvimRule = { link = "LineNr" },
   -- Far apart from each other and from AnvimClaude in the usual colorschemes.
   AnvimAgent1 = { link = "MiniIconsAzure" },
   AnvimAgent2 = { link = "MiniIconsPurple" },
@@ -53,10 +58,15 @@ local function set_highlights()
   api.nvim_set_hl(0, "AnvimTodoDone", { fg = comment.fg, strikethrough = true, default = true })
   local del = api.nvim_get_hl(0, { name = "DiffDelete", link = false })
   api.nvim_set_hl(0, "AnvimDelete", { bg = del.bg, strikethrough = true, default = true })
-  -- The blank row under the transcript takes the transcript's background.
+  -- snacks defines the list's groups only when the explorer opens. Until then,
+  -- these links, which are snacks' own, resolve AnvimNormal.
+  api.nvim_set_hl(0, "SnacksPickerList", { link = "SnacksPicker", default = true })
+  api.nvim_set_hl(0, "SnacksPicker", { link = "NormalFloat", default = true })
+  -- The blank row under the transcript takes the transcript's background. With
+  -- a default, it would keep the previous colorscheme's colors.
   local sep = api.nvim_get_hl(0, { name = "WinSeparator", link = false })
-  local nc = api.nvim_get_hl(0, { name = "NormalNC", link = false })
-  api.nvim_set_hl(0, "AnvimSeparator", { fg = sep.fg, bg = nc.bg, default = true })
+  local column = api.nvim_get_hl(0, { name = "AnvimNormal", link = false })
+  api.nvim_set_hl(0, "AnvimSeparator", { fg = sep.fg, bg = column.bg })
 end
 
 local function refresh_branch()

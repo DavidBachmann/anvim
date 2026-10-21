@@ -616,6 +616,75 @@ describe("stack", function()
     )
   end)
 
+  it("gives the Claude column the tree's background, also after a colorscheme change and a repair", function()
+    start()
+    -- The background that each part draws with, through its window's 'winhighlight'.
+    local function backgrounds()
+      return lua([[
+        local wins = require("anvim.layout").wins
+        local function bg(win, from)
+          local to = from
+          for pair in vim.wo[win].winhighlight:gmatch("[^,]+") do
+            local key, group = pair:match("^(.-):(.*)$")
+            to = key == from and group or to
+          end
+          -- nvim_get_hl() resolves a group through the current window's
+          -- 'winhighlight' too, as for Normal in the prompt.
+          local hl = vim.api.nvim_win_call(win, function()
+            return vim.api.nvim_get_hl(0, { name = to, link = false })
+          end)
+          return { bg = hl.bg or -1, fg = hl.fg or -1 }
+        end
+        local tree
+        for _, win in ipairs(vim.api.nvim_list_wins()) do
+          if vim.bo[vim.api.nvim_win_get_buf(win)].filetype == "snacks_picker_list" then
+            tree = bg(win, "NormalFloat").bg
+          end
+        end
+        local sep = bg(wins.transcript, "WinSeparator")
+        return {
+          tree = tree,
+          code = bg(wins.code, "Normal").bg,
+          column = {
+            transcript = bg(wins.transcript, "Normal").bg,
+            transcript_nc = bg(wins.transcript, "NormalNC").bg,
+            prompt = bg(wins.input, "Normal").bg,
+            prompt_nc = bg(wins.input, "NormalNC").bg,
+            winbar = bg(wins.input, "WinBar").bg,
+            winbar_nc = bg(wins.input, "WinBarNC").bg,
+            separator = sep.bg,
+          },
+          separator_fg = sep.fg,
+          global_separator_fg = vim.api.nvim_get_hl(0, { name = "WinSeparator", link = false }).fg or -1,
+        }
+      ]])
+    end
+    local function assert_column(what)
+      local got = backgrounds()
+      assert(got.tree, what .. ": no explorer list")
+      assert.are_not.same(got.code, got.tree, what .. ": the colorscheme gives the tree its own background")
+      for part, bg in pairs(got.column) do
+        assert.are.same(got.tree, bg, ("%s: the %s has the tree's background"):format(what, part))
+      end
+      assert.are.same(got.global_separator_fg, got.separator_fg, what .. ": the row under the transcript")
+      return got
+    end
+    local tokyonight = assert_column("tokyonight")
+    lua([[vim.cmd.colorscheme("habamax")]])
+    local habamax = assert_column("habamax")
+    assert.are_not.same(tokyonight.tree, habamax.tree)
+    lua([[vim.cmd.colorscheme("tokyonight")]])
+    assert.are.same(tokyonight, assert_column("tokyonight again"))
+    lua([[
+      vim.cmd.stopinsert()
+      vim.api.nvim_win_close(require("anvim.layout").wins.transcript, true)
+      vim.api.nvim_win_close(require("anvim.layout").wins.input, true)
+    ]])
+    assert_layout("closing the Claude column")
+    assert.are.same(tokyonight, assert_column("the repaired Claude column"))
+    lua([[require("anvim.layout").focus_input({ insert = false })]])
+  end)
+
   it("does not write locked buffers, nor run BufWritePre", function()
     start()
     local file = helpers.tmp .. "/matchparen.lua"

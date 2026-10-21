@@ -51,7 +51,7 @@ local function setup_transcript_win(win)
   -- so the prompt's activity line is the only rule.
   local vert = vim.opt.fillchars:get().vert or "│"
   wo.fillchars = (vim.go.fillchars ~= "" and vim.go.fillchars .. "," or "") .. "horiz: ,vertright:" .. vert
-  wo.winhighlight = "WinSeparator:AnvimSeparator"
+  wo.winhighlight = "Normal:AnvimNormal,NormalNC:AnvimNormal,WinSeparator:AnvimSeparator"
   -- In 0.12 this only drops the window number. Window commands and mouse
   -- clicks still enter it, so a WinEnter guard moves the cursor on.
   api.nvim_win_set_config(win, { focusable = false })
@@ -93,6 +93,9 @@ local function open_code_win(buf)
   else
     win = api.nvim_open_win(buf, false, { split = "left", win = -1 })
   end
+  -- A split copies the options of the window that it splits, which can be the
+  -- prompt. The code window keeps the colorscheme's background.
+  vim.wo[win].winhighlight = ""
   if valid(M.wins.transcript) then
     api.nvim_win_set_width(M.wins.transcript, claude_width())
   end

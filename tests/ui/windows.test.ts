@@ -73,6 +73,46 @@ test("no frame shows the tree over the closed code window's columns", async () =
   }
 });
 
+// A split copies the options of the window that it splits, and here that is
+// the prompt.
+test("<C-w>o in the prompt reopens a code window without the Claude column's background", async () => {
+  anvim = await start();
+  const { ui } = anvim;
+  const win = await codeWin();
+  await ui.input("<C-w>o");
+  await ui.waitFor(async () => (await codeWin()) !== win);
+  const winhl = await ui.exec_lua<string>(`return vim.wo[require("anvim.layout").wins.code].winhighlight`);
+  expect(winhl).not.toContain("AnvimNormal");
+});
+
+test("the activity line's rule has AnvimRule's color on the Claude column's background", async () => {
+  anvim = await start();
+  const { ui } = anvim;
+  const want = await ui.exec_lua<{ fg: number; bg: number }>(`
+    return {
+      fg = vim.api.nvim_get_hl(0, { name = "AnvimRule", link = false }).fg,
+      bg = vim.api.nvim_get_hl(0, { name = "AnvimNormal", link = false }).bg,
+    }
+  `);
+  const input = await anvim.box("input");
+  const transcript = await anvim.box("transcript");
+  await ui.waitFor(() => cells(ui.lines()[input.row]!, input.col, input.width).includes("────"));
+  const colors = (row: number, col: number, width: number, text: string) =>
+    ui.grid[row]!.slice(col, col + width)
+      .filter((cell) => cell.text === text)
+      .map((cell) => {
+        const rgb = ui.attrs.get(cell.hl)?.rgb ?? {};
+        return { fg: rgb.foreground, bg: rgb.background ?? ui.defaults.bg };
+      });
+  const rule = colors(input.row, input.col, input.width, "─");
+  expect(rule.length).toBeGreaterThan(0);
+  expect(rule.every((c) => c.fg === want.fg && c.bg === want.bg)).toBe(true);
+  // The transcript's last row is blank before a turn.
+  const blank = colors(transcript.row + transcript.height - 1, transcript.col, transcript.width, " ");
+  expect(blank.length).toBe(transcript.width);
+  expect(blank.every((c) => c.bg === want.bg)).toBe(true);
+});
+
 test("splits in the code window fold back before a frame shows them, at the same view", async () => {
   anvim = await start();
   const { ui } = anvim;

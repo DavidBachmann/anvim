@@ -121,7 +121,7 @@ function M.setup_win(win)
   local wo = vim.wo[win]
   wo.statuscolumn = "%#AnvimPrompt#%{v:lnum == 1 && v:virtnum == 0 ? '❯ ' : '  '}"
   wo.winbar = "%!v:lua.require'anvim.input'.activity()"
-  wo.winhighlight = "WinBar:Normal,WinBarNC:NormalNC"
+  wo.winhighlight = "Normal:AnvimNormal,NormalNC:AnvimNormal,WinBar:AnvimNormal,WinBarNC:AnvimNormal"
   wo.number = false
   wo.relativenumber = false
   wo.signcolumn = "no"
@@ -327,7 +327,7 @@ function M.activity()
     local info = table.concat(parts, " · ") .. " "
     text, width = "%#Comment#" .. info, api.nvim_strwidth((info:gsub("%%%%", "%%")))
   end
-  return text .. "%#WinSeparator#" .. ("─"):rep(math.max(0, win_width(vim.g.statusline_winid) - width))
+  return text .. "%#AnvimRule#" .. ("─"):rep(math.max(0, win_width(vim.g.statusline_winid) - width))
 end
 
 -- A short busy label for the statusline, so it shows from any window.
