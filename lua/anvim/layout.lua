@@ -93,13 +93,31 @@ local function open_code_win(buf)
   else
     win = api.nvim_open_win(buf, false, { split = "left", win = -1 })
   end
-  -- A split copies the options of the window that it splits, which can be the
-  -- prompt. The code window keeps the colorscheme's background.
-  vim.wo[win].winhighlight = ""
   if valid(M.wins.transcript) then
     api.nvim_win_set_width(M.wins.transcript, claude_width())
   end
   return win
+end
+
+-- The code window's own options. Its winbar names its file, because the
+-- statusline names the prompt's buffer while the cursor is there. Groups in a
+-- winbar combine with WinBar, which often has the statusline's background.
+-- 'winhighlight' maps no other group, so a code window that split the prompt
+-- drops the prompt's background.
+M.code_options = {
+  winbar = "%!v:lua.require'anvim.layout'.winbar_text()",
+  winhighlight = "WinBar:AnvimWinBar,WinBarNC:AnvimWinBar",
+}
+
+function M.winbar_text()
+  local buf = api.nvim_win_get_buf(vim.g.statusline_winid)
+  local context = require("anvim.context")
+  local file = context.file(buf)
+  if not file then
+    return ""
+  end
+  local text = " " .. (context.relpath(file):gsub("%%", "%%%%"))
+  return vim.b[buf].anvim_preview and text .. "%#AnvimWinBarWriting# (writing)" or text
 end
 
 -- snacks' pickers jump into a window that shows a file, or else into one with
@@ -164,8 +182,8 @@ function M.focus_input(opts)
   end
 end
 
--- The empty buffer that Neovim starts with gets no bufferline tab, and goes
--- away once the code window shows a file.
+-- The empty buffer that Neovim starts with is not listed, so :bnext and the
+-- buffer picker skip it, and it goes away once the code window shows a file.
 local function drop_when_hidden(buf)
   local lines = api.nvim_buf_get_lines(buf, 0, 2, false)
   if api.nvim_buf_get_name(buf) == "" and not vim.bo[buf].modified and #lines == 1 and lines[1] == "" then
@@ -233,6 +251,17 @@ function M.setup()
     callback = function()
       if valid(M.wins.transcript) then
         api.nvim_win_set_width(M.wins.transcript, claude_width())
+      end
+    end,
+  })
+  -- A split of the code window copies its winbar, and so does a window that
+  -- shows a buffer which the code window showed last.
+  api.nvim_create_autocmd({ "WinNew", "BufWinEnter" }, {
+    group = group,
+    callback = function()
+      local win = api.nvim_get_current_win()
+      if win ~= M.wins.code and vim.wo[win].winbar == M.code_options.winbar then
+        vim.wo[win].winbar = ""
       end
     end,
   })

@@ -154,7 +154,7 @@ end
 -- Centers the range and its note, or puts the note at the top when the range
 -- is taller than the window. Notes above line 1 need topfill to show.
 local function reveal(win, first, last, fill)
-  local free = api.nvim_win_get_height(win) - (last - first + 1) - fill
+  local free = vim.fn.winheight(win) - (last - first + 1) - fill
   local top = math.max(first - math.floor(math.max(free, 0) / 2), 1)
   api.nvim_win_call(win, function()
     vim.fn.winrestview({ topline = top, topfill = top == first and fill or 0, lnum = first, col = 0 })

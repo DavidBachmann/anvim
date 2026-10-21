@@ -43,6 +43,9 @@ local highlights = {
   AnvimNormal = { link = "SnacksPickerList" },
   -- The activity line's rule. WinSeparator can fade into the tree's background.
   AnvimRule = { link = "LineNr" },
+  -- The code window's winbar. Without a background of its own, it has the code's.
+  AnvimWinBar = { link = "Comment" },
+  AnvimWinBarWriting = { link = "AnvimClaude" },
   -- Far apart from each other and from AnvimClaude in the usual colorschemes.
   AnvimAgent1 = { link = "MiniIconsAzure" },
   AnvimAgent2 = { link = "MiniIconsPurple" },

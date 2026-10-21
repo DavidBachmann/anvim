@@ -1,20 +1,5 @@
 local icons = require("anvim.base").icons
 
--- A lualine component for noice's command or mode status.
-local function noice_status(kind, group)
-  return {
-    function()
-      return require("noice").api.status[kind].get()
-    end,
-    cond = function()
-      return package.loaded["noice"] and require("noice").api.status[kind].has()
-    end,
-    color = function()
-      return { fg = Snacks.util.color(group) }
-    end,
-  }
-end
-
 return {
   {
     "nvim-mini/mini.icons",
@@ -55,6 +40,16 @@ return {
 
       vim.o.laststatus = vim.g.lualine_laststatus
 
+      -- During RecordingLeave, reg_recording() still names the register.
+      vim.api.nvim_create_autocmd({ "RecordingEnter", "RecordingLeave" }, {
+        group = vim.api.nvim_create_augroup("anvim.lualine.recording", {}),
+        callback = function()
+          vim.schedule(function()
+            require("lualine").refresh({ place = { "statusline" } })
+          end)
+        end,
+      })
+
       return {
         options = {
           theme = "auto",
@@ -78,9 +73,18 @@ return {
             { "filename", path = 1, symbols = { readonly = "" } },
           },
           lualine_x = {
-            noice_status("command", "Statement"),
-            -- Such as "recording @q", which 'showmode' would show.
-            noice_status("mode", "Constant"),
+            -- 'showmode' would show it, but lualine shows the mode.
+            {
+              function()
+                return "recording @" .. vim.fn.reg_recording()
+              end,
+              cond = function()
+                return vim.fn.reg_recording() ~= ""
+              end,
+              color = function()
+                return { fg = Snacks.util.color("Constant") }
+              end,
+            },
             {
               "diff",
               symbols = {
@@ -110,68 +114,4 @@ return {
       }
     end,
   },
-
-  {
-    "akinsho/bufferline.nvim",
-    event = "VeryLazy",
-    opts = {
-      options = {
-        -- stylua: ignore
-        close_command = function(n) Snacks.bufdelete(n) end,
-        -- stylua: ignore
-        right_mouse_command = function(n) Snacks.bufdelete(n) end,
-        diagnostics = "nvim_lsp",
-        always_show_bufferline = false,
-        diagnostics_indicator = function(_, _, diag)
-          local ret = (diag.error and icons.diagnostics.Error .. diag.error .. " " or "")
-            .. (diag.warning and icons.diagnostics.Warn .. diag.warning or "")
-          return vim.trim(ret)
-        end,
-        offsets = {
-          { filetype = "snacks_layout_box" },
-        },
-      },
-    },
-  },
-
-  {
-    "folke/noice.nvim",
-    event = "VeryLazy",
-    opts = {
-      lsp = {
-        override = {
-          ["vim.lsp.util.convert_input_to_markdown_lines"] = true,
-          ["vim.lsp.util.stylize_markdown"] = true,
-        },
-      },
-      routes = {
-        {
-          filter = {
-            event = "msg_show",
-            any = {
-              { find = "%d+L, %d+B" },
-              { find = "; after #%d+" },
-              { find = "; before #%d+" },
-            },
-          },
-          view = "mini",
-        },
-      },
-      presets = {
-        bottom_search = true,
-        command_palette = true,
-        long_message_to_split = true,
-      },
-    },
-    config = function(_, opts)
-      -- noice shows the messages from before it loaded. While lazy.nvim
-      -- installs plugins, those are noise.
-      if vim.o.filetype == "lazy" then
-        vim.cmd([[messages clear]])
-      end
-      require("noice").setup(opts)
-    end,
-  },
-
-  { "MunifTanjim/nui.nvim", lazy = true },
 }

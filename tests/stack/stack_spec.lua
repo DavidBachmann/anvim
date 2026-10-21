@@ -366,7 +366,7 @@ describe("stack", function()
     helpers.contains(out.lines, "^⏺ Edit%(matchparen%.lua%)$")
     helpers.contains(out.lines, "^  ⎿  Added %d+ lines?, removed %d+ lines?$")
     assert.are.same(helpers.tmp .. "/matchparen.lua", out.code)
-    assert.are.same({ helpers.tmp .. "/matchparen.lua" }, out.listed, "only files get a bufferline tab")
+    assert.are.same({ helpers.tmp .. "/matchparen.lua" }, out.listed, "only files are listed")
   end)
 
   it("starts mason's lua-language-server, with its logs out of the mason package", function()

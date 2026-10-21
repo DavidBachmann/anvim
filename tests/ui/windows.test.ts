@@ -202,10 +202,11 @@ test("a terminal resize with the prompt focused keeps the layout", async () => {
     const claude = Math.floor(cols * 0.36);
     const want = {
       prompts: 1,
-      cmdheight: 0,
+      cmdheight: 1,
       code: { row: 0, col: tree.width + 1, width: cols - tree.width - claude - 2 },
       transcript: { row: 0, col: cols - claude, width: claude },
-      input: { col: cols - claude, width: claude, bottom: rows - 1 },
+      // The statusline and the command line take the last two rows.
+      input: { col: cols - claude, width: claude, bottom: rows - 2 },
     };
     const got = await settle(
       () =>

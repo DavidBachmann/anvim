@@ -57,7 +57,10 @@ const BOX = `
     return vim.NIL
   end
   local pos = vim.fn.win_screenpos(win)
-  return { row = pos[1] - 1, col = pos[2] - 1, width = vim.api.nvim_win_get_width(win), height = vim.api.nvim_win_get_height(win) }
+  -- The code window's rows of code, under its winbar.
+  local bar = role == "code" and vim.fn.getwininfo(win)[1].winbar or 0
+  local height = vim.api.nvim_win_get_height(win) - bar
+  return { row = pos[1] - 1 + bar, col = pos[2] - 1, width = vim.api.nvim_win_get_width(win), height = height }
 `;
 
 export class Anvim {

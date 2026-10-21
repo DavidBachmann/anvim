@@ -117,15 +117,23 @@ function M.review_options()
   return review
 end
 
--- Sets the gutter of the mode. These set the window's global values too, so
--- a buffer that no window has shown gets them. Any other buffer brings back
--- the options of its last window, so BufWinEnter applies them again.
+-- Sets the gutter of the mode, and the code window's own options. These set
+-- the window's global values too, so a buffer that no window has shown gets
+-- them. Any other buffer brings back the options of its last window, so
+-- BufWinEnter applies them again.
 ---@param win integer?
 function M.apply(win)
   if not (win and api.nvim_win_is_valid(win)) then
     return
   end
   for name, value in pairs(mode == "follow" and FOLLOW or M.review_options()) do
+    if vim.wo[win][name] ~= value then
+      vim.wo[win][name] = value
+    end
+  end
+  -- 'winbar' is global-local, so it has no global value of the window's own,
+  -- and only BufWinEnter gives a new buffer its winbar.
+  for name, value in pairs(layout.code_options) do
     if vim.wo[win][name] ~= value then
       vim.wo[win][name] = value
     end
@@ -431,7 +439,7 @@ local function on_read(read, id)
     flash_view(read.lines)
   elseif M.shows(id) then
     local lines = {}
-    for line = first, math.min(read.last or math.huge, first + api.nvim_win_get_height(layout.code_win()) - 1) do
+    for line = first, math.min(read.last or math.huge, first + vim.fn.winheight(layout.code_win()) - 1) do
       lines[#lines + 1] = line
     end
     flash_view(lines)

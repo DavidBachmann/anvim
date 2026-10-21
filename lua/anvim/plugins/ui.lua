@@ -103,6 +103,16 @@ return {
           return { fg = Snacks.util.color("Comment") }
         end,
       })
+      -- A Write preview is a scratch buffer with an internal name. The
+      -- statusline names the file that it writes.
+      for _, component in ipairs(opts.sections.lualine_c) do
+        if type(component) == "table" and component[1] == "filename" then
+          component.fmt = function(text)
+            local path = vim.b.anvim_preview
+            return path and (require("anvim.context").relpath(path):gsub("%%", "%%%%")) or text
+          end
+        end
+      end
       -- The Claude column and the key view have no file, so their statusline
       -- drops the path and position.
       local claude = vim.deepcopy(opts.sections)
@@ -113,26 +123,6 @@ return {
         { filetypes = { "anvim_input", "anvim_transcript", "anvim_keys" }, sections = claude }
       )
     end,
-  },
-
-  -- Keep buffer tabs over the code column, like the tree's offset on the left.
-  {
-    "akinsho/bufferline.nvim",
-    optional = true,
-    opts = function(_, opts)
-      table.insert(opts.options.offsets, { filetype = "anvim_transcript", text = "Claude", text_align = "left" })
-    end,
-  },
-
-  -- noice shows LSP progress at the bottom right, over the prompt's footer, for
-  -- seconds while a server loads. The bottom left is the explorer's.
-  {
-    "folke/noice.nvim",
-    optional = true,
-    opts = {
-      lsp = { progress = { view = "anvim_progress" } },
-      views = { anvim_progress = { view = "mini", align = "message-left", position = { col = 0 } } },
-    },
   },
 
   {

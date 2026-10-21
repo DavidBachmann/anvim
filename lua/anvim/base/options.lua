@@ -70,3 +70,11 @@ opt.wrap = false
 
 -- The markdown ftplugin would set 'shiftwidth' and friends to 4.
 vim.g.markdown_recommended_style = 0
+
+-- Neovim's new message UI. The old one stops on an error from a callback until
+-- Enter: no redraws while Claude streams, and the next typed key answers it.
+-- ui2 shows the error in one line, and :messages in a pager.
+local ok, ui2 = pcall(require, "vim._core.ui2")
+if ok then
+  ui2.enable({})
+end

@@ -16,15 +16,6 @@ return {
       statuscolumn = { enabled = true },
       words = { enabled = true },
     },
-    config = function(_, opts)
-      local notify = vim.notify
-      require("snacks").setup(opts)
-      -- noice takes vim.notify over when it loads, and then shows the early
-      -- notifications in its history.
-      if require("lazy.core.config").spec.plugins["noice.nvim"] then
-        vim.notify = notify
-      end
-    end,
   },
 
   {
