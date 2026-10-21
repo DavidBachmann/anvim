@@ -71,6 +71,34 @@ describe("PermissionBridge", () => {
     });
   });
 
+  test("asks for a sandboxed command's new network host, and remembers it as a WebFetch rule", async () => {
+    const { bridge, ask } = setup();
+    // As Claude Code sends it: a fresh tool_use id that no tool call has.
+    const host: PermissionUpdate = {
+      type: "addRules",
+      rules: [{ toolName: "WebFetch", ruleContent: "domain:example.com" }],
+      behavior: "allow",
+      destination: "localSettings",
+    };
+    const { result, request } = ask(
+      "SandboxNetworkAccess",
+      { host: "example.com" },
+      {
+        suggestions: [host],
+        displayName: "SandboxNetworkAccess",
+        description: "Allow network connection to example.com?",
+        toolUseID: "77718261-f1b0-40e7-bf1e-07736e97f24c",
+      },
+    );
+    expect(request.remember).toBe("Yes, and don't ask again for WebFetch(domain:example.com) in this project");
+    bridge.respond({ type: "permission_response", req: 1, behavior: "allow", remember: true });
+    expect(await result).toMatchObject({
+      behavior: "allow",
+      updatedInput: { host: "example.com" },
+      updatedPermissions: [host],
+    });
+  });
+
   test("offers nothing to remember when Claude Code suppresses the rule", async () => {
     const { bridge, ask } = setup();
     const { result, request } = ask("Bash", { command: "rm -rf out" }, {

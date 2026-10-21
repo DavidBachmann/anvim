@@ -12,6 +12,8 @@ M.defaults = {
   resume = nil,
   -- Resume the latest session in the working directory at start.
   continue = false,
+  -- Run Claude's Bash commands in Claude Code's sandbox: they can write only in the project and a temp dir.
+  sandbox = true,
   bun = "bun",
   ---@type string[]? Replaces the sidecar command, e.g. to replay a recording.
   sidecar_cmd = nil,

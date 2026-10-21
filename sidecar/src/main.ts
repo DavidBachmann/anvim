@@ -12,6 +12,7 @@ import { contextHook, PendingContexts } from "./context";
 import { PermissionBridge } from "./permissions";
 import { PreviewBridge } from "./preview";
 import type { Command, EffortLevel, Event } from "./protocol";
+import { SandboxNotice, sandboxSetup } from "./sandbox";
 import * as sessions from "./sessions";
 import { EditorBridge, editorServer, SERVER } from "./tools";
 import { commandsEvent, modelsEvent, Translator } from "./translate";
@@ -179,7 +180,11 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
   const mode = (cmd.permission_mode ?? "default") as PermissionMode;
   permissions.cwd = cmd.cwd;
   permissions.bypass = mode === "bypassPermissions";
+  // Only false turns the sandbox off, so a start without the field keeps it.
+  const sandbox = sandboxSetup(cmd.sandbox !== false, cmd.cwd);
+  const notice = new SandboxNotice((text) => emit({ type: "notice", level: "warn", text }));
   const options: Options = {
+    ...sandbox.options,
     cwd: cmd.cwd,
     model: cmd.model,
     effort: cmd.effort,
@@ -194,8 +199,13 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     systemPrompt: { type: "preset", preset: "claude_code", append: cmd.append_system_prompt },
     mcpServers: { [SERVER]: editorServer(editor) },
     canUseTool: permissions.canUseTool,
-    stderr: (data) => process.stderr.write(data),
+    stderr: (data) => {
+      process.stderr.write(data);
+      notice.stderr(data);
+    },
   };
+  // After a resumed session's history, which draws the transcript again.
+  notice.warn(sandbox.warning);
   inheriting = !cmd.effort;
   session = query({ prompt: inbox, options });
   sessionReady(session);

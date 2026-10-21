@@ -87,6 +87,8 @@ function M.attach(sidecar)
       M.send("Claude has a question for you")
     elseif ev.tool == "ExitPlanMode" then
       M.send("Claude has a plan for you to review")
+    elseif ev.tool == "SandboxNetworkAccess" then
+      M.send("Claude needs your permission to connect to " .. tostring(ev.input.host))
     else
       M.send("Claude needs your permission to use " .. ev.tool)
     end

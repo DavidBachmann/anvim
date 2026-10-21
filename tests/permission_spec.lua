@@ -453,6 +453,60 @@ describe("permission", function()
     end)
   end)
 
+  it("asks for a sandboxed command's network access, and remembers the host in this project", function()
+    helpers.start()
+    api.nvim_set_current_win(layout.code_win())
+    local before = buf_lines(transcript.buf())
+    local notes, notify = {}, vim.notify
+    vim.notify = function(msg)
+      notes[#notes + 1] = msg
+    end
+    local ok, err = pcall(helpers.capture_sends, function(sent)
+      -- As the sidecar sends it: no tool line has its tool_use_id, and no agent.
+      local req = ask("77718261-f1b0-40e7-bf1e-07736e97f24c", "SandboxNetworkAccess", { host = "example.com" }, {
+        remember = "Yes, and don't ask again for WebFetch(domain:example.com) in this project",
+        description = "Allow network connection to example.com?",
+      })
+      assert.are.same({ "Claude is waiting for your answer to a network request, in the prompt" }, notes)
+      -- A background agent may have sent it, so it outlives the main turn.
+      sidecar.dispatch({
+        type = "turn_end",
+        subtype = "success",
+        is_error = false,
+        duration_ms = 1,
+        cost_usd = 0,
+        num_turns = 1,
+      })
+      assert(permission.waiting(), "the request stays at the turn's end")
+      assert.are.same({}, sent)
+      focus()
+      assert.are.same({
+        "  Network access",
+        "    example.com",
+        "  Do you want to allow this connection?",
+        "  ❯ 1. Yes",
+        "    2. Yes, and don't ask again for WebFetch(domain:example.com) in this project",
+        "    3. No, and tell Claude what to do differently (esc)",
+      }, tail(6))
+      keys("2")
+      assert.are.same({ { type = "permission_response", req = req, behavior = "allow", remember = true } }, sent)
+      assert.are.same(before, buf_lines(transcript.buf()), "the block goes, and nothing else changed")
+    end)
+    vim.notify = notify
+    assert(ok, err)
+  end)
+
+  it("titles a Bash command that asks to run outside the sandbox", function()
+    helpers.start()
+    focus()
+    helpers.capture_sends(function()
+      local _, id = request("Bash", { command = "rm -rf ~/.cache/x", dangerouslyDisableSandbox = true })
+      assert.are.same({ "  Bash command (unsandboxed)", "    rm -rf ~/.cache/x" }, vim.list_slice(tail(5), 1, 2))
+      keys("<Esc>")
+      result(id, true)
+    end)
+  end)
+
   it("opens on No and takes no single-key yes when Claude Code asks for care", function()
     helpers.start()
     focus()

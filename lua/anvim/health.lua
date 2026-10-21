@@ -32,6 +32,44 @@ local function executables(tools)
   end
 end
 
+-- The sidecar's own pre-check, so that the answer matches its warning.
+---@return boolean ran
+---@return string? problem Why the sandbox cannot start here.
+local function sandbox_problem()
+  local ok, obj = pcall(function()
+    return vim.system({ config.options.bun, sidecar.dir .. "/src/sandbox.ts" }, { text = true }):wait(5000)
+  end)
+  if not (ok and obj.code == 0) then
+    return false
+  end
+  local problem = vim.trim(obj.stdout or "")
+  return true, problem ~= "" and problem or nil
+end
+
+local function sandbox()
+  local ran, problem = sandbox_problem()
+  if config.options.sandbox == false then
+    health.info(
+      vim.env.ANVIM_SANDBOX == "0" and "The sandbox is off, because anvim started with --no-sandbox or ANVIM_SANDBOX=0"
+        or "The sandbox is off, because a spec sets `sandbox = false`"
+    )
+    if ran then
+      health.info(problem and ("It could not start here: " .. problem) or "It could start here")
+    end
+    return
+  end
+  if not ran then
+    health.warn("The sandbox is on, but its pre-check could not run")
+  elseif problem then
+    health.warn(
+      ("The sandbox is on, but it cannot start: %s. Claude's Bash commands run without it."):format(problem),
+      { "Install what is missing, or start anvim with --no-sandbox" }
+    )
+  else
+    health.ok("The sandbox is on: Claude's Bash commands can write only in the project and a temp dir")
+  end
+end
+
 function M.check()
   health.start("anvim")
 
@@ -97,6 +135,8 @@ function M.check()
   else
     health.error("The Agent SDK has no Claude Code binary", { run_install })
   end
+
+  sandbox()
 
   executables({
     { "git", "lazy.nvim installs the plugins with it.", error = true },

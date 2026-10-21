@@ -30,6 +30,9 @@ export type Command =
       model?: string;
       effort?: EffortLevel;
       permission_mode?: string;
+      // Claude Code's Bash sandbox (sandbox.ts). False turns it off, also
+      // over the settings files.
+      sandbox: boolean;
       // A session to go on with, or the latest one in cwd with `continue`.
       resume?: string;
       continue?: boolean;

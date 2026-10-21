@@ -73,6 +73,12 @@ describe("notify", function()
     }, calls)
 
     calls = {}
+    local host = { host = "example.com" }
+    sidecar.dispatch({ type = "permission_request", req = 3, tool = "SandboxNetworkAccess", input = host })
+    require("anvim.permission").cancel_all()
+    assert.are.same("Claude needs your permission to connect to example.com", calls[1].cmd[8])
+
+    calls = {}
     set_env({})
     sidecar.dispatch(turn_end)
     assert.are.same(1, #calls)

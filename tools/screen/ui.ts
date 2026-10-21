@@ -60,10 +60,11 @@ export class Ui {
     this.xdg = resolve(opts.xdg);
     // The child must not see the user's anvim state, or a Neovim it runs in.
     // Without the cmux variables, it posts no notifications to the user's terminal.
-    // A shell profile can set ANVIM_MODE or ANVIM_EFFORT, and opts.env sets the child's.
+    // A shell profile can set ANVIM_MODE, ANVIM_EFFORT or ANVIM_SANDBOX, and opts.env sets the child's.
     const env: Record<string, string> = {};
     for (const [key, value] of Object.entries(process.env)) {
-      if (value !== undefined && !/^(XDG_|NVIM|LAZY_|CMUX_|ANVIM_MODE$|ANVIM_EFFORT$)/.test(key)) env[key] = value;
+      const cleared = /^(XDG_|NVIM|LAZY_|CMUX_|ANVIM_MODE$|ANVIM_EFFORT$|ANVIM_SANDBOX$)/.test(key);
+      if (value !== undefined && !cleared) env[key] = value;
     }
     env.NVIM_APPNAME = "anvim";
     env.ANVIM_INSTALL_DIR = resolve(opts.install ?? join(root, ".tests/anvim"));

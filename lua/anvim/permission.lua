@@ -69,6 +69,8 @@ local titles = {
   NotebookEdit = "Edit notebook",
   WebFetch = "Fetch",
   WebSearch = "Web search",
+  -- A sandboxed command connects to a host that no rule allows yet.
+  SandboxNetworkAccess = "Network access",
 }
 
 local function first_line(text)
@@ -263,9 +265,18 @@ local function add_header(b, r)
   end
   local tool, inp = ev.tool, ev.input
   local mcp_server, mcp_tool = tool:match("^mcp__(.-)__(.+)$")
-  add_title(b, titles[tool] or ev.title or (mcp_server and "Tool use" or tool), ev)
+  local title = titles[tool] or ev.title or (mcp_server and "Tool use" or tool)
+  if tool == "Bash" and inp.dangerouslyDisableSandbox == true then
+    title = "Bash command (unsandboxed)"
+  end
+  add_title(b, title, ev)
   local path = type(inp.file_path) == "string" and inp.file_path or inp.notebook_path
-  if tool == "Bash" and type(inp.command) == "string" then
+  -- Its description only asks about the host again, so the block leaves it out.
+  if tool == "SandboxNetworkAccess" and type(inp.host) == "string" then
+    b.add("    " .. inp.host)
+    b.add("  Do you want to allow this connection?")
+    return
+  elseif tool == "Bash" and type(inp.command) == "string" then
     for _, line in ipairs(vim.split(inp.command, "\n", { plain = true })) do
       b.add("    " .. line)
     end
@@ -427,7 +438,10 @@ function show(r)
     end)
     set_keys()
     if not in_prompt() then
-      local what = r.kind == "question" and "a question" or r.kind == "plan" and "a plan" or r.ev.tool
+      local what = r.kind == "question" and "a question"
+        or r.kind == "plan" and "a plan"
+        or r.ev.tool == "SandboxNetworkAccess" and "a network request"
+        or r.ev.tool
       vim.notify(("Claude is waiting for your answer to %s, in the prompt"):format(what), vim.log.levels.INFO, {
         title = "anvim",
       })
@@ -664,7 +678,10 @@ function M.cancel_all(turn)
     -- At a turn's end, an agent that runs on keeps its request, and so does
     -- one that /clear forgot. The others get a no, so no agent waits on a
     -- request that is gone. The sidecar ignores an answer that came too late.
-    if not (turn and id and (not agent or agent.status == "running")) then
+    -- A network request names no agent, and a background agent can send it,
+    -- so it stays too.
+    local stays = id and (not agent or agent.status == "running") or r.ev.tool == "SandboxNetworkAccess"
+    if not (turn and stays) then
       if turn then
         sidecar.send({ type = "permission_response", req = r.ev.req, behavior = "deny" })
       end

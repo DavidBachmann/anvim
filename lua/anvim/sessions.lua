@@ -64,6 +64,7 @@ function M.start_command(opts)
     model = M.model or config.options.model,
     effort = M.effort(),
     permission_mode = config.options.permission_mode,
+    sandbox = config.options.sandbox ~= false,
     append_system_prompt = config.options.append_system_prompt,
   }, opts or {})
 end

@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import * as sdk from "@anthropic-ai/claude-agent-sdk";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
+import * as sandbox from "./sandbox";
 
 // A session that answers the control requests and never sends a message, so
 // the sidecar's run never ends. Its effort works as in Claude Code: a level
@@ -45,9 +46,21 @@ mock.module("@anthropic-ai/claude-agent-sdk", () => ({
     started.push(options);
     return session;
   },
-  getSessionInfo: async () => {
+  getSessionInfo: async (id: string) => {
     await gate;
-    return undefined;
+    return id === "s1" ? { sessionId: "s1" } : undefined;
+  },
+  getSessionMessages: async () => [],
+}));
+// The pre-check finds nothing on this machine, so a test can ask for a
+// warning. The other tests that import ./sandbox share this mock.
+let sandboxWarning: string | undefined;
+const realSandbox = { ...sandbox };
+mock.module("./sandbox", () => ({
+  ...realSandbox,
+  sandboxSetup: (...args: Parameters<typeof sandbox.sandboxSetup>) => {
+    const setup = realSandbox.sandboxSetup(...args);
+    return sandboxWarning ? { ...setup, warning: sandboxWarning } : setup;
   },
 }));
 const { handle, settingsEffort } = await import("./main");
@@ -73,18 +86,25 @@ const efforts = (events: any[]) => events.filter((e) => e.type === "effort").map
 
 describe("the sidecar's session", () => {
   test("model and effort changes wait for a resumed session, and then run in order", async () => {
+    sandboxWarning = "the sandbox cannot start";
     const events = await emitted(
       async () => {
-        await handle({ type: "start", cwd: "/tmp", model: "haiku", resume: "s1" });
+        await handle({ type: "start", cwd: "/tmp", model: "haiku", resume: "s1", history: true, sandbox: false });
         const changes = [handle({ type: "set_model", model: "sonnet" }), handle({ type: "set_effort", effort: "low" })];
         await Bun.sleep(20);
         expect([started.length, calls.length]).toEqual([0, 0]);
         open();
         await Promise.all(changes);
+        // Claude Code's own line adds no second warning.
+        started[0]!.stderr!("\n⚠ Sandbox disabled: no bwrap\n");
       },
       (evs) => evs.some((e) => e.type === "models"),
-    );
-    expect(started.map((o) => [o.model, o.effort, o.resume])).toEqual([["haiku", undefined, undefined]]);
+    ).finally(() => (sandboxWarning = undefined));
+    expect(started.map((o) => [o.model, o.effort, o.resume])).toEqual([["haiku", undefined, "s1"]]);
+    expect(started[0]!.sandbox).toEqual({ enabled: false });
+    // The history draws the transcript again, so the warning comes after it.
+    const order = events.filter((e) => e.type === "history" || e.type === "notice").map((e) => e.text ?? e.type);
+    expect(order).toEqual(["history", "the sandbox cannot start"]);
     expect(calls).toEqual([
       ["setModel", "sonnet"],
       ["effortLevel", "low"],

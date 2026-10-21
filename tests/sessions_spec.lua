@@ -97,6 +97,23 @@ describe("sessions", function()
     state.session_id = nil
   end)
 
+  it("sends the sandbox option, which anvim's spec reads from ANVIM_SANDBOX", function()
+    local config = require("anvim.config")
+    local was, env = config.options.sandbox, vim.env.ANVIM_SANDBOX
+    config.options.sandbox = false
+    local sent_off = sessions.start_command().sandbox
+    config.options.sandbox = true
+    local sent_on = sessions.start_command().sandbox
+    config.options.sandbox = was
+    local spec = helpers.root .. "/lua/anvim/plugins/anvim.lua"
+    vim.env.ANVIM_SANDBOX = "0"
+    local spec_off = dofile(spec)[1].opts.sandbox
+    vim.env.ANVIM_SANDBOX = nil
+    local spec_on = dofile(spec)[1].opts.sandbox
+    vim.env.ANVIM_SANDBOX = env
+    assert.are.same({ false, true, false, true }, { sent_off, sent_on, spec_off, spec_on })
+  end)
+
   it("opens the picker with this directory's sessions, and a choice resumes one", function()
     local shown = {}
     local _, unfetch = stub(sessions, "fetch", function(cb)

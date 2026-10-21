@@ -15,7 +15,7 @@ vim.fn.writefile({
   [[  --version) echo "NVIM v0.12.5"; exit 0 ;;]],
   [[  --headless) echo "fake install" >&2; exit "${FAKE_INSTALL_EXIT:-0}" ;;]],
   "esac",
-  [[printf '%s|%s|%s|%s|%s|%s|%s|%s\n' "$ANVIM_MODEL" "$ANVIM_RESUME" "$ANVIM_CONTINUE" "$(pwd)" "$*" "$ANVIM_INSTALL_DIR" "$ANVIM_INSTALL_FAILED" "$ANVIM_EFFORT"]],
+  [[printf '%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "$ANVIM_MODEL" "$ANVIM_RESUME" "$ANVIM_CONTINUE" "$(pwd)" "$*" "$ANVIM_INSTALL_DIR" "$ANVIM_INSTALL_FAILED" "$ANVIM_EFFORT" "$ANVIM_SANDBOX"]],
 }, bin .. "/nvim")
 vim.fn.writefile({ "#!/bin/sh", [[[ "$1" = --version ] && echo 1.0.0]], "exit 0" }, bin .. "/bun")
 for _, name in ipairs({ "nvim", "bun" }) do
@@ -33,6 +33,7 @@ local id = "9b0fe4b4-4c79-44ac-be0c-7ccce0301a50"
 ---@field install string
 ---@field failed string ANVIM_INSTALL_FAILED
 ---@field effort string
+---@field sandbox string
 
 ---@param env? table<string, string|false> false unsets the variable.
 ---@return anvim.LauncherOut? out What nvim got, or nil when bin/anvim did not start it.
@@ -45,6 +46,7 @@ local function run(args, env, cwd)
     ANVIM_MODEL = "",
     ANVIM_MODE = "",
     ANVIM_EFFORT = "",
+    ANVIM_SANDBOX = "",
     ANVIM_NO_INSTALL = "1",
     ANVIM_INSTALL_DIR = helpers.tmp .. "/launcher install",
   }
@@ -59,8 +61,8 @@ local function run(args, env, cwd)
       clear_env = true,
     })
     :wait()
-  local model, resume, continue, dir, rest, install, failed, effort = (res.stdout or ""):match(
-    "^(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)\n$"
+  local model, resume, continue, dir, rest, install, failed, effort, sandbox = (res.stdout or ""):match(
+    "^(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)\n$"
   )
   local out = model
       and {
@@ -72,6 +74,7 @@ local function run(args, env, cwd)
         install = install,
         failed = failed,
         effort = effort,
+        sandbox = sandbox,
       }
     or nil
   return out, res.code, res.stderr or ""
@@ -118,6 +121,17 @@ describe("bin/anvim", function()
       assert.are.same(2, code, vim.inspect(case))
       assert(err:find(want, 1, true), err)
     end
+  end)
+
+  it("turns the sandbox off with --no-sandbox, and keeps ANVIM_SANDBOX from the environment", function()
+    -- Unset, so that only bin/anvim's export can bring it to nvim.
+    local out = assert(run({ "--no-sandbox", project, "+10" }, { ANVIM_SANDBOX = false }))
+    assert.are.same({ "0", vim.fn.resolve(project) }, { out.sandbox, vim.fn.resolve(out.dir) })
+    assert(vim.endswith(out.args, "/init.lua +10"), out.args)
+    out = assert(run({ project }))
+    assert.are.same("", out.sandbox)
+    out = assert(run({ project }, { ANVIM_SANDBOX = "0" }))
+    assert.are.same("0", out.sandbox)
   end)
 
   it("never resumes from a value that another anvim left in the environment", function()
