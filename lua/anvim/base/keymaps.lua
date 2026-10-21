@@ -17,6 +17,17 @@ map("n", "<C-j>", "<C-w>j", { remap = true })
 map("n", "<C-k>", "<C-w>k", { remap = true })
 map("n", "<C-l>", "<C-w>l", { remap = true })
 
+-- In a float, Neovim's own <C-w>H, J, K and L turn it into a split, which
+-- resizes anvim's columns, and <C-w>T moves it to a new tab page. A float,
+-- such as a picker, keeps its place. Splits keep Neovim's own moves.
+for _, key in ipairs({ "H", "J", "K", "L", "T" }) do
+  map("n", "<C-w>" .. key, function()
+    if vim.api.nvim_win_get_config(0).relative == "" then
+      vim.cmd((vim.v.count > 0 and vim.v.count or "") .. "wincmd " .. key)
+    end
+  end)
+end
+
 map("n", "<S-h>", "<cmd>bprevious<cr>")
 map("n", "<S-l>", "<cmd>bnext<cr>")
 

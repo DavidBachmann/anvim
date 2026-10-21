@@ -95,7 +95,13 @@ function M.buf()
   local keys = require("anvim.keys")
   for _, key in ipairs({ "q", "<Esc>" }) do
     keys.set("transcript", "n", key, function()
-      layout.focus_input({ insert = false })
+      -- The Agent Overview shows the transcript as Claude's conversation.
+      local overview = require("anvim.overview")
+      if overview.owns(api.nvim_get_current_win()) then
+        overview.close()
+      else
+        layout.focus_input({ insert = false })
+      end
     end, { buffer = bufnr })
   end
   for _, key in ipairs(layout.insert_keys) do
@@ -412,7 +418,7 @@ local function agent_done(tool, r)
   return ("Done (%s)"):format(table.concat(parts, " · "))
 end
 
-M.agent_done = agent_done
+M.agent_done, M.tokens, M.duration = agent_done, tokens, duration
 
 local function summarize(tool, ev)
   if tool.outcome then

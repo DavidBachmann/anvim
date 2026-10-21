@@ -313,71 +313,7 @@ describe("focus", function()
     for slot, desc in pairs({ [0] = "Focus the main agent", [1] = "Focus agent 1", [4] = "Focus agent 4" }) do
       assert.are.same(desc, vim.fn.maparg("<leader>c" .. slot, "n", false, true).desc)
     end
-    assert.are.same("Pick an agent to focus", vim.fn.maparg("<leader>ca", "n", false, true).desc)
-  end)
-
-  it("lists the agents in a picker, and its choice takes the focus", function()
-    fresh()
-    local a = file("focus_p.lua")
-    start("p1", { subagent_type = "Explore", description = "Find x" })
-    start("p2")
-    read("p1", a, 2)
-    sidecar.dispatch({ type = "agent_progress", agent_id = "p1", description = "Reading focus_p.lua" })
-    local pick = Snacks.picker.pick
-    local opts ---@type table
-    restore = function()
-      Snacks.picker.pick = pick
-    end
-    Snacks.picker.pick = function(o)
-      opts = o
-    end
-    follow.pick()
-    local function texts(item)
-      return table.concat(vim.tbl_map(function(chunk)
-        return chunk[1]
-      end, opts.format(item)))
-    end
-    local items = opts.items
-    assert.are.same({
-      "◉ Claude     main agent",
-      "⏺ Explore 1  Find x  Reading focus_p.lua · 1 tool use · focus_p.lua:2",
-      "⏺ Agent 2    Task p2  0 tool uses",
-    }, vim.tbl_map(texts, items))
-    assert.are.same({ "AnvimClaude", "AnvimAgent1", "AnvimAgent2" }, {
-      opts.format(items[1])[1][2],
-      opts.format(items[2])[1][2],
-      opts.format(items[3])[1][2],
-    })
-    assert.are.same({ a, { 2, 0 }, "file" }, { items[2].file, items[2].pos, items[2].preview })
-    assert.are.same({ text = "Task p2", loc = false }, items[3].preview)
-
-    prompt()
-    local closed = false
-    opts.confirm({
-      close = function()
-        closed = true
-      end,
-    }, items[2])
-    assert(closed)
-    assert(
-      vim.wait(1000, function()
-        return follow.focus == "p1"
-      end),
-      "the choice took no focus"
-    )
-    assert.are.same({ a, 2 }, { code_file(), code_line() })
-    follow.pick()
-    assert.are.same({ "⏺ Claude", "◉ Explore 1" }, {
-      texts(opts.items[1]):sub(1, #"⏺ Claude"),
-      texts(opts.items[2]):sub(1, #"◉ Explore 1"),
-    })
-    opts.confirm({ close = function() end }, opts.items[1])
-    assert(
-      vim.wait(1000, function()
-        return follow.focus == nil
-      end),
-      "the main agent took no focus"
-    )
+    assert.are.same("Open the Agent Overview", vim.fn.maparg("<leader>ca", "n", false, true).desc)
   end)
 
   it("marks the focused agent with ◉ in the footer and at the end of its Agent line", function()

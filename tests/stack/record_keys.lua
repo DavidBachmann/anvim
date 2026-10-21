@@ -38,6 +38,8 @@ local function ctx(buf)
     return "prompt"
   elseif vim.b[buf].anvim_transcript then
     return "transcript"
+  elseif vim.b[buf].anvim_agentlog then
+    return "agentlog"
   elseif vim.api.nvim_buf_get_name(buf) == "anvim://compose" then
     return "compose"
   elseif vim.bo[buf].filetype == "anvim_keys" then

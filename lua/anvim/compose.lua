@@ -181,14 +181,15 @@ function M.open()
   require("anvim.keys").set("compose", { "n", "i" }, "<C-g>", M.close, { buffer = buf, nowait = true })
   -- After a window command, the cursor is in the other window by the time
   -- the event loop runs. After :q! the compose window is gone. The key view
-  -- gives the cursor back.
+  -- and the Agent Overview give the cursor back.
   api.nvim_create_autocmd("WinLeave", {
     buffer = buf,
     callback = function()
       left_typing = api.nvim_get_mode().mode:sub(1, 1) == "i" and api.nvim_win_get_cursor(0) or nil
       vim.schedule(function()
         local w, current = M.win(), api.nvim_get_current_win()
-        if w and current ~= w and current ~= require("anvim.keyview").win() then
+        local on_top = current == require("anvim.keyview").win() or require("anvim.overview").owns(current)
+        if w and current ~= w and not on_top then
           M.close()
         end
       end)

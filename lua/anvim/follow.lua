@@ -244,6 +244,24 @@ local function on_top(win)
   end
   return true
 end
+M.on_top = on_top
+
+-- A split that shows the buffer of a float on top counts as that float, as
+-- the explorer's new split does for a moment on a resize from the Agent
+-- Overview.
+-- The layout's own windows never count, because a picker's preview can show
+-- the code window's file.
+local function float_copy(win)
+  if win == layout.wins.code or win == layout.wins.input or win == layout.wins.transcript then
+    return false
+  end
+  for _, other in ipairs(vim.fn.win_findbuf(api.nvim_win_get_buf(win))) do
+    if other ~= win and api.nvim_win_get_config(other).relative ~= "" and on_top(other) then
+      return true
+    end
+  end
+  return false
+end
 
 -- Computes the mode. When it changed, sets the code window's gutter and fires
 -- `User AnvimMode`. It never redraws, so window events can call it.
@@ -253,7 +271,7 @@ function M.update()
   -- makes the explorer's split so, inside nvim_win_call(), and the cursor
   -- goes back to the prompt without autocmds.
   local prompt = M.enabled() or vim.b[api.nvim_win_get_buf(win)].anvim_input == true
-  if prompt or not on_top(win) then
+  if prompt or not (on_top(win) or float_copy(win)) then
     in_prompt = prompt
   end
   local new = in_prompt and not M.paused() and "follow" or "review"
@@ -422,14 +440,44 @@ function M.set_focus(id)
   agents.changed()
 end
 
+function M.empty_slot(slot)
+  vim.notify(("No agent in slot %d"):format(slot), vim.log.levels.INFO, { title = "anvim", timeout = 1500 })
+end
+
 -- Slot 0 is the main agent.
 function M.focus_slot(slot)
   local agent = slot > 0 and agents.in_slot(slot)
   if slot > 0 and not agent then
-    vim.notify(("No agent in slot %d"):format(slot), vim.log.levels.INFO, { title = "anvim", timeout = 1500 })
+    M.empty_slot(slot)
     return
   end
   M.set_focus(agent and agent.id or nil)
+end
+
+-- How an agent's end reads in a notice.
+local ended = { completed = "finished", failed = "failed", stopped = "was stopped" }
+
+-- Closes the Agent Overview and follows agent `id`, or the main agent for
+-- nil. Follow mode needs the cursor in the prompt, so it goes there in normal
+-- mode, unless it is in the compose window. An agent that ended by then hands
+-- the view to the main agent.
+---@param id string?
+function M.follow(id)
+  require("anvim.overview").close()
+  vim.schedule(function()
+    -- The user asked to follow now, so a pinned selection goes.
+    require("anvim.context").clear()
+    if not M.enabled() then
+      layout.focus_input({ insert = false })
+    end
+    local agent = id and agents.get(id)
+    local running = agent and agent.status == "running"
+    if agent and not running then
+      local text = ("%s %s · following Claude"):format(agents.name(agent), ended[agent.status] or "ended")
+      vim.notify(text, vim.log.levels.INFO, { title = "anvim" })
+    end
+    M.set_focus(running and id or nil)
+  end)
 end
 
 -- Focus goes back to the main agent when the focused agent ends. A session
@@ -664,80 +712,6 @@ function M.status(short)
   return claude and "⏺ " .. claude or ""
 end
 
-local function plural(n, word)
-  return ("%d %s%s"):format(n, word, n == 1 and "" or "s")
-end
-
--- The main agent, then the running agents by slot. Each shows its place in
--- the preview.
-local function pick_items()
-  local relpath = require("anvim.transcript").relpath
-  local list = { { name = "Claude", group = agents.group(0), description = "main agent" } }
-  for _, agent in ipairs(agents.running()) do
-    list[#list + 1] = {
-      agent_id = agent.id,
-      name = agents.name(agent),
-      group = agents.group(agent.slot),
-      description = agent.description,
-      activity = agent.activity,
-      tools = plural(agent.tools, "tool use"),
-    }
-  end
-  local width = 0
-  for _, item in ipairs(list) do
-    width = math.max(width, api.nvim_strwidth(item.name))
-  end
-  for _, item in ipairs(list) do
-    local place = places[item.agent_id or ""]
-    item.name = item.name .. (" "):rep(width - api.nvim_strwidth(item.name))
-    item.focused = item.agent_id == M.focus
-    item.where = place and ("%s:%d"):format(relpath(place.path), place.line)
-    item.text = table.concat({ item.name, item.description, item.activity or "", item.where or "" }, " ")
-    if place and vim.uv.fs_stat(place.path) then
-      item.file, item.pos, item.preview = place.path, { place.line, 0 }, "file"
-    else
-      item.preview = { text = item.description ~= "" and item.description or item.name, loc = false }
-    end
-  end
-  return list
-end
-
-function M.pick()
-  Snacks.picker.pick({
-    source = "anvim_agents",
-    title = "Agents",
-    items = pick_items(),
-    format = function(item)
-      local ret = {
-        { item.focused and "◉ " or "⏺ ", item.group },
-        { item.name .. "  ", item.group },
-        { item.description },
-      }
-      local info = {}
-      info[#info + 1] = item.activity
-      info[#info + 1] = item.tools
-      info[#info + 1] = item.where
-      if #info > 0 then
-        ret[#ret + 1] = { "  " .. table.concat(info, " · "), "Comment" }
-      end
-      return ret
-    end,
-    preview = "preview",
-    -- Without a query, the main agent stays on top, then the slots in order.
-    sort = { fields = { "score:desc", "idx" } },
-    -- The cursor goes back where it was, such as the prompt, which is no file.
-    main = { current = true },
-    confirm = function(picker, item)
-      picker:close()
-      if item then
-        vim.schedule(function()
-          M.set_focus(item.agent_id)
-        end)
-      end
-    end,
-  })
-end
-
 -- A background agent works on after the turn.
 local function runs_on(id)
   local agent = id and agents.get(id)
@@ -879,7 +853,6 @@ function M.attach(sidecar)
       M.focus_slot(slot)
     end)
   end
-  keys.set("claude", "n", "<leader>ca", M.pick)
 end
 
 return M

@@ -606,7 +606,7 @@ describe("stack", function()
     assert.are.same({}, errors)
   end)
 
-  it("focuses an agent with <leader>c1 and the picker, and the footer names it in its color", function()
+  it("focuses an agent with <leader>c1 and the Agent Overview, and the footer names it in its color", function()
     start()
     -- A file of its own: a cursor that this case moves would make a later 2G scroll.
     local file = helpers.tmp .. "/focus_stack.lua"
@@ -660,30 +660,39 @@ describe("stack", function()
       wait(
         3000,
         [[
-        local picker = Snacks.picker.get({ source = "anvim_agents" })[1]
-        return picker ~= nil and #picker:items() == 3
+        local picker = Snacks.picker.get({ source = "anvim_overview" })[1]
+        return picker ~= nil and #picker:items() == 3 and picker.list.win:win_valid()
       ]],
-        "<leader>ca opened no picker"
+        "<leader>ca opened no Overview"
       )
-      keys("Explore")
+      local title = lua([[
+        local picker = Snacks.picker.get({ source = "anvim_overview" })[1]
+        local chunks = vim.api.nvim_win_get_config(picker.layout.root.win).title
+        return vim.trim(table.concat(vim.tbl_map(function(chunk)
+          return chunk[1]
+        end, chunks)))
+      ]])
+      assert.are.same("Agent Overview", title)
+      -- The Overview has no input. 2 selects the agent in slot 2.
+      keys("2")
       wait(
         3000,
         [[
-        local picker = Snacks.picker.get({ source = "anvim_agents" })[1]
+        local picker = Snacks.picker.get({ source = "anvim_overview" })[1]
         local item = picker and picker:current()
         return item ~= nil and item.agent_id == "s2"
       ]],
-        "the picker did not filter to Explore 2"
+        "2 did not select Explore 2"
       )
       keys("<CR>")
-      wait_where({ win = "input", mode = "n" }, "<CR> in the agents picker")
-      wait(3000, [[return require("anvim.follow").focus == "s2"]], "the picker took no focus")
+      wait_where({ win = "input", mode = "n" }, "<CR> in the Overview")
+      wait(3000, [[return require("anvim.follow").focus == "s2"]], "the Overview took no focus")
       out = lua([[
         local win = require("anvim.layout").wins.code
         return { name = vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(win)), line = vim.api.nvim_win_get_cursor(win)[1] }
       ]])
       assert.are.same({ name = file, line = 30 }, out)
-      wait_footer({ "◉ ", "Explore 2" }, "the footer after the picker")
+      wait_footer({ "◉ ", "Explore 2" }, "the footer after the Overview")
     end)
     lua([[
       require("anvim.agents").clear()
@@ -1656,6 +1665,31 @@ describe("stack", function()
     snap("compose", "compose", "vim.api.nvim_get_current_buf()")
     keys("<C-g>")
     wait_where({ win = "input", mode = "n" }, "<C-g> in the compose window")
+    -- The Agent Overview's tabs, and an agent's log.
+    lua([[
+      require("anvim.sidecar").dispatch({
+        type = "agent_start",
+        agent_id = "keys_a1",
+        tool_use_id = "tu_keys_a1",
+        description = "Keys",
+        subagent_type = "general-purpose",
+        depth = 1,
+        background = false,
+      })
+      require("anvim.overview").open()
+    ]])
+    wait(
+      3000,
+      [[local p = require("anvim.overview").get() return p ~= nil and p.list.win:win_valid()]],
+      "the Overview did not open"
+    )
+    snap("overview", "overview", [[require("anvim.overview").get().list.win.buf]])
+    snap("agentlog", "agentlog", [[require("anvim.agentlog").buf("keys_a1")]])
+    lua([[
+      require("anvim.overview").close()
+      require("anvim.agents").clear()
+    ]])
+    wait_where({ win = "input", mode = "n" }, "closing the Overview")
     local problems = lua(
       [[
       local clean = ...
@@ -1727,6 +1761,11 @@ describe("stack", function()
       for lhs in pairs(explorer_keys) do
         ours[vim.keycode(lhs)] = true
       end
+      local overview_keys = require("anvim.overview").keys
+      local ours_overview = {}
+      for lhs in pairs(overview_keys) do
+        ours_overview[vim.keycode(lhs)] = true
+      end
       local function listed(ctx, mode, lhs)
         for _, place in ipairs(keys.places) do
           for _, key in ipairs(place.keys) do
@@ -1758,6 +1797,9 @@ describe("stack", function()
         elseif ctx == "explorer" and not ours[vim.keycode(m.lhs)] then
           -- The explorer's own keys, which its ? lists.
           return true
+        elseif ctx == "overview" and not ours_overview[vim.keycode(m.lhs)] then
+          -- snacks' own picker keys, which its ? lists.
+          return true
         elseif shared(ctx, m) then
           return true
         end
@@ -1779,7 +1821,7 @@ describe("stack", function()
           problems[#problems + 1] = ("%s map %s in %s from %s is not in the view"):format(m.mode, m.lhs, m.ctx, m.src)
         end
       end
-      for _, ctx in ipairs({ "global", "file", "prompt", "transcript", "compose", "view", "other" }) do
+      for _, ctx in ipairs({ "global", "file", "prompt", "transcript", "compose", "agentlog", "view", "other" }) do
         if not seen[ctx] then
           problems[#problems + 1] = "no map was recorded in " .. ctx
         end
@@ -1789,6 +1831,13 @@ describe("stack", function()
         local key = spec and keys.find("explorer", spec.mode or "n", lhs)
         if spec and not (key and key[2] == spec.desc) then
           problems[#problems + 1] = ("the explorer's %s is not in the view"):format(lhs)
+        end
+      end
+      -- snacks maps the Overview's keys from overview.keys.
+      for lhs, spec in pairs(overview_keys) do
+        local key = spec and keys.find("overview", spec.mode or "n", lhs)
+        if spec and not (key and key[2] == spec.desc) then
+          problems[#problems + 1] = ("the Overview's %s is not in the view"):format(lhs)
         end
       end
       return problems
@@ -2254,7 +2303,7 @@ describe("stack", function()
       ["n c2"] = "Focus agent 2",
       ["n c3"] = "Focus agent 3",
       ["n c4"] = "Focus agent 4",
-      ["n ca"] = "Pick an agent to focus",
+      ["n ca"] = "Open the Agent Overview",
       ["n cj"] = "Jump to where Claude or the focused agent is",
       ["n cm"] = "Choose the model",
       ["n cr"] = "Read the transcript",

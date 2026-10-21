@@ -20,7 +20,7 @@ local M = {}
 ---@class anvim.KeyPlace
 ---@field id string
 ---@field name string
----@field ctx "global"|"file"|"prompt"|"transcript"|"compose"|"explorer"|"view"|"other" Where its maps live.
+---@field ctx "global"|"file"|"prompt"|"transcript"|"compose"|"explorer"|"overview"|"agentlog"|"view"|"other" Where its maps live.
 ---@field keys anvim.Key[]
 
 ---@type anvim.KeyPlace[]
@@ -35,6 +35,36 @@ M.places = {
       { "<C-j>", "Go to the window below" },
       { "<C-k>", "Go to the window above" },
       { "<C-l>", "Go to the right window" },
+      {
+        "<C-w>H",
+        "Move the window to the far left; a float stays",
+        label = "<C-w>HJKLT",
+        row = "Move the window; a float stays",
+      },
+      {
+        "<C-w>J",
+        "Move the window to the very bottom; a float stays",
+        label = "<C-w>HJKLT",
+        row = "Move the window; a float stays",
+      },
+      {
+        "<C-w>K",
+        "Move the window to the very top; a float stays",
+        label = "<C-w>HJKLT",
+        row = "Move the window; a float stays",
+      },
+      {
+        "<C-w>L",
+        "Move the window to the far right; a float stays",
+        label = "<C-w>HJKLT",
+        row = "Move the window; a float stays",
+      },
+      {
+        "<C-w>T",
+        "Move the window to a new tab page; a float stays",
+        label = "<C-w>HJKLT",
+        row = "Move the window; a float stays",
+      },
       { "<S-h>", "Previous buffer", row = "Previous and next buffer" },
       { "<S-l>", "Next buffer", row = "Previous and next buffer" },
       { { "j", "<Down>" }, "Down a screen line", mode = { "n", "x" }, row = "Down and up by screen line" },
@@ -202,13 +232,38 @@ M.places = {
       { "<leader>c2", "Focus agent 2", row = "Focus agent 1 to 4", label = "<leader>c1-4" },
       { "<leader>c3", "Focus agent 3", row = "Focus agent 1 to 4", label = "<leader>c1-4" },
       { "<leader>c4", "Focus agent 4", row = "Focus agent 1 to 4", label = "<leader>c1-4" },
-      { "<leader>ca", "Pick an agent to focus" },
+      { "<leader>ca", "Open the Agent Overview" },
       { "<leader>ct", "Pick a place from Claude's trail" },
       { "<leader>cr", "Read the transcript" },
       { "<leader>cy", "Yank Claude's last reply" },
       { "<leader>cs", "Resume a session" },
       { "<leader>cm", "Choose the model" },
       { "<leader>cR", "Restart Claude" },
+    },
+  },
+  -- The tabs are the list of a snacks picker, which keeps snacks' own keys.
+  {
+    id = "overview",
+    name = "Agent Overview",
+    ctx = "overview",
+    keys = {
+      { "<CR>", "Close the window and follow the agent", row = "Close the window and follow the agent" },
+      {
+        "<2-LeftMouse>",
+        "Close the window and follow the agent",
+        label = "double-click",
+        row = "Close the window and follow the agent",
+      },
+      { "j", "Next agent", default = true, label = "j k", row = "Next and previous agent" },
+      { "k", "Previous agent", default = true, label = "j k", row = "Next and previous agent" },
+      { "<Tab>", "Next agent", label = "<Tab> <S-Tab>", row = "Next and previous agent" },
+      { "<S-Tab>", "Previous agent", label = "<Tab> <S-Tab>", row = "Next and previous agent" },
+      { { "0", "1", "2", "3", "4" }, "Select the agent in that slot", label = "0-4" },
+      { { "<C-f>", "<C-b>" }, "Scroll the conversation", default = true },
+      { "<a-w>", "Go into the conversation", default = true },
+      { { "q", "<Esc>" }, "Close the window", default = true, row = "Close the window" },
+      { { "q", "<Esc>" }, "Close the window", ctx = "agentlog", row = "Close the window" },
+      { "?", "Show the window's own keys", default = true },
     },
   },
   -- The key view's own keys, which its footer shows.

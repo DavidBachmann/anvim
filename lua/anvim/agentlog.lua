@@ -1,6 +1,7 @@
 -- One log buffer per subagent, keyed by its agent_id: its prompt, tool calls
 -- with their results, text and thinking, drawn like the transcript.
 local agents = require("anvim.agents")
+local keys = require("anvim.keys")
 local transcript = require("anvim.transcript")
 
 local M = {}
@@ -201,6 +202,12 @@ local function new_log(id)
   vim.bo[buf].modifiable = false
   -- With breakindentopt=list:-1, wrapped lines align after the bullet.
   vim.bo[buf].formatlistpat = [[^\s*\%(⏺\|❯\|⎿\|⚠\|∴\)\?\s*]]
+  -- The Agent Overview shows the log, and <a-w> goes into it.
+  for _, key in ipairs({ "q", "<Esc>" }) do
+    keys.set("overview", "n", key, function()
+      require("anvim.overview").close()
+    end, { buffer = buf, nowait = true })
+  end
   local log = { buf = buf, order = 0, empty = true, tools = {}, text = false, dropped = false }
   logs[id], seen[id] = log, true
   -- The user can delete or wipe the buffer. The log is gone then, and the
