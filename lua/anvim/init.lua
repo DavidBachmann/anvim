@@ -23,6 +23,7 @@ local highlights = {
   AnvimToolOk = { link = "DiagnosticOk" },
   AnvimToolError = { link = "DiagnosticError" },
   AnvimResult = { link = "Comment" },
+  AnvimThinking = { link = "Comment" },
   AnvimModeManual = { link = "DiagnosticOk" },
   AnvimModeEdits = { link = "DiagnosticHint" },
   AnvimModePlan = { link = "DiagnosticInfo" },
@@ -104,6 +105,7 @@ end
 local function wire()
   require("anvim.bashread").attach(sidecar)
   require("anvim.agents").attach(sidecar)
+  require("anvim.agentlog").attach(sidecar)
   transcript.attach(sidecar)
   input.attach()
   readonly.attach(sidecar)

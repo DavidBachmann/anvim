@@ -14,21 +14,9 @@ local function place_of(id)
   return p and { p.path, p.line }
 end
 
--- The events of a recording, with the paths in the temp project. The events
--- that need a real sidecar or change the footer of other specs stay out.
 ---@param name? string The fixture's name, agents-session by default.
 local function recording(name)
-  local skip = { commands = true, init = true, status = true, context = true, await_preview = true, effort = true }
-  local events = {}
-  local file = ("%s/tests/fixtures/%s.jsonl"):format(helpers.root, name or "agents-session")
-  for _, frame in ipairs(vim.fn.readfile(file)) do
-    local json = frame:match("^%d+ (.*)$"):gsub("/ANVIM_FIXTURE", helpers.tmp)
-    local ev = vim.json.decode(json, { luanil = { object = true, array = true } })
-    if not skip[ev.type] then
-      events[#events + 1] = ev
-    end
-  end
-  return events
+  return helpers.events(name or "agents-session")
 end
 
 -- The bullet's group on the line that matches pattern.
@@ -523,6 +511,68 @@ describe("agents", function()
       assert(text:find("⏵⏵ bypass", 1, true), text)
       assert.are.same(width, api.nvim_strwidth(text), text)
     end
+  end)
+
+  it("keeps an agent's prompt, its last slot, and whether it ended before the last prompt", function()
+    fresh()
+    local long = ("é"):rep(9000)
+    sidecar.dispatch({ type = "tool_use", id = "tu_q1", name = "Agent", input = { description = "Q1", prompt = long } })
+    start("q1")
+    start("q2")
+    sidecar.dispatch({ type = "tool_use", id = "tu_q2", name = "Agent", input = { prompt = "Read a.lua." } })
+    local q1, q2 = agents.get("q1"), agents.get("q2")
+    assert.are.same(8000, vim.fn.strchars(q1.prompt), "whole characters, cut at 8000")
+    assert.are.same("Read a.lua.", q2.prompt)
+    assert.are.same({ 1, 2 }, { q1.slot, q2.slot })
+    finish("q2")
+    assert.are.same({ nil, 2 }, { q2.slot, q2.last_slot })
+    assert.is_nil(q1.last_slot)
+
+    local fired = 0
+    local id = api.nvim_create_autocmd("User", {
+      pattern = "AnvimAgents",
+      callback = function()
+        fired = fired + 1
+      end,
+    })
+    agents.prompt_sent()
+    assert.are.same({ true, nil }, { q2.past, q1.past })
+    assert.are.same(1, fired, "one event for the agents that are past now")
+    agents.prompt_sent()
+    api.nvim_del_autocmd(id)
+    assert.are.same(1, fired, "no agent became past")
+    -- SendMessage continues it: it is no longer past.
+    start("q2", { tool_use_id = "tu_q2_again" })
+    assert.are.same({ "running", nil }, { q2.status, q2.past })
+    assert.are.same("Read a.lua.", q2.prompt, "the first prompt stays")
+    assert.are.same({}, { q2.summary, q2.usage, q2.last_slot }, "the first run's end goes")
+  end)
+
+  it("lists the ended agents that are not past, the newest end first, at most 8", function()
+    fresh()
+    for i = 1, 10 do
+      start("n" .. i)
+    end
+    -- They end in another order than they started.
+    for _, i in ipairs({ 3, 1, 2, 4, 5, 6, 7, 8, 9, 10 }) do
+      finish("n" .. i)
+    end
+    local function ids()
+      return vim.tbl_map(function(agent)
+        return agent.id
+      end, agents.ended())
+    end
+    assert.are.same({ "n10", "n9", "n8", "n7", "n6", "n5", "n4", "n2" }, ids())
+    agents.prompt_sent()
+    assert.are.same({}, ids())
+    start("n11")
+    sidecar.dispatch({ type = "turn_end", subtype = "success", is_error = false, duration_ms = 1, cost_usd = 0 })
+    assert.are.same({ "n11" }, ids(), "a turn's end stops a foreground agent")
+    -- A late end of a stopped agent does not make it newer.
+    start("n12")
+    finish("n12")
+    finish("n11")
+    assert.are.same({ "n12", "n11" }, ids())
   end)
 
   it("links the agent colors to mini.icons groups", function()

@@ -269,6 +269,7 @@ function M.send(text)
   -- Marks from show_user last until the user's next prompt. A turn that a
   -- background agent's end starts has none.
   require("anvim.tools").clear()
+  require("anvim.agents").prompt_sent()
   local context, label = require("anvim.context").prompt(text)
   transcript.user(text, label)
   sidecar.send({ type = "prompt", text = text, context = context })

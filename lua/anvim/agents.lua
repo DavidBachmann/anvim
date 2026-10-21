@@ -23,6 +23,10 @@ M.slots = 4
 ---@field summary string?
 ---@field usage { tool_uses: integer?, tokens: integer?, duration_ms: integer? }? Its totals, once it ended.
 ---@field order integer
+---@field prompt string? The prompt of the Agent call that started it.
+---@field last_slot integer? The slot it had when it ended.
+---@field ended_order integer? When it ended, counted as `order` is.
+---@field past boolean? It ended before the user's last prompt.
 
 ---@type table<string, anvim.Agent>
 local agents = {}
@@ -39,6 +43,11 @@ local main = { slot = 0, files = {} }
 ---@type table<string, { agent: anvim.Agent, path: string }>
 local edits = {}
 local order = 0
+
+-- An agent's prompt is kept whole up to this many characters.
+M.prompt_max = 8000
+-- The ended agents that are not past, at most.
+M.ended_max = 8
 
 -- The files that agents write to, or the files of their places, changed.
 function M.files_changed()
@@ -121,12 +130,16 @@ end
 
 -- A freed slot goes to the agent that has waited longest for one.
 local function stop(agent, status)
+  if agent.status == "running" then
+    order = order + 1
+    agent.ended_order = order
+  end
   agent.status = status
   local slot = agent.slot
   if not slot then
     return
   end
-  slots[slot], agent.slot = nil, nil
+  slots[slot], agent.slot, agent.last_slot = nil, nil, slot
   local next_agent
   for _, other in pairs(agents) do
     if other.status == "running" and not other.slot and (not next_agent or other.order < next_agent.order) then
@@ -147,6 +160,9 @@ local function fill(agent, input)
   if agent.description == "" and type(input.description) == "string" then
     agent.description = input.description
   end
+  if not agent.prompt and type(input.prompt) == "string" then
+    agent.prompt = vim.fn.strcharpart(input.prompt, 0, M.prompt_max)
+  end
 end
 
 -- SendMessage can continue an agent that ended. It starts again with its old
@@ -164,7 +180,9 @@ function M.start(ev)
   if ev.description and ev.description ~= "" then
     agent.description = ev.description
   end
-  agent.status = "running"
+  agent.status, agent.past = "running", nil
+  -- A restart is a run of its own.
+  agent.last_slot, agent.summary, agent.usage, agent.activity = nil, nil, nil, nil
   -- An agent that a background agent starts works on after the turn too.
   local parent = ev.parent_agent_id and agents[ev.parent_agent_id]
   agent.background = ev.background == true or (parent ~= nil and parent.background)
@@ -311,6 +329,34 @@ function M.marks()
     table.sort(list)
   end
   return marks
+end
+
+-- The user sent a prompt. The agents that ended before it are past.
+function M.prompt_sent()
+  local any = false
+  for _, agent in pairs(agents) do
+    if agent.status ~= "running" and not agent.past then
+      agent.past, any = true, true
+    end
+  end
+  if any then
+    M.changed()
+  end
+end
+
+-- The agents that ended since the user's last prompt, newest first.
+---@return anvim.Agent[]
+function M.ended()
+  local list = {}
+  for _, agent in pairs(agents) do
+    if agent.status ~= "running" and not agent.past then
+      list[#list + 1] = agent
+    end
+  end
+  table.sort(list, function(a, b)
+    return (a.ended_order or a.order) > (b.ended_order or b.order)
+  end)
+  return vim.list_slice(list, 1, M.ended_max)
 end
 
 -- A foreground agent ends with the turn that started it, even when its end

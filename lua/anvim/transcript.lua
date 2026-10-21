@@ -46,6 +46,7 @@ local todo
 local tasks = { order = {}, by_id = {} } ---@type { order: string[], by_id: table<string, table> }
 -- Claude Code draws no tool line for these. The todo list shows what they do.
 local todo_tools = { TodoWrite = true, TaskCreate = true, TaskUpdate = true, TaskGet = true, TaskList = true }
+M.todo_tools = todo_tools
 -- The text blocks since the last prompt or tool call: Claude's last reply.
 local reply = {} ---@type string[]
 local reply_done = true
@@ -103,11 +104,12 @@ function M.buf()
   return bufnr
 end
 
--- Windows that show the transcript, except the one the user is in. With
--- `tail`, only those whose view reaches the end: new output keeps them there,
--- and leaves a window that the user scrolled up alone.
-local function follow_wins(tail)
-  local buf = M.buf()
+-- Windows that show the transcript, or `buf`, except the one the user is in.
+-- With `tail`, only those whose view reaches the end: new output keeps them
+-- there, and leaves a window that the user scrolled up alone.
+---@param buf integer?
+local function follow_wins(tail, buf)
+  buf = buf or M.buf()
   local last = api.nvim_buf_line_count(buf)
   local wins = {}
   for _, win in ipairs(vim.fn.win_findbuf(buf)) do
@@ -121,14 +123,17 @@ local function follow_wins(tail)
   return wins
 end
 
-local function scroll(wins)
-  local last = api.nvim_buf_line_count(M.buf())
+---@param buf integer?
+local function scroll(wins, buf)
+  local last = api.nvim_buf_line_count(buf or M.buf())
   for _, win in ipairs(wins) do
     if api.nvim_win_is_valid(win) then
       api.nvim_win_set_cursor(win, { last, 0 })
     end
   end
 end
+
+M.follow_wins, M.scroll = follow_wins, scroll
 
 local block_row
 
@@ -407,6 +412,8 @@ local function agent_done(tool, r)
   return ("Done (%s)"):format(table.concat(parts, " · "))
 end
 
+M.agent_done = agent_done
+
 local function summarize(tool, ev)
   if tool.outcome then
     return tool.outcome[1], tool.outcome[2]
@@ -438,6 +445,11 @@ local function summarize(tool, ev)
   local line = first_line(text)
   return line ~= "" and line or "Done"
 end
+
+-- The result line of a tool call, and its group when it is not AnvimResult.
+---@param tool { name: string, input: table?, outcome: string[]?, children: string[]? }
+---@return string text, string? group
+M.summary = summarize
 
 local function tool_row(tool)
   return api.nvim_buf_get_extmark_by_id(M.buf(), ns, tool.mark, {})[1]

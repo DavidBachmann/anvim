@@ -56,6 +56,22 @@ function M.start()
   return start_win
 end
 
+-- The events of a fixture, with the paths in the temp project. The events
+-- that need a real sidecar or change the footer of other specs stay out.
+---@param name string The fixture's name, such as agents-session.
+function M.events(name)
+  local skip = { commands = true, init = true, status = true, context = true, await_preview = true, effort = true }
+  local events = {}
+  for _, frame in ipairs(vim.fn.readfile(("%s/tests/fixtures/%s.jsonl"):format(M.root, name))) do
+    local json = frame:match("^%d+ (.*)$"):gsub("/ANVIM_FIXTURE", M.tmp)
+    local ev = vim.json.decode(json, { luanil = { object = true, array = true } })
+    if not skip[ev.type] then
+      events[#events + 1] = ev
+    end
+  end
+  return events
+end
+
 function M.buf_lines(buf)
   return vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 end
