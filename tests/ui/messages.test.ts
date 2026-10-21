@@ -118,18 +118,23 @@ test("anvim's notices and a multi-line vim.notify ask for no Enter", async () =>
   expect(await settled("the restart")).toBe("ok");
 });
 
-test("the statusline shows a macro recording, which 'showmode' would show", async () => {
+test("the command line shows a macro recording, and the statusline does not repeat it", async () => {
   anvim = await start();
   const { ui } = anvim;
   await anvim.toCode();
-  const status = async () => ui.lines()[await ui.exec_lua<number>(`return vim.o.lines - vim.o.cmdheight - 1`)]!;
-  // At once, not at lualine's next timed refresh, a second later.
+  const last = await ui.exec_lua<number>(`return vim.o.lines - vim.o.cmdheight`);
+  const [cmdline, status] = [() => ui.lines()[last]!, () => ui.lines()[last - 1]!];
+  const mark = ui.mark();
   await ui.input("qq");
   await ui.drain();
-  await ui.waitFor(async () => (await status()).includes("recording @q"), 250);
+  await ui.waitFor(() => cmdline().includes("recording @q"), 250);
+  // lualine refreshes a frame or more later, so watch a while.
+  await Bun.sleep(500);
+  await ui.drain();
+  expect(ui.frames(mark).filter((f) => f.lines[last - 1]!.includes("recording")).length).toBe(0);
   await ui.input("q");
   await ui.drain();
-  await ui.waitFor(async () => !(await status()).includes("recording"), 250);
+  await ui.waitFor(() => !cmdline().includes("recording") && !status().includes("recording"), 250);
 });
 
 test("an error from a callback during a Write preview stops no frames, and a Space typed after it stays in the prompt", async () => {

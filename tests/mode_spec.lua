@@ -38,8 +38,14 @@ local function numbers(win)
   }
 end
 
--- The bare specs run without snacks' statuscolumn.
-local NONE = { number = false, relativenumber = false, statuscolumn = "", signcolumn = "yes:2" }
+-- The bare specs run without snacks' statuscolumn. Their files have fewer
+-- than 1000 lines, so review's columns are 4 for the numbers and 2 for a sign.
+local NONE = {
+  number = false,
+  relativenumber = false,
+  statuscolumn = "%@v:lua.require'anvim.follow'.click_gutter@  %s%T",
+  signcolumn = "yes:2",
+}
 local REVIEW = { number = true, relativenumber = true, statuscolumn = "", signcolumn = "yes" }
 
 local function to_code(path)
@@ -319,6 +325,40 @@ describe("mode", function()
     assert.are.same(layout.wins.code, api.nvim_get_current_win())
     assert.are.same("review", follow.mode())
     assert.are.same(REVIEW, numbers())
+  end)
+
+  it("gives follow mode a gutter as wide as review's, which keeps its width while the buffer grows", function()
+    fresh()
+    local code = layout.wins.code
+    -- Without a UI nothing draws, so only Neovim's own columns have a width.
+    local function review()
+      return vim.fn.getwininfo(code)[1].textoff
+    end
+    assert.are.same(review(), follow.review_width(code))
+    for _, wo in ipairs({ { numberwidth = 6 }, { foldcolumn = "1" } }) do
+      for name, value in pairs(wo) do
+        vim.wo[code][name] = value
+      end
+      assert.are.same(review(), follow.review_width(code), vim.inspect(wo))
+      vim.wo[code].numberwidth, vim.wo[code].foldcolumn = 4, "0"
+    end
+    to_prompt()
+    local gutter = vim.wo[code].statuscolumn
+    assert.are.same(NONE.statuscolumn, gutter)
+    -- A preview that writes 1000 lines and more, while following.
+    local buf = api.nvim_win_get_buf(code)
+    vim.bo[buf].modifiable = true
+    api.nvim_buf_set_lines(buf, -1, -1, false, vim.split(("x\n"):rep(1200), "\n"))
+    vim.bo[buf].modifiable = false
+    vim.cmd.doautocmd("SafeState")
+    assert.are.same(gutter, vim.wo[code].statuscolumn)
+    to_code()
+    assert.are.same(7, review())
+    assert.are.same(review(), follow.review_width(code))
+    to_prompt()
+    assert.are.same("%@v:lua.require'anvim.follow'.click_gutter@   %s%T", vim.wo[code].statuscolumn)
+    to_code()
+    vim.cmd.edit({ bang = true })
   end)
 
   it("gives a new code window from layout repair the numbers of the mode", function()

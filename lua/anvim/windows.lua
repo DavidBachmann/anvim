@@ -53,6 +53,11 @@ local function reading(win)
   return vim.w[win].anvim_read == true
 end
 
+-- Whether the command that runs is a mouse click.
+function M.clicked()
+  return last_key == left_mouse
+end
+
 -- Moves the cursor without autocmds.
 function M.hop(win)
   vim.cmd(("noautocmd call nvim_set_current_win(%d)"):format(win))

@@ -18,6 +18,10 @@ local winid
 local footer_mark
 ---@type uv.uv_timer_t?
 local spinner_timer
+---@type [integer, integer]? Where typing stopped when the prompt window was left in insert mode.
+local stopped
+---@type integer? The prompt buffer's changedtick then. A change of the text since makes the place stale.
+local stopped_tick
 -- Whether the footer shows the follow status. When it does not fit, the
 -- statusline shows it.
 local follows = false
@@ -97,6 +101,24 @@ function M.buf()
   require("anvim.history").map(bufnr)
   local group = api.nvim_create_augroup("anvim.input", {})
   api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, { group = group, buffer = bufnr, callback = M.render })
+  -- Insert mode that ends in another window, as after a click there, sets
+  -- the `^` mark of that window's buffer.
+  api.nvim_create_autocmd("WinLeave", {
+    group = group,
+    buffer = bufnr,
+    callback = function()
+      if api.nvim_get_mode().mode:sub(1, 1) == "i" then
+        stopped, stopped_tick = api.nvim_win_get_cursor(0), vim.b[bufnr].changedtick
+      end
+    end,
+  })
+  api.nvim_create_autocmd("InsertEnter", {
+    group = group,
+    buffer = bufnr,
+    callback = function()
+      stopped = nil
+    end,
+  })
   api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
     group = group,
     buffer = bufnr,
@@ -134,17 +156,39 @@ function M.setup_win(win)
   wo.spell = false
   wo.winfixheight = true
   wo.winfixbuf = true
+  -- When insert mode ends in another window, the cursor keeps its place after
+  -- the last character, so `i` goes on where typing stopped.
+  local ve = vim.go.virtualedit
+  wo.virtualedit = ve:find("onemore", 1, true) and ve or ve == "" and "onemore" or ve .. ",onemore"
   M.render()
+end
+
+-- Puts the prompt's cursor where typing stopped in another window, such as
+-- the compose window, so the next insert command goes on there.
+---@param at [integer, integer]
+function M.stop_at(at)
+  local win = prompt_win()
+  if win then
+    local row = math.max(1, math.min(at[1], api.nvim_buf_line_count(bufnr)))
+    local line = api.nvim_buf_get_lines(bufnr, row - 1, row, false)[1] or ""
+    api.nvim_win_set_cursor(win, { row, math.min(at[2], #line) })
+    stopped, stopped_tick = api.nvim_win_get_cursor(win), vim.b[bufnr].changedtick
+  end
 end
 
 -- Where typing stopped, as a 1-based row and a byte column. <Esc> leaves the
 -- cursor on the character before that place, so the `^` mark tells it, while
--- the cursor is still there. Otherwise it is the cursor.
+-- the cursor is still there. Insert mode that ended in another window leaves
+-- the cursor at that place. Otherwise it is the cursor.
 ---@param win integer? Another window than the prompt, such as the compose window.
 ---@return integer row, integer col
 function M.insert_pos(win)
   win = win or assert(prompt_win(), "no prompt window")
   local buf = api.nvim_win_get_buf(win)
+  local fresh = stopped and stopped_tick == vim.b[buf].changedtick
+  if buf == bufnr and fresh and vim.deep_equal(api.nvim_win_get_cursor(win), stopped) then
+    return stopped[1], stopped[2]
+  end
   local row, col = unpack(api.nvim_buf_get_mark(buf, "^"))
   local cursor = api.nvim_win_get_cursor(win)
   local line = api.nvim_buf_get_lines(buf, cursor[1] - 1, cursor[1], false)[1] or ""

@@ -40,16 +40,6 @@ return {
 
       vim.o.laststatus = vim.g.lualine_laststatus
 
-      -- During RecordingLeave, reg_recording() still names the register.
-      vim.api.nvim_create_autocmd({ "RecordingEnter", "RecordingLeave" }, {
-        group = vim.api.nvim_create_augroup("anvim.lualine.recording", {}),
-        callback = function()
-          vim.schedule(function()
-            require("lualine").refresh({ place = { "statusline" } })
-          end)
-        end,
-      })
-
       return {
         options = {
           theme = "auto",
@@ -73,18 +63,6 @@ return {
             { "filename", path = 1, symbols = { readonly = "" } },
           },
           lualine_x = {
-            -- 'showmode' would show it, but lualine shows the mode.
-            {
-              function()
-                return "recording @" .. vim.fn.reg_recording()
-              end,
-              cond = function()
-                return vim.fn.reg_recording() ~= ""
-              end,
-              color = function()
-                return { fg = Snacks.util.color("Constant") }
-              end,
-            },
             {
               "diff",
               symbols = {

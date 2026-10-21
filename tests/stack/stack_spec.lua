@@ -547,9 +547,10 @@ describe("stack", function()
       lua([[require("anvim.layout").focus_input({ insert = false })]])
       local got = block()
       assert.are.same(
-        { "FOLLOW", "follow", false, false, "", "yes:2" },
-        { got.text, got.mode, got.number, got.relativenumber, got.statuscolumn, got.signcolumn }
+        { "FOLLOW", "follow", false, false, "yes:2" },
+        { got.text, got.mode, got.number, got.relativenumber, got.signcolumn }
       )
+      assert(got.statuscolumn:find("anvim.follow", 1, true), got.statuscolumn)
       assert.are.same(claude, got.bg, "the block is not in Claude's color")
       assert.is_true(got.sep, "no section separator after the block")
       assert.are.same(claude, got.sep_fg, "the separator after the block has another color")

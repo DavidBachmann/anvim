@@ -63,10 +63,15 @@ test("a Write preview that grows past 9 lines keeps its text in place while foll
   });
   const review = states.filter((s) => s.review);
   expect(review.length).toBeGreaterThan(0);
+  // The preview grew past 9 lines while following, so review's numbers need
+  // one more column.
   expect(review[0]!.col).toBeGreaterThan(following[0]!.col);
   expect(states.filter((s) => s.numbers !== s.review)).toEqual([]);
   expect(states.filter((s) => (s.block === "NORMAL") !== s.review)).toEqual([]);
-  expect(states.filter((s) => !s.review).every((s) => s.block === "FOLLOW" && s.col === following[0]!.col)).toBe(true);
+  expect(states.filter((s) => !s.review).every((s) => s.block === "FOLLOW")).toBe(true);
+  // On the way back, follow mode takes the review gutter's width.
+  const cols = ui.frames(back).flatMap((f) => look(f, code)?.col ?? []);
+  expect([...new Set(cols)]).toEqual([review.at(-1)!.col]);
   // The states above cover the way back too.
   expect(ui.frames(back).some((f) => look(f, code) && !inBox(f.cursor, code))).toBe(true);
   expect(look(ui.frames().at(-1)!, code)?.numbers).toBe(false);
@@ -132,12 +137,12 @@ test("a move to the code window without autocmds shows the numbers in its first 
 });
 
 // Rows of the code window that show a line number, and rows whose code starts
-// right after the sign columns, as in follow mode.
+// right after blank columns, as in follow mode.
 function gutter(f: Frame, code: Box) {
   const rows = f.lines.slice(code.row, code.row + code.height).map((l) => cells(l, code.col, code.width));
   return {
     numbered: rows.filter((r) => /^\s{0,4}\d+\s+\S/.test(r)).length,
-    bare: rows.filter((r) => /^ {4}(local|---|return|end|if|for|M\.)/.test(r)).length,
+    bare: rows.filter((r) => /^ +(local|---|return|end|if|for|M\.)/.test(r)).length,
   };
 }
 
@@ -188,6 +193,73 @@ test("the mode block and the line numbers change in the same frame, for each way
   await step("explorer again", [" ", "e"], "snacks_picker_list", "n", 900);
   await step("open a file from the explorer", ["G", "<CR>"], "code", "n", 800);
   expect(await ui.exec_lua(`return vim.fn.expand("%:t")`)).toBe("other.lua");
+});
+
+// The column where the frame shows `needle` in the code window.
+function column(f: Frame, box: Box, needle: string): number | null {
+  const row = f.lines.slice(box.row, box.row + box.height).find((l) => cells(l, box.col, box.width).includes(needle));
+  return row === undefined ? null : cells(row, box.col, box.width).indexOf(needle);
+}
+
+test("the code window's text stays in place when the cursor goes between the prompt and the code window", async () => {
+  const short = Array.from({ length: 5 }, (_, i) => `local short${i + 1} = ${i + 1}`).join("\n");
+  anvim = await start({ files: { "short.lua": `${short}\n` } });
+  const { ui } = anvim;
+  for (const [file, needle] of [
+    ["matchparen.lua", "local function char_at(text, byte_col)"],
+    ["short.lua", "local short3 = 3"],
+  ] as const) {
+    await anvim.toCode(file, { lnum: 3, topline: 1 });
+    const code = await anvim.box("code");
+    await ui.drain();
+    const mark = ui.mark();
+    const at = `<${code.col + 12},${code.row + 2}>`;
+    const steps: [string[], string][] = [
+      [["<C-w>l"], "input"],
+      [["<C-w>h"], "code"],
+      [["<C-w>l"], "input"],
+      [[`<LeftMouse>${at}`, `<LeftRelease>${at}`], "code"],
+      [["<C-w>l"], "input"],
+    ];
+    for (const [keys, win] of steps) {
+      for (const k of keys) await ui.input(k);
+      await anvim.waitWhere(win, "n");
+      await Bun.sleep(300);
+      await ui.drain();
+    }
+    const cols = ui.frames(mark).flatMap((f) => column(f, code, needle) ?? []);
+    expect(cols.length, file).toBeGreaterThan(steps.length);
+    expect([...new Set(cols)], file).toEqual([cols[0]!]);
+    // Past 'mousetime', so the next file's click is no double click.
+    await Bun.sleep(400);
+  }
+});
+
+test("the review gutter's computed width is the drawn width, also with a wider number, fold or sign column", async () => {
+  const lines = (n: number) => Array.from({ length: n }, (_, i) => `local x${i} = ${i}`).join("\n") + "\n";
+  anvim = await start({ files: { "five.lua": lines(5), "fifty.lua": lines(50) } });
+  const { ui } = anvim;
+  const configs = [{}, { numberwidth: 6 }, { foldcolumn: "1" }, { signcolumn: "yes:2" }];
+  for (const file of ["five.lua", "fifty.lua"]) {
+    await anvim.toCode(file);
+    for (const config of configs) {
+      const got = await ui.exec_lua<{ computed: number; drawn: number }>(
+        `
+        local config = ...
+        local follow, win = require("anvim.follow"), require("anvim.layout").wins.code
+        local review = follow.review_options()
+        review.signcolumn = config.signcolumn or "yes"
+        vim.wo[win].numberwidth = config.numberwidth or 4
+        vim.wo[win].foldcolumn = config.foldcolumn or "0"
+        follow.apply(win)
+        vim.cmd.redraw()
+        return { computed = follow.review_width(win), drawn = vim.fn.getwininfo(win)[1].textoff }
+      `,
+        config,
+      );
+      expect(got.computed, `${file} ${JSON.stringify(config)}`).toBe(got.drawn);
+    }
+  }
 });
 
 test("a :set of the numbers in review mode stays until the mode changes", async () => {

@@ -87,14 +87,27 @@ local mode = "review"
 -- Whether the last window that set the mode was the prompt.
 local in_prompt = false
 
--- The code window's gutter in follow mode. The number column grows at 10, 100
--- and 1000 lines, and would push a growing Write preview to the right. Two
--- sign columns of their own keep the text where it is, without the
--- statuscolumn, whose plugin can keep the old width for a frame.
-local FOLLOW = { number = false, relativenumber = false, statuscolumn = "", signcolumn = "yes:2" }
+---@alias anvim.Gutter { number: boolean, relativenumber: boolean, statuscolumn: string, signcolumn: string }
 
----@type { number: boolean, relativenumber: boolean, statuscolumn: string, signcolumn: string }?
+local GUTTER = { "number", "relativenumber", "statuscolumn", "signcolumn" }
+
+---@type anvim.Gutter?
 local review
+-- The code window's gutter in follow mode, for one buffer. It has no line
+-- numbers, and is as wide as the review gutter, so the text stays in place
+-- when the mode changes. Its width stays while the buffer stays, because the
+-- number column grows at 10, 100 and 1000 lines, and would push a growing
+-- Write preview to the right. It is a 'statuscolumn' of anvim's own, because
+-- snacks' statuscolumn can keep the old width for a frame.
+---@type { win: integer, buf: integer, width: integer, options: anvim.Gutter }?
+local gutter
+-- A click that leaves follow mode changes the gutter at SafeState, before
+-- the redraw. Neovim maps a click to a column with the drawn grid only while
+-- the window needs no redraw, and a change of the gutter options needs one.
+local deferred = false
+---@type { win: integer, view: vim.fn.winsaveview.ret }? The window and view at the last press.
+local pressed
+local left_mouse = vim.keycode("<LeftMouse>")
 
 ---@return anvim.Mode
 function M.mode()
@@ -103,18 +116,90 @@ end
 
 -- The code window's gutter in review mode, as the config sets it. It is read
 -- once, at start, from the code window's global values.
----@return { number: boolean, relativenumber: boolean, statuscolumn: string, signcolumn: string }
+---@return anvim.Gutter
 function M.review_options()
   if not review then
     review = api.nvim_win_call(layout.code_win(), function()
       local ret = {}
-      for name in pairs(FOLLOW) do
+      for _, name in ipairs(GUTTER) do
         ret[name] = vim.go[name]
       end
       return ret
     end)
   end
   return review
+end
+
+-- The width of the review gutter for the buffer in `win`, as Neovim sizes it
+-- for the widest line number. Another 'statuscolumn' than snacks' counts as
+-- Neovim's own columns.
+---@param win integer
+function M.review_width(win)
+  local o = M.review_options()
+  local buf = api.nvim_win_get_buf(win)
+  local digits = 0
+  if o.number or o.relativenumber then
+    -- 'relativenumber' alone counts up to the window's height.
+    digits = #tostring(o.number and api.nvim_buf_line_count(buf) or vim.fn.winheight(win))
+  end
+  local numberwidth = vim.wo[win].numberwidth
+  local signs = o.signcolumn == "yes" and 1 or tonumber(o.signcolumn:match("^yes:(%d)")) or 0
+  if signs == 0 and o.signcolumn:match("^auto") then
+    signs = tonumber(o.signcolumn:match("^auto:(%d)")) or 1
+  end
+  -- 'foldcolumn' "auto" counts as no column.
+  local folds = tonumber(vim.wo[win].foldcolumn) or 0
+  if o.statuscolumn:find("snacks.statuscolumn", 1, true) then
+    -- A sign on each side of the number, and a space after it.
+    local shown = o.signcolumn ~= "no"
+    local left = shown and vim.b[buf].snacks_statuscolumn_left ~= false and 2 or 0
+    local right = shown and vim.b[buf].snacks_statuscolumn_right ~= false and 2 or 0
+    local width = left + right + (digits > 0 and digits + 1 or 0)
+    -- Neovim draws a 'statuscolumn' at least as wide as its own columns.
+    return math.max(width, (digits > 0 and numberwidth or 0) + folds + 2 * signs)
+  end
+  return (digits > 0 and math.max(digits, numberwidth - 1) + 1 or 0) + folds + 2 * signs
+end
+
+-- Blanks and up to two sign columns, at the right, next to the text. A click
+-- on a 'statuscolumn' runs only its click function, so that enters the window.
+---@param width integer
+---@return anvim.Gutter
+local function follow_options(width)
+  local signs = math.min(math.floor(width / 2), 2)
+  local column = (" "):rep(width - 2 * signs) .. (signs > 0 and "%s" or "")
+  return {
+    number = false,
+    relativenumber = false,
+    statuscolumn = width > 0 and "%@v:lua.require'anvim.follow'.click_gutter@" .. column .. "%T" or "",
+    signcolumn = signs > 0 and "yes:" .. signs or "no",
+  }
+end
+
+-- As a click on Neovim's own number and sign columns, a click on the gutter
+-- puts the cursor on that line. Neovim moved the cursor of the window that
+-- the click came from, such as the prompt, so its view comes back first.
+function M.click_gutter(_, _, button)
+  local pos = vim.fn.getmousepos()
+  if button == "l" and pos.winid ~= 0 and api.nvim_win_is_valid(pos.winid) and pos.line > 0 then
+    local p = pressed
+    if p and p.win == api.nvim_get_current_win() and p.win ~= pos.winid then
+      vim.fn.winrestview(p.view)
+    end
+    api.nvim_set_current_win(pos.winid)
+    api.nvim_win_set_cursor(pos.winid, { pos.line, 0 })
+  end
+end
+
+---@param win integer
+---@return anvim.Gutter
+local function follow_gutter(win)
+  local buf = api.nvim_win_get_buf(win)
+  if not (gutter and gutter.win == win and gutter.buf == buf) then
+    local width = M.review_width(win)
+    gutter = { win = win, buf = buf, width = width, options = follow_options(width) }
+  end
+  return gutter.options
 end
 
 -- Sets the gutter of the mode, and the code window's own options. These set
@@ -126,7 +211,10 @@ function M.apply(win)
   if not (win and api.nvim_win_is_valid(win)) then
     return
   end
-  for name, value in pairs(mode == "follow" and FOLLOW or M.review_options()) do
+  if mode ~= "follow" then
+    gutter = nil
+  end
+  for name, value in pairs(mode == "follow" and follow_gutter(win) or M.review_options()) do
     if vim.wo[win][name] ~= value then
       vim.wo[win][name] = value
     end
@@ -171,7 +259,11 @@ function M.update()
   local new = in_prompt and not M.paused() and "follow" or "review"
   if new ~= mode then
     mode = new
-    M.apply(layout.wins.code)
+    if new == "review" and require("anvim.windows").clicked() then
+      deferred = true
+    else
+      M.apply(layout.wins.code)
+    end
     api.nvim_exec_autocmds("User", { pattern = "AnvimMode", modeline = false })
   end
 end
@@ -757,8 +849,25 @@ function M.attach(sidecar)
       M.apply(layout.wins.code)
     end,
   })
+  -- A click on a 'statuscolumn' moves the cursor of the current window
+  -- before its click function runs, so remember that window's view.
+  vim.on_key(function(key)
+    if key == left_mouse then
+      local win = api.nvim_get_current_win()
+      pressed = { win = win, view = api.nvim_win_call(win, vim.fn.winsaveview) }
+    end
+  end, ns)
   -- Other moves of the cursor without autocmds come before the redraw too.
-  api.nvim_create_autocmd("SafeState", { group = group, callback = M.update })
+  api.nvim_create_autocmd("SafeState", {
+    group = group,
+    callback = function()
+      M.update()
+      if deferred then
+        deferred = false
+        M.apply(layout.wins.code)
+      end
+    end,
+  })
   M.review_options()
   M.update()
   api.nvim_create_autocmd("User", { group = group, pattern = "AnvimAgents", callback = on_agents })

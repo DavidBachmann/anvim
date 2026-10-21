@@ -453,8 +453,22 @@ local function restore()
     return
   end
   if not was.insert then
+    -- Typing an answer moved the cursor. The end of insert mode moves it
+    -- one left, so it goes back after that.
+    local at = was.at
     if inserting() then
       vim.cmd.stopinsert()
+      if at then
+        api.nvim_create_autocmd("InsertLeave", {
+          buffer = input.buf(),
+          once = true,
+          callback = function()
+            input.stop_at(at)
+          end,
+        })
+      end
+    elseif at then
+      input.stop_at(at)
     end
     return
   end
@@ -479,7 +493,7 @@ end
 function start_typing(r, purpose)
   if before and not before.at then
     -- Typing an answer moves the mark of where the user stopped typing.
-    before.at = api.nvim_buf_get_mark(input.buf(), "^")
+    before.at = { input.insert_pos() }
   end
   typing = { r = r, purpose = purpose, draft = api.nvim_buf_get_lines(input.buf(), 0, -1, false) }
   api.nvim_buf_set_lines(input.buf(), 0, -1, false, { "" })

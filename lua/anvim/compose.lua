@@ -16,8 +16,10 @@ local CODE_OPTIONS = { "cursorline", "conceallevel", "concealcursor" }
 
 ---@type snacks.win?
 local win
----@type { at: [integer, integer], typing: boolean }? Where the prompt's cursor goes after the window closes.
+---@type { at: [integer, integer], typing: boolean, stopped: boolean? }? Where the prompt's cursor goes after the window closes.
 local landing
+---@type [integer, integer]? The cursor when insert mode left the window.
+local left_typing
 ---@type integer? The window before the prompt, for <C-w>p.
 local previous
 
@@ -41,13 +43,18 @@ end
 local function land()
   local to, prompt = landing, layout.wins.input
   landing = nil
+  if to and to.stopped then
+    -- Insert mode ended in another window. The next insert command in the
+    -- prompt goes on where typing stopped.
+    input.stop_at(to.at)
+  end
   if not to or api.nvim_get_current_win() ~= prompt then
     return
   end
   local at = { math.min(to.at[1], api.nvim_buf_line_count(input.buf())), to.at[2] }
   if to.typing then
     input.resume({ at = at })
-  else
+  elseif not to.stopped then
     api.nvim_win_set_cursor(prompt, at)
   end
 end
@@ -80,8 +87,13 @@ local function on_close(self)
     return
   end
   -- After the cursor left, the mode is the other window's.
-  local typing = api.nvim_get_current_win() == w and api.nvim_get_mode().mode:sub(1, 1) == "i"
-  if typing or not config.options.input.auto_insert then
+  local insert = api.nvim_get_mode().mode:sub(1, 1) == "i"
+  local typing = api.nvim_get_current_win() == w and insert
+  local left = left_typing
+  left_typing = nil
+  if left and not insert then
+    landing = { at = left, typing = false, stopped = true }
+  elseif typing or not config.options.input.auto_insert then
     landing = { at = api.nvim_win_get_cursor(w), typing = typing }
   else
     landing = { at = { input.insert_pos(w) }, typing = true }
@@ -145,6 +157,7 @@ function M.open()
   end
   local insert = api.nvim_get_mode().mode:sub(1, 1) == "i"
   local cursor = api.nvim_win_get_cursor(prompt)
+  left_typing = nil
   previous = vim.fn.win_getid(vim.fn.winnr("#"))
   local lines = api.nvim_buf_get_lines(input.buf(), 0, -1, false)
   for _, b in ipairs(api.nvim_list_bufs()) do
@@ -172,6 +185,7 @@ function M.open()
   api.nvim_create_autocmd("WinLeave", {
     buffer = buf,
     callback = function()
+      left_typing = api.nvim_get_mode().mode:sub(1, 1) == "i" and api.nvim_win_get_cursor(0) or nil
       vim.schedule(function()
         local w, current = M.win(), api.nvim_get_current_win()
         if w and current ~= w and current ~= require("anvim.keyview").win() then
