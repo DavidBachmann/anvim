@@ -30,6 +30,10 @@ local born = {}
 local pending = false
 local scheduled = false
 local checking = false
+---@type integer? The window where anvim ended insert mode. Its cursor stays where the click put it.
+local keep_cursor
+---@type [integer, integer]?
+local kept
 ---@type boolean The code window had the cursor when it closed.
 local refocus_code = false
 local notified = false
@@ -136,6 +140,22 @@ local function enter_input()
     vim.schedule(input.resume)
   else
     input.resume()
+  end
+end
+
+-- Insert mode follows a click or an API call into another window. Where the
+-- buffer cannot change, it only gives E21 for each key, so it ends. A terminal
+-- goes on to terminal mode, as Neovim does.
+local function stop_insert()
+  local mode = api.nvim_get_mode().mode
+  local buf = api.nvim_get_current_buf()
+  local insert = mode:match("^n?i") or mode:match("^R")
+  if not insert or vim.bo[buf].modifiable or vim.bo[buf].buftype == "terminal" then
+    return
+  end
+  vim.cmd.stopinsert()
+  if not mode:match("^n") then
+    keep_cursor = api.nvim_get_current_win()
   end
 end
 
@@ -352,12 +372,30 @@ function M.setup()
     callback = function()
       mark()
       local win = api.nvim_get_current_win()
-      if not in_tab() then
-        return
-      elseif win == wins.transcript and not reading(win) then
+      if in_tab() and win == wins.transcript and not reading(win) then
         leave_transcript()
-      elseif win == wins.input then
+      elseif in_tab() and win == wins.input then
         enter_input()
+      end
+      stop_insert()
+    end,
+  })
+  -- Like <Esc>, the end of insert mode moves the cursor one left, after this.
+  api.nvim_create_autocmd("InsertLeavePre", {
+    group = group,
+    callback = function()
+      if keep_cursor == api.nvim_get_current_win() then
+        kept = api.nvim_win_get_cursor(0)
+      end
+      keep_cursor = nil
+    end,
+  })
+  api.nvim_create_autocmd("InsertLeave", {
+    group = group,
+    callback = function()
+      if kept then
+        pcall(api.nvim_win_set_cursor, 0, kept)
+        kept = nil
       end
     end,
   })

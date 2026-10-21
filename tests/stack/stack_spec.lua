@@ -711,7 +711,7 @@ describe("stack", function()
     )
   end)
 
-  it("gives the Claude column the tree's background, also after a colorscheme change and a repair", function()
+  it("follows each colorscheme in the Claude column, AnvimDelete and AnvimTodoDone, also after a repair", function()
     start()
     -- The background that each part draws with, through its window's 'winhighlight'.
     local function backgrounds()
@@ -764,12 +764,32 @@ describe("stack", function()
       assert.are.same(got.global_separator_fg, got.separator_fg, what .. ": the row under the transcript")
       return got
     end
+    -- tokyonight's first load does no :hi clear.
+    local function assert_derived(what)
+      local got = lua([[
+        local function get(name)
+          return vim.api.nvim_get_hl(0, { name = name, link = false })
+        end
+        return {
+          done = get("AnvimTodoDone").fg,
+          comment = get("Comment").fg,
+          delete = get("AnvimDelete").bg,
+          diff_delete = get("DiffDelete").bg,
+        }
+      ]])
+      assert(got.comment and got.diff_delete, what .. ": the colorscheme sets Comment and DiffDelete")
+      assert.are.same(got.comment, got.done, what .. ": AnvimTodoDone has the Comment color")
+      assert.are.same(got.diff_delete, got.delete, what .. ": AnvimDelete has the DiffDelete background")
+    end
     local tokyonight = assert_column("tokyonight")
+    assert_derived("tokyonight")
     lua([[vim.cmd.colorscheme("habamax")]])
     local habamax = assert_column("habamax")
+    assert_derived("habamax")
     assert.are_not.same(tokyonight.tree, habamax.tree)
     lua([[vim.cmd.colorscheme("tokyonight")]])
     assert.are.same(tokyonight, assert_column("tokyonight again"))
+    assert_derived("tokyonight again")
     lua([[
       vim.cmd.stopinsert()
       vim.api.nvim_win_close(require("anvim.layout").wins.transcript, true)

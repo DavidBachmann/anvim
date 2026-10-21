@@ -50,14 +50,28 @@ local highlights = {
   AnvimAgent4 = { link = "MiniIconsBlue" },
 }
 
+---@type table<string, vim.api.keyset.get_highlight> The groups as anvim computed them last.
+local derived = {}
+
+-- A group computed from the colorscheme's colors. With a default, it would
+-- keep the old colors after a colorscheme that does no :hi clear, such as
+-- tokyonight on its first load. A group that someone else set stays.
+local function set_derived(name, spec)
+  local now = api.nvim_get_hl(0, { name = name })
+  if next(now) == nil or vim.deep_equal(now, derived[name]) then
+    api.nvim_set_hl(0, name, spec)
+    derived[name] = api.nvim_get_hl(0, { name = name })
+  end
+end
+
 local function set_highlights()
   for name, spec in pairs(highlights) do
     api.nvim_set_hl(0, name, vim.tbl_extend("force", spec, { default = true }))
   end
   local comment = api.nvim_get_hl(0, { name = "Comment", link = false })
-  api.nvim_set_hl(0, "AnvimTodoDone", { fg = comment.fg, strikethrough = true, default = true })
+  set_derived("AnvimTodoDone", { fg = comment.fg, strikethrough = true })
   local del = api.nvim_get_hl(0, { name = "DiffDelete", link = false })
-  api.nvim_set_hl(0, "AnvimDelete", { bg = del.bg, strikethrough = true, default = true })
+  set_derived("AnvimDelete", { bg = del.bg, strikethrough = true })
   -- snacks defines the list's groups only when the explorer opens. Until then,
   -- these links, which are snacks' own, resolve AnvimNormal.
   api.nvim_set_hl(0, "SnacksPickerList", { link = "SnacksPicker", default = true })
