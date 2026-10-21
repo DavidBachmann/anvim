@@ -107,7 +107,9 @@ test("a picker's preview of a buffer that the code window showed last has no win
   await anvim.toCode(MOD);
   await anvim.toCode();
   // The preview shows the loaded buffer, which brings the options it had in the code window.
-  await ui.exec_lua(`Snacks.picker.buffers()`);
+  // Without the current buffer, the list holds mod.lua only. The order by
+  // lastused counts whole seconds, so it could put matchparen.lua first.
+  await ui.exec_lua(`Snacks.picker.buffers({ current = false })`);
   const others = () =>
     ui.exec_lua<string[]>(`
       local layout, ret = require("anvim.layout"), {}
