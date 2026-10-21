@@ -192,6 +192,8 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     permissionMode: mode,
     allowDangerouslySkipPermissions: mode === "bypassPermissions",
     includePartialMessages: true,
+    // Foreground subagents send their text and thinking only with this.
+    forwardSubagentText: true,
     hooks: {
       PreToolUse: [{ matcher: "Edit|Write|NotebookEdit", hooks: [previews.hook] }],
       UserPromptSubmit: [{ hooks: [contextHook(contexts)] }],

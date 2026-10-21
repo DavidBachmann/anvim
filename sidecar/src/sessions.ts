@@ -3,7 +3,7 @@
 //   bun src/sessions.ts list <dir>
 import { getSessionInfo, getSessionMessages, listSessions, type SessionMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Event } from "./protocol";
-import { commandOutput, resultText, truncate, truncateOutput } from "./translate";
+import { commandOutput, readResult, resultText, truncate, truncateOutput } from "./translate";
 
 export type SessionItem = {
   id: string;
@@ -94,12 +94,6 @@ function prompt(content: string): HistoryEvent | undefined {
     return { type: "user", text: args ? `${name} ${args}` : name };
   }
   return content.trim() === "" ? undefined : { type: "user", text: content };
-}
-
-// Saved sessions keep no tool_use_result. A Read's line count is in its text.
-function readResult(text: string): unknown {
-  const lines = text.split("\n").filter((line) => /^\s*\d+\t/.test(line)).length;
-  return lines > 0 ? { file: { numLines: lines } } : undefined;
 }
 
 // The events that draw these messages, in the order they happened. Subagent

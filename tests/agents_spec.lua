@@ -14,12 +14,14 @@ local function place_of(id)
   return p and { p.path, p.line }
 end
 
--- The events of a recorded turn, with the paths in the temp project. The
--- events that need a real sidecar stay out.
-local function recording()
-  local skip = { commands = true, init = true, status = true, context = true, await_preview = true }
+-- The events of a recording, with the paths in the temp project. The events
+-- that need a real sidecar or change the footer of other specs stay out.
+---@param name? string The fixture's name, agents-session by default.
+local function recording(name)
+  local skip = { commands = true, init = true, status = true, context = true, await_preview = true, effort = true }
   local events = {}
-  for _, frame in ipairs(vim.fn.readfile(helpers.root .. "/tests/fixtures/agents-session.jsonl")) do
+  local file = ("%s/tests/fixtures/%s.jsonl"):format(helpers.root, name or "agents-session")
+  for _, frame in ipairs(vim.fn.readfile(file)) do
     local json = frame:match("^%d+ (.*)$"):gsub("/ANVIM_FIXTURE", helpers.tmp)
     local ev = vim.json.decode(json, { luanil = { object = true, array = true } })
     if not skip[ev.type] then
@@ -189,6 +191,75 @@ describe("agents", function()
     dots, text = footer()
     assert.are.same({}, dots)
     assert(not text:find("agent", 1, true), text)
+  end)
+
+  it("replays agents' text and a SendMessage restart without a handler error", function()
+    fresh()
+    local failures = {}
+    local log = sidecar.log
+    restore = function()
+      sidecar.log = log
+    end
+    sidecar.log = function(text)
+      if text:find("^handler for") then
+        failures[#failures + 1] = text
+      end
+      log(text)
+    end
+    -- The agents read these files, as recorded.
+    local files = {
+      alpha = {
+        "// Adds two numbers.",
+        "function add(a, b) {",
+        "  return a + b;",
+        "}",
+        "",
+        "module.exports = { add };",
+      },
+      beta = {
+        "// Greets a person by name.",
+        "function greet(name) {",
+        '  return "Hello, " + name;',
+        "}",
+        "",
+        "function shout(name) {",
+        "  return greet(name).toUpperCase();",
+        "}",
+        "",
+        "module.exports = { greet, shout };",
+      },
+      gamma = {
+        "// Keeps the first n items of a list.",
+        "function take(list, n) {",
+        "  return list.slice(0, n);",
+        "}",
+        "",
+        "module.exports = { take };",
+      },
+    }
+    for name, lines in pairs(files) do
+      vim.fn.writefile(lines, ("%s/%s.js"):format(helpers.tmp, name))
+    end
+    local texts, beta = {}, "ac8d35b341c2136a8"
+    for _, ev in ipairs(recording("overview-session")) do
+      if ev.type == "agent_text" then
+        texts[#texts + 1] = ev.agent_id .. " " .. ev.text
+      end
+      sidecar.dispatch(ev)
+    end
+    assert.are.same({}, failures)
+    assert.are.same({
+      "a462161d1283697a4 add",
+      beta .. " greet, shout",
+      "a2ba251a78b20a0f4 take",
+      beta .. " 10",
+    }, texts)
+    assert.are.equal(agents.get(beta), agents.by_tool("toolu_01UCNxamb45v1MwFrVH3G34W"), "SendMessage restarted beta")
+    assert.are.same(
+      { "completed", "List functions in beta.js" },
+      { agents.get(beta).status, agents.get(beta).description }
+    )
+    assert.are.same({}, slots())
   end)
 
   it("gives the lowest free slot, and a fifth agent at once waits for one", function()

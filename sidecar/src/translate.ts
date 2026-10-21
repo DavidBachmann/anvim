@@ -3,6 +3,9 @@ import { FieldStream } from "./fieldstream";
 import type { Event } from "./protocol";
 
 const MAX_TEXT = 2000;
+// A subagent's reply can be long. Its thinking only needs the gist.
+const MAX_AGENT_TEXT = 8000;
+const MAX_THINKING = 2000;
 // A local command such as /context prints about 10k characters of tables.
 const MAX_OUTPUT = 20000;
 // Claude Code's model name on the messages that it writes itself, such as a
@@ -38,6 +41,9 @@ export class Translator {
   private agents = new Set<string>();
   // The running agents that started in the background.
   private background = new Set<string>();
+  // The names of subagent tool calls that wait for their result. A subagent's
+  // result has no tool_use_result, so a Read's line count comes from its text.
+  private agentTools = new Map<string, string>();
 
   translate(msg: SDKMessage): Event[] {
     const m = msg as AnyRecord;
@@ -228,8 +234,21 @@ export class Translator {
       return;
     }
     const parent = m.parent_tool_use_id ?? null;
+    const agent = mainThread(m as SDKMessage) ? undefined : m.agent_id;
     for (const block of m.message?.content ?? []) {
-      if (block.type === "tool_use") {
+      // The main agent's text streamed already. A subagent's comes whole.
+      if (agent && block.type === "text" && block.text?.trim()) {
+        out.push({ type: "agent_text", agent_id: agent, parent_id: parent, text: truncate(block.text, MAX_AGENT_TEXT) });
+      } else if (agent && block.type === "thinking" && block.thinking?.trim()) {
+        out.push({
+          type: "agent_text",
+          agent_id: agent,
+          parent_id: parent,
+          text: truncate(block.thinking, MAX_THINKING),
+          thinking: true,
+        });
+      } else if (block.type === "tool_use") {
+        if (agent) this.agentTools.set(block.id, block.name);
         out.push({
           type: "tool_use",
           id: block.id,
@@ -259,12 +278,15 @@ export class Translator {
     if (!Array.isArray(content)) return;
     for (const block of content) {
       if (block.type !== "tool_result") continue;
+      const text = resultText(block.content);
+      const name = this.agentTools.get(block.tool_use_id);
+      this.agentTools.delete(block.tool_use_id);
       out.push({
         type: "tool_result",
         id: block.tool_use_id,
         is_error: Boolean(block.is_error),
-        text: truncate(resultText(block.content)),
-        result: trim(m.tool_use_result),
+        text: truncate(text),
+        result: name === "Read" && !block.is_error ? readResult(text) : trim(m.tool_use_result),
         parent_id: m.parent_tool_use_id ?? null,
         ...agentOf(m),
       });
@@ -317,15 +339,29 @@ export function resultText(content: unknown): string {
     .join("\n");
 }
 
-export function truncate(s: string): string {
-  return s.length > MAX_TEXT ? s.slice(0, MAX_TEXT) + "..." : s;
+// The first `end` characters, without a lone half of a UTF-16 surrogate pair.
+// JSON would send it as an escape that Neovim's decoder refuses.
+function head(s: string, end: number): string {
+  const code = s.charCodeAt(end - 1);
+  return s.slice(0, code >= 0xd800 && code <= 0xdbff ? end - 1 : end);
+}
+
+export function truncate(s: string, max = MAX_TEXT): string {
+  return s.length > max ? head(s, max) + "..." : s;
+}
+
+// A Read's text numbers its lines. Saved sessions and subagents' results have
+// no tool_use_result, so the line count comes from there.
+export function readResult(text: string): { file: { numLines: number } } | undefined {
+  const lines = text.split("\n").filter((line) => /^\s*\d+\t/.test(line)).length;
+  return lines > 0 ? { file: { numLines: lines } } : undefined;
 }
 
 // A slash command's output ends at a line end, so no table row breaks.
 export function truncateOutput(s: string): string {
   if (s.length <= MAX_OUTPUT) return s;
   const end = s.lastIndexOf("\n", MAX_OUTPUT);
-  return s.slice(0, end > 0 ? end : MAX_OUTPUT) + "\n...";
+  return (end > 0 ? s.slice(0, end) : head(s, MAX_OUTPUT)) + "\n...";
 }
 
 // Tool results can hold whole files. The plugin only needs the metadata.

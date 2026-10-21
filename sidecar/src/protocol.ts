@@ -151,6 +151,8 @@ export type Event =
       parent_id: string | null;
       agent_id?: string;
     }
+  // A subagent's text or thinking. Subagents send whole blocks, never deltas.
+  | { type: "agent_text"; agent_id: string; parent_id: string | null; text: string; thinking?: boolean }
   // A subagent started. tool_use_id is the Agent tool call that started it.
   // depth is 1 for a subagent of the main agent, and parent_agent_id names
   // the subagent that started a deeper one.

@@ -168,6 +168,18 @@ describe("Translator", () => {
     expect(lines.length).toBeGreaterThan(500);
   });
 
+  test("a long command output without a line end keeps an emoji whole at the cut", () => {
+    const text = "x".repeat(19999) + "😀" + "y".repeat(100);
+    const [, output] = run([
+      msg({
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: { model: "<synthetic>", role: "assistant", content: [{ type: "text", text }] },
+      }),
+    ]);
+    expect((output as { text: string }).text).toBe("x".repeat(19999) + "\n...");
+  });
+
   test("init names the commands that Claude Code binds to its terminal", () => {
     const init = (extra: object) =>
       msg({ type: "system", subtype: "init", session_id: "s", model: "m", slash_commands: ["color", "usage"], ...extra });
@@ -267,6 +279,77 @@ describe("Translator", () => {
     ]);
   });
 
+  test("a subagent's text and thinking come as whole blocks, with caps", () => {
+    const agent = { parent_tool_use_id: "toolu_A", agent_id: "a1" };
+    const said = (content: object[]) => msg({ type: "assistant", ...agent, message: { content } });
+    const long = "x".repeat(7999) + "😀" + "y";
+    const events = run([
+      said([{ type: "thinking", thinking: "Read the file first." }]),
+      said([{ type: "thinking", thinking: "" }]),
+      said([{ type: "thinking", thinking: "t".repeat(2500) }]),
+      said([{ type: "text", text: "It has 3 lines." }]),
+      said([{ type: "text", text: long }]),
+    ]);
+    expect(events).toEqual([
+      { type: "agent_text", agent_id: "a1", parent_id: "toolu_A", text: "Read the file first.", thinking: true },
+      { type: "agent_text", agent_id: "a1", parent_id: "toolu_A", text: "t".repeat(2000) + "...", thinking: true },
+      { type: "agent_text", agent_id: "a1", parent_id: "toolu_A", text: "It has 3 lines." },
+      // The cut falls inside the emoji's surrogate pair, so the emoji goes whole.
+      { type: "agent_text", agent_id: "a1", parent_id: "toolu_A", text: "x".repeat(7999) + "..." },
+    ]);
+  });
+
+  test("the main agent's text streams, and its whole message adds no agent_text", () => {
+    const events = run([
+      se({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }),
+      se({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Hi" } }),
+      se({ type: "content_block_stop", index: 0 }),
+      msg({ type: "assistant", parent_tool_use_id: null, message: { content: [{ type: "text", text: "Hi" }] } }),
+    ]);
+    expect(events.map((e) => e.type)).toEqual(["turn_start", "text_start", "text_delta", "text_stop"]);
+  });
+
+  test("a subagent's text after the turn's result starts no turn", () => {
+    const events = run([
+      msg({ type: "result", subtype: "success", is_error: false, duration_ms: 5, total_cost_usd: 0, num_turns: 1 }),
+      msg({ type: "assistant", parent_tool_use_id: "toolu_A", agent_id: "a1", message: { content: [{ type: "text", text: "Done." }] } }),
+    ]);
+    expect(events.map((e) => e.type)).toEqual(["turn_end", "agent_text"]);
+  });
+
+  test("a subagent's Read result counts its lines before the cut, and other results get none", () => {
+    const agent = { parent_tool_use_id: "toolu_A", agent_id: "a1" };
+    const lines = Array.from({ length: 60 }, (_, i) => `${String(i + 1).padStart(6)}\tlocal x${i} = "${"v".repeat(40)}"`);
+    const text = lines.join("\n");
+    expect(text.length).toBeGreaterThan(2000);
+    const call = (id: string, name: string) =>
+      msg({ type: "assistant", ...agent, message: { content: [{ type: "tool_use", id, name, input: {} }] } });
+    const result = (id: string, content: string) =>
+      msg({ type: "user", ...agent, message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content }] } });
+    const events = run([call("r1", "Read"), call("b1", "Bash"), result("r1", text), result("b1", "1\tnot a Read"), result("r1", text)]);
+    const results = events.filter((e) => e.type === "tool_result") as Extract<Event, { type: "tool_result" }>[];
+    expect(results.map((e) => e.result)).toEqual([{ file: { numLines: 60 } }, undefined, undefined]);
+    expect(results[0]!.text.length).toBe(2003);
+  });
+
+  test("the main agent's Read result keeps its own tool_use_result", () => {
+    const file = { filePath: "/p/matchparen.lua", numLines: 319, startLine: 1, totalLines: 319 };
+    const events = run([
+      msg({
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: { content: [{ type: "tool_use", id: "r1", name: "Read", input: { file_path: "/p/matchparen.lua" } }] },
+      }),
+      msg({
+        type: "user",
+        parent_tool_use_id: null,
+        message: { role: "user", content: [{ type: "tool_result", tool_use_id: "r1", content: "1\tlocal M = {}\n2\treturn M" }] },
+        tool_use_result: { type: "text", file },
+      }),
+    ]);
+    expect(events.find((e) => e.type === "tool_result")).toMatchObject({ result: { type: "text", file } });
+  });
+
   // Shapes and order as Claude Code 2.1.304 sends them for a background
   // subagent: the Agent call returns at once, the main turn ends, the agent
   // works on, and its end starts a turn of its own.
@@ -338,8 +421,10 @@ describe("Translator", () => {
     ];
     expect(between.flatMap((m) => t.translate(m))).toEqual([
       { type: "agent_progress", agent_id: "f1", description: "Editing alpha.js", tool_uses: 2, tokens: 900, last_tool: undefined },
+      { type: "agent_text", agent_id: "f1", parent_id: "toolu_F", text: "Now the edit.", thinking: true },
       { type: "tool_use", id: "e1", name: "Edit", input: { file_path: "/alpha.js" }, parent_id: "toolu_F", agent_id: "f1" },
       { type: "tool_result", id: "e1", is_error: false, text: "updated", result: undefined, parent_id: "toolu_F", agent_id: "f1" },
+      { type: "agent_text", agent_id: "f1", parent_id: "toolu_F", text: "Done: alpha.js starts with // FAST." },
       {
         type: "agent_end",
         agent_id: "f1",
