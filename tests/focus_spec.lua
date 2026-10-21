@@ -230,7 +230,7 @@ describe("focus", function()
     finish("h1")
     assert.is_nil(follow.focus)
     local lines = helpers.buf_lines(transcript.buf())
-    assert.are.same("✻ Agent 1 ended · focus is back on Claude", lines[#lines])
+    assert.are.same("✻ Agent 1 finished · focus is back on Claude", lines[#lines])
     vim.wait(1000, function()
       return code_file() == main
     end)
@@ -247,15 +247,79 @@ describe("focus", function()
     turn_end()
     assert.is_nil(follow.focus)
     lines = helpers.buf_lines(transcript.buf())
-    assert.are.same("✻ Explore 1 ended · focus is back on Claude", lines[#lines])
+    assert.are.same("✻ Explore 1 was stopped · focus is back on Claude", lines[#lines])
 
-    -- A session that forgot its agents says nothing.
-    start("h4")
+    -- A late end of the agent that the turn's end stopped moves no focus.
+    start("h5")
     follow.focus_slot(1)
     local count = #helpers.buf_lines(transcript.buf())
+    finish("h3")
+    assert.are.same({ "h5", "completed" }, { follow.focus, agents.get("h3").status })
+    assert.are.same(count, #helpers.buf_lines(transcript.buf()), "a late end added a notice")
+    follow.focus_slot(0)
+
+    -- A session that forgot its agents for no stated reason says nothing.
+    start("h4")
+    follow.focus_slot(2)
+    count = #helpers.buf_lines(transcript.buf())
     agents.clear()
     assert.is_nil(follow.focus)
     assert.are.same(count, #helpers.buf_lines(transcript.buf()))
+  end)
+
+  it("says how the focused agent ended: failed, stopped or with the sidecar", function()
+    fresh()
+    local notices = {}
+    local notice = transcript.notice
+    local state = require("anvim.state")
+    local saved = { state.session_id, state.turns }
+    restore = function()
+      transcript.notice = notice
+      state.session_id, state.turns, state.process = saved[1], saved[2], "ready"
+    end
+    transcript.notice = function(level, text)
+      if text:find("focus is back on Claude", 1, true) then
+        notices[#notices + 1] = text
+      elseif text:find("^Sidecar exited") then
+        notices[#notices + 1] = "Sidecar exited"
+      end
+      notice(level, text)
+    end
+    local function case(ev)
+      notices = {}
+      start("w1", { subagent_type = "Explore" })
+      follow.focus_slot(1)
+      assert.are.same("w1", follow.focus)
+      sidecar.dispatch(ev)
+      assert.is_nil(follow.focus, ev.type)
+      -- The notice of a clear waits for the event loop.
+      vim.wait(20)
+      sidecar.dispatch({ type = "reset" })
+      return notices
+    end
+    local ending = { type = "agent_end", agent_id = "w1", summary = "x" }
+    ending.status = "failed"
+    assert.are.same({ "Explore 1 failed · focus is back on Claude" }, case(ending))
+    ending.status = "stopped"
+    assert.are.same({ "Explore 1 was stopped · focus is back on Claude" }, case(ending))
+    ending.status = "completed"
+    assert.are.same({ "Explore 1 finished · focus is back on Claude" }, case(ending))
+    local exited = "Explore 1 stopped with the sidecar · focus is back on Claude"
+    -- The cause comes first.
+    assert.are.same({ "Sidecar exited", exited }, case({ type = "exit", code = 1 }))
+    assert.are.same({ exited }, case({ type = "exit", code = 0, restart = true }))
+    -- /clear and a resumed session start over.
+    assert.are.same({}, case({ type = "reset" }))
+    assert.are.same({}, case({ type = "history", session_id = "s-focus", events = {} }))
+
+    -- SendMessage continues an ended agent without taking the focus back.
+    start("w2")
+    follow.focus_slot(1)
+    finish("w2")
+    assert.is_nil(follow.focus)
+    start("w2", { tool_use_id = "tu_send", background = true })
+    assert.are.same({ "running", 1 }, { agents.get("w2").status, agents.get("w2").slot })
+    assert.is_nil(follow.focus, "the restart took the focus back")
   end)
 
   it("keeps the main agent's show_user and edit previews off a view that follows a subagent", function()

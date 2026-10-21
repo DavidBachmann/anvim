@@ -445,6 +445,8 @@ end
 
 function M.attach(sidecar)
   sidecar.on("agent_progress", schedule)
+  -- A late end, after a turn's end stopped the agent, fires no AnvimAgents.
+  sidecar.on("agent_end", schedule)
   sidecar.on("tool_use", function(ev)
     if ev.agent_id or ev.parent_id then
       schedule()

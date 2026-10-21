@@ -464,6 +464,8 @@ local ended = { completed = "finished", failed = "failed", stopped = "was stoppe
 ---@param id string?
 function M.follow(id)
   require("anvim.overview").close()
+  -- The end of an agent that has the focus already says so in the transcript.
+  local focused = id ~= nil and id == M.focus
   vim.schedule(function()
     -- The user asked to follow now, so a pinned selection goes.
     require("anvim.context").clear()
@@ -472,7 +474,7 @@ function M.follow(id)
     end
     local agent = id and agents.get(id)
     local running = agent and agent.status == "running"
-    if agent and not running then
+    if agent and not running and not focused then
       local text = ("%s %s · following Claude"):format(agents.name(agent), ended[agent.status] or "ended")
       vim.notify(text, vim.log.levels.INFO, { title = "anvim" })
     end
@@ -480,9 +482,10 @@ function M.follow(id)
   end)
 end
 
--- Focus goes back to the main agent when the focused agent ends. A session
--- that forgot its agents says nothing.
-local function on_agents()
+-- Focus goes back to the main agent when the focused agent ends, or when the
+-- sidecar that ran it exits. /clear and a resumed session start over, so they
+-- say nothing.
+local function on_agents(ev)
   for key in pairs(places) do
     if key ~= "" and not agents.get(key) then
       places[key] = nil
@@ -495,8 +498,17 @@ local function on_agents()
     return
   end
   M.focus = nil
-  if agent then
-    require("anvim.transcript").notice("info", ("%s ended · focus is back on Claude"):format(focus_name))
+  local cleared = ev.data and ev.data.cleared
+  local why = agent and (ended[agent.status] or "ended")
+    or (cleared == "exit" or cleared == "restart") and "stopped with the sidecar"
+  local text = why and ("%s %s · focus is back on Claude"):format(focus_name, why)
+  if text and cleared then
+    -- After the transcript's own exit notice, so the cause comes first.
+    vim.schedule(function()
+      require("anvim.transcript").notice("info", text)
+    end)
+  elseif text then
+    require("anvim.transcript").notice("info", text)
   end
   -- From the event loop: a file that this non-nested handler loads would get
   -- no BufReadPost, so no filetype and no read-only lock.

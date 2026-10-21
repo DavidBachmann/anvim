@@ -2672,6 +2672,67 @@ describe("stack", function()
     ]])
   end)
 
+  it("quits cleanly while the Agent Overview shows an agent's log", function()
+    start()
+    -- In a child of its own, because this one quits.
+    local shared, errors, dir = chan, {}, helpers.tmp .. "/xdg-overview"
+    local id = spawn(dir, nil, errors)
+    local ok, err = pcall(function()
+      lua([[
+        local sidecar = require("anvim.sidecar")
+        sidecar.dispatch({
+          type = "agent_start",
+          agent_id = "quit_a1",
+          tool_use_id = "tu_quit_a1",
+          description = "Quit",
+          subagent_type = "Explore",
+          depth = 1,
+          background = false,
+        })
+        sidecar.dispatch({
+          type = "tool_use",
+          id = "quit_t1",
+          name = "Bash",
+          input = { command = "echo 1" },
+          parent_id = "tu_quit_a1",
+          agent_id = "quit_a1",
+        })
+        require("anvim.follow").set_focus("quit_a1")
+        require("anvim.overview").open()
+      ]])
+      wait(
+        3000,
+        [[local p = require("anvim.overview").get() return p ~= nil and p.list.win:win_valid()]],
+        "the Overview did not open"
+      )
+      keys("1")
+      wait(
+        3000,
+        [[local p = require("anvim.overview").get()
+          return vim.api.nvim_win_get_buf(p.preview.win.win) == require("anvim.agentlog").buf("quit_a1")]],
+        "the preview showed no log"
+      )
+      -- Typed, because a :qa in an API call or a scheduled callback prints no
+      -- errors from exit-time autocmds.
+      keys(":qa<CR>")
+      chan = nil
+      local code = vim.fn.jobwait({ id }, 5000)
+      assert.are.same({ 0 }, code, ":qa with the Overview open did not quit")
+    end)
+    if vim.fn.jobwait({ id }, 0)[1] == -1 then
+      vim.fn.jobstop(id)
+    end
+    chan = shared
+    assert(ok, err)
+    local path = dir .. "/state/anvim/anvim.log"
+    local log = vim.uv.fs_stat(path) and vim.fn.readfile(path) or {}
+    for _, line in ipairs(log) do
+      assert(not line:find("failed", 1, true), table.concat(log, "\n"))
+    end
+    -- The typed command echoes on stderr, and its chunks can split a line.
+    assert.are.same(":qa", table.concat(errors))
+  end)
+
   it(":q in the prompt quits with two tabs, cleanly, and leaves the install dirs untouched", function()
     start()
     lua([[require("anvim.layout").focus_input()]])

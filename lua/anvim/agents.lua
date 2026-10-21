@@ -55,9 +55,15 @@ function M.files_changed()
 end
 local files_changed = M.files_changed
 
--- Agents started, ended or changed slots, or the focus moved.
-function M.changed()
-  api.nvim_exec_autocmds("User", { pattern = "AnvimAgents", modeline = false })
+---@alias anvim.Cleared 'exit'|'restart'|'reset'|'history'
+
+-- Agents started, ended or changed slots, or the focus moved. The event's
+-- `data.cleared` says why the session forgot every agent. A handler that
+-- fires AnvimAgents during a clear, before follow.lua's handler, would make
+-- that handler run without the reason, and the exit notice would be lost.
+---@param cleared anvim.Cleared?
+function M.changed(cleared)
+  api.nvim_exec_autocmds("User", { pattern = "AnvimAgents", modeline = false, data = { cleared = cleared } })
   files_changed()
 end
 
@@ -388,13 +394,16 @@ function M.turn_end()
   end
 end
 
-function M.clear()
+-- The sidecar exited or restarted, /clear started over, or a resumed session
+-- took the place of this one.
+---@param reason anvim.Cleared?
+function M.clear(reason)
   local any = next(agents) ~= nil
   local files = next(edits) ~= nil or #main.files > 0
   agents, by_tool, slots, starts, edits = {}, {}, {}, {}, {}
   main.files = {}
   if any then
-    M.changed()
+    M.changed(reason)
   elseif files then
     files_changed()
   end
@@ -408,9 +417,15 @@ function M.attach(sidecar)
   sidecar.on("tool_use", M.tool_use)
   sidecar.on("tool_result", M.tool_result)
   sidecar.on("turn_end", M.turn_end)
-  sidecar.on("reset", M.clear)
-  sidecar.on("history", M.clear)
-  sidecar.on("exit", M.clear)
+  sidecar.on("reset", function()
+    M.clear("reset")
+  end)
+  sidecar.on("history", function()
+    M.clear("history")
+  end)
+  sidecar.on("exit", function(ev)
+    M.clear(ev.restart and "restart" or "exit")
+  end)
 end
 
 return M

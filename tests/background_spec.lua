@@ -338,8 +338,23 @@ describe("background agents", function()
       '⏺ Agent "Mark files" finished',
       "  ⎿  Marked 2 files. ... +1 lines",
       "",
-      "✻ Explore 1 ended · focus is back on Claude",
+      "✻ Explore 1 finished · focus is back on Claude",
     }, vim.list_slice(lines(), #lines() - 3))
+  end)
+
+  it("falls back to Claude when a focused agent leaves the background tasks without a notification", function()
+    fresh()
+    local head = "⏺ Explore(Quiet)"
+    launch("b9", "Quiet")
+    turn_end()
+    follow.set_focus("b9")
+    -- What the translator sends for an agent that left background_tasks_changed.
+    sidecar.dispatch({ type = "agent_end", agent_id = "b9", status = "completed" })
+    assert.is_nil(follow.focus)
+    assert.are.same("completed", agents.get("b9").status)
+    assert.are.same("AnvimToolOk", bullet(head))
+    local all = lines()
+    assert.are.same("✻ Explore 1 finished · focus is back on Claude", all[#all])
   end)
 
   it("keeps an agent that a background agent started, and answers each request that a turn's end drops", function()

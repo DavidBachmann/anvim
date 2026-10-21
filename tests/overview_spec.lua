@@ -446,6 +446,169 @@ describe("the Agent Overview", function()
     )
     assert.are.same({ { "Agent failed · following Claude", vim.log.levels.INFO } }, said)
     assert.is_nil(follow.focus)
+    -- The end of the focused agent says so in the transcript, and only there.
+    said = {}
+    start("d4")
+    follow.set_focus("d4")
+    follow.follow("d4")
+    sidecar.dispatch({ type = "agent_end", agent_id = "d4", status = "completed" })
+    vim.wait(50)
+    assert.are.same({}, said)
+    assert.is_nil(follow.focus)
+    local lines = helpers.buf_lines(transcript.buf())
+    assert.are.same("✻ Agent 1 finished · focus is back on Claude", lines[#lines])
+  end)
+
+  it("keeps its tabs sane when the followed agent goes, in each way it can go", function()
+    local state = require("anvim.state")
+    local saved = { state.session_id, state.turns }
+    local failures, log = {}, sidecar.log
+    sidecar.log = function(text)
+      if text:find("^handler for") or text:find("^agent log of") then
+        failures[#failures + 1] = text
+      end
+      log(text)
+    end
+    vim.v.errmsg = ""
+    -- The list's buffer has a line for each row of its window.
+    local function rows(p)
+      return vim.tbl_map(vim.trim, api.nvim_buf_get_lines(p.list.win.buf, 0, #p:items(), false))
+    end
+    local function wait_rows(p, want, what)
+      assert(
+        vim.wait(1000, function()
+          return vim.deep_equal(rows(p), want)
+        end),
+        what .. ": " .. vim.inspect(rows(p))
+      )
+    end
+    local function preview(p)
+      return api.nvim_win_get_buf(p.preview.win.win)
+    end
+    -- An agent with the focus, whose tab shows its log.
+    local function setup(extra)
+      fresh()
+      start("o1", vim.tbl_extend("force", { subagent_type = "Explore" }, extra or {}))
+      use("o1", 1)
+      follow.set_focus("o1")
+      local p = open()
+      feed("1")
+      assert(
+        vim.wait(1000, function()
+          return preview(p) == agentlog.buf("o1")
+        end),
+        "the log did not show"
+      )
+      return p
+    end
+    local function turn_end()
+      sidecar.dispatch({ type = "turn_end", subtype = "success", is_error = false, duration_ms = 1, cost_usd = 0 })
+    end
+    local function ending(status, summary)
+      return function()
+        sidecar.dispatch({ type = "agent_end", agent_id = "o1", status = status, summary = summary })
+      end
+    end
+    local ok, err = pcall(function()
+      -- The tab stays, grey, with its end, and the focus mark goes to Claude.
+      for _, c in ipairs({
+        { "completed", ending("completed", "done"), "done", "AnvimToolOk" },
+        { "failed", ending("failed", "no"), "failed", "AnvimToolError" },
+        { "stopped", ending("stopped"), "stopped", "AnvimToolError" },
+        { "turn's end", turn_end, "stopped", "AnvimToolError" },
+        {
+          "background end without a notification",
+          function()
+            turn_end()
+            ending("completed")()
+          end,
+          "done",
+          "AnvimToolOk",
+          { background = true },
+        },
+      }) do
+        local p = setup(c[5])
+        c[2]()
+        wait_rows(p, { "◉ Claude      idle", "⏺ Explore     " .. c[3] .. " · Task o1" }, c[1])
+        assert.is_nil(follow.focus, c[1])
+        assert.are.same(c[4] .. " Comment", groups(p:items()[2]), c[1])
+        assert.are.same({ "o1", agentlog.buf("o1") }, { current(p), preview(p) }, c[1])
+        local lines = helpers.buf_lines(agentlog.buf("o1"))
+        assert.are.same("✻ ", lines[#lines]:sub(1, #"✻ "), c[1])
+        overview.close()
+        vim.wait(50)
+      end
+
+      -- A late end after the turn's end changes only the tab's status.
+      local p = setup()
+      turn_end()
+      wait_rows(p, { "◉ Claude      idle", "⏺ Explore     stopped · Task o1" }, "turn's end")
+      start("o2")
+      follow.set_focus("o2")
+      wait_rows(p, { "⏺ Claude      idle", "◉ Agent 1     working", "⏺ Explore     stopped · Task o1" }, "o2")
+      feed("0")
+      ending("completed", "done")()
+      wait_rows(p, { "⏺ Claude      idle", "◉ Agent 1     working", "⏺ Explore     done · Task o1" }, "late end")
+      assert.are.same({ "o2", "claude" }, { follow.focus, current(p) })
+      overview.close()
+      vim.wait(50)
+
+      -- The agents' tabs go, the cursor goes to Claude's, and the log that
+      -- the preview shows stays until the preview moves.
+      for _, ev in ipairs({
+        { type = "exit", code = 1 },
+        { type = "exit", code = 0, restart = true },
+        { type = "reset" },
+        { type = "history", session_id = "s-overview", events = {} },
+      }) do
+        p = setup()
+        local buf = agentlog.buf("o1")
+        sidecar.dispatch(ev)
+        state.process = "ready"
+        assert.is_true(api.nvim_buf_is_valid(buf), ev.type)
+        assert(
+          vim.wait(1000, function()
+            return #p:items() == 1 and preview(p) == transcript.buf()
+          end),
+          ev.type .. ": the tabs stayed"
+        )
+        assert(
+          vim.wait(1000, function()
+            return not api.nvim_buf_is_valid(buf)
+          end),
+          ev.type .. ": the log stayed"
+        )
+        assert.is_nil(follow.focus, ev.type)
+        assert.are.same({ "claude", { "◉ Claude      idle" } }, { current(p), rows(p) }, ev.type)
+        overview.close()
+        vim.wait(50)
+      end
+
+      -- SendMessage continues the agent in a new slot, and the focus stays.
+      p = setup()
+      ending("completed", "done")()
+      start("o2")
+      start("o1", { subagent_type = "Explore", tool_use_id = "tu_send", background = true })
+      wait_rows(
+        p,
+        { "◉ Claude      idle", "⏺ Agent 1     working", "⏺ Explore 2   bg · working" },
+        "SendMessage"
+      )
+      assert.is_nil(follow.focus)
+      assert.are.same({ "o1", "AnvimAgent2 AnvimAgent2" }, { current(p), groups(p:items()[3]) })
+      feed("<CR>")
+      assert(
+        vim.wait(1000, function()
+          return follow.focus == "o1"
+        end),
+        "<CR> did not follow the continued agent"
+      )
+    end)
+    sidecar.log = log
+    state.session_id, state.turns, state.process = saved[1], saved[2], "ready"
+    assert(ok, err)
+    assert.are.same({}, failures)
+    assert.are.same("", vim.v.errmsg)
   end)
 
   it("drops the agents' tabs on /clear, and deletes a shown log once the preview moves", function()
