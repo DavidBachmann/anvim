@@ -89,6 +89,7 @@ local function set_highlights()
   local sep = api.nvim_get_hl(0, { name = "WinSeparator", link = false })
   local column = api.nvim_get_hl(0, { name = "AnvimNormal", link = false })
   api.nvim_set_hl(0, "AnvimSeparator", { fg = sep.fg, bg = column.bg })
+  require("anvim.statusline").highlights()
 end
 
 local function refresh_branch()
@@ -145,6 +146,7 @@ function M.setup(opts)
     group = api.nvim_create_augroup("anvim.highlights", {}),
     callback = set_highlights,
   })
+  require("anvim.statusline").setup()
   readonly.setup()
   layout.setup()
   windows.setup()

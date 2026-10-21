@@ -170,12 +170,11 @@ local function start()
   ]])
 end
 
--- The global statusline's text, from the current window's lualine value.
+-- The global statusline's text, as Neovim draws it for the current window.
 local function statusline()
   return lua([[
-    require("lualine").refresh({ force = true, place = { "statusline" } })
     local win = vim.api.nvim_get_current_win()
-    return vim.api.nvim_eval_statusline(vim.wo[win].statusline, { winid = win }).str
+    return vim.api.nvim_eval_statusline(vim.go.statusline, { winid = win }).str
   ]])
 end
 
@@ -501,7 +500,7 @@ describe("stack", function()
     assert.are.same(install .. "/mason", out.mason)
   end)
 
-  it("shows the follow status in the footer from any window, and not in lualine", function()
+  it("shows the follow status in the footer from any window, and not in the statusline", function()
     start()
     wait_footer({ "◉ following" }, "the footer in the prompt")
     assert(not statusline():find("following", 1, true), statusline())
@@ -533,10 +532,9 @@ describe("stack", function()
     -- the code window's numbers.
     local function block()
       return lua([[
-        require("lualine").refresh({ force = true, place = { "statusline" } })
         local win = vim.api.nvim_get_current_win()
         local code = require("anvim.layout").wins.code
-        local stl = vim.api.nvim_eval_statusline(vim.wo[win].statusline, { winid = win, highlights = true })
+        local stl = vim.api.nvim_eval_statusline(vim.go.statusline, { winid = win, highlights = true })
         local text = stl.str:match("^ (%u+) ")
         local function at(byte)
           local group
@@ -548,7 +546,7 @@ describe("stack", function()
           return vim.api.nvim_get_hl(0, { name = group, link = false })
         end
         local sep = #text + 2
-        local left = require("lualine").get_config().options.section_separators.left
+        local left = "\238\130\176"
         return {
           text = text,
           bg = at(0).bg,
@@ -822,6 +820,86 @@ describe("stack", function()
     assert_layout("closing the Claude column")
     assert.are.same(tokyonight, assert_column("the repaired Claude column"))
     lua([[require("anvim.layout").focus_input({ insert = false })]])
+  end)
+
+  it("draws its own statusline in tokyonight's lualine colors and in habamax's, without errors", function()
+    start()
+    local function look()
+      return lua(
+        [[
+        local file = ...
+        local layout = require("anvim.layout")
+        local function get(name)
+          return vim.api.nvim_get_hl(0, { name = name, link = false })
+        end
+        local function eval(win)
+          local stl = vim.api.nvim_eval_statusline(vim.go.statusline, { winid = win, highlights = true })
+          local hl = get(stl.highlights[1].group)
+          return { text = stl.str, group = stl.highlights[1].group, fg = hl.fg, bg = hl.bg }
+        end
+        local locals = {}
+        for _, win in ipairs(vim.api.nvim_list_wins()) do
+          locals[#locals + 1] = vim.wo[win][0].statusline ~= "" and vim.wo[win][0].statusline or nil
+        end
+        vim.cmd.stopinsert()
+        vim.api.nvim_set_current_win(layout.wins.code)
+        vim.cmd.edit(file)
+        vim.b.gitsigns_status_dict = { added = 2, changed = 1, removed = 1 }
+        local code = eval(layout.wins.code)
+        -- Each group that the statusline made from another has that group's color.
+        local made = {}
+        local stl = vim.api.nvim_eval_statusline(vim.go.statusline, { winid = layout.wins.code, highlights = true })
+        for _, h in ipairs(stl.highlights) do
+          local from = h.group:match("^AnvimStatusC(%u.*)$")
+          if from then
+            local want = get(from)
+            made[from] = get(h.group).fg == (want.fg or want.sp)
+          end
+        end
+        vim.b.gitsigns_status_dict = nil
+        layout.focus_input({ insert = false })
+        return {
+          option = vim.go.statusline,
+          locals = locals,
+          prompt = eval(layout.wins.input),
+          code = code,
+          claude = get("AnvimClaude").fg,
+          pmenu = get("PmenuSel").bg,
+          error = require("anvim.statusline").error or vim.NIL,
+          made = made,
+        }
+      ]],
+        helpers.tmp .. "/matchparen.lua"
+      )
+    end
+    local function check(what)
+      local got = look()
+      assert.are.same("%!v:lua.require'anvim.statusline'.render()", got.option, what)
+      assert.are.same({}, got.locals, what .. ": a window has a statusline of its own")
+      assert.are.same(vim.NIL, got.error, what)
+      assert(got.prompt.text:find("^ FOLLOW "), what .. ": " .. got.prompt.text)
+      assert(got.code.text:find("^ NORMAL "), what .. ": " .. got.code.text)
+      assert.are.same({ "AnvimStatusFollow", got.claude }, { got.prompt.group, got.prompt.bg }, what)
+      assert.are.same("AnvimStatusNormal", got.code.group, what)
+      for _, group in ipairs({ "GitSignsAdd", "GitSignsChange", "GitSignsDelete", "MiniIconsAzure" }) do
+        assert.are.same(true, got.made[group], ("%s: the color of %s in %s"):format(what, group, vim.inspect(got.made)))
+      end
+      for group, same in pairs(got.made) do
+        assert(same, ("%s: the color of %s"):format(what, group))
+      end
+      for _, part in ipairs({ got.prompt, got.code }) do
+        assert(part.fg and part.bg and part.fg ~= part.bg, what .. ": " .. vim.inspect(part))
+      end
+      return got
+    end
+    local blue = lua([[return tonumber(require("lualine.themes._tokyonight").get().normal.a.bg:sub(2), 16)]])
+    local tokyonight = check("tokyonight")
+    assert.are.same(blue, tokyonight.code.bg, "tokyonight's lualine theme colors the mode")
+    lua([[vim.cmd.colorscheme("habamax")]])
+    local habamax = check("habamax")
+    assert.are.same(habamax.pmenu, habamax.code.bg, "habamax's PmenuSel colors the mode")
+    lua([[vim.cmd.colorscheme("tokyonight")]])
+    assert.are.same(tokyonight, check("tokyonight again"))
   end)
 
   it("does not write locked buffers, nor run BufWritePre", function()
@@ -2407,7 +2485,7 @@ describe("stack", function()
     end
   end
 
-  it("shows a permission request in lualine and the winbar, and answers it from the prompt", function()
+  it("shows a permission request in the statusline and the winbar, and answers it from the prompt", function()
     start()
     capture()
     lua([[

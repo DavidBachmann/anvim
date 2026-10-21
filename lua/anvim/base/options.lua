@@ -60,6 +60,8 @@ opt.spelllang = { "en" }
 opt.splitbelow = true
 opt.splitkeep = "screen"
 opt.splitright = true
+-- anvim's own (lua/anvim/statusline.lua), from the first frame on.
+opt.statusline = "%!v:lua.require'anvim.statusline'.render()"
 opt.tabstop = 2
 opt.termguicolors = true
 -- Short, so that which-key shows soon.

@@ -159,8 +159,8 @@ test("a Write preview's winbar and statusline name the real file, and the winbar
   expect(await look("(writing)")).toEqual({ fg: new Set([await fg("AnvimClaude")]), bg: new Set([undefined]) });
   expect(await look("made.lua")).toEqual({ fg: new Set([await fg("Comment")]), bg: new Set([undefined]) });
 
-  // In the code window, the statusline names the file too. A separator of
-  // lualine's comes before (writing).
+  // In the code window, the statusline names the file too. A separator
+  // comes before (writing).
   await ui.input("<C-w>h");
   await anvim.waitWhere("code", "n");
   const status = async () => ui.lines()[(await ui.exec_lua<number>(`return vim.o.lines - vim.o.cmdheight - 1`))]!;

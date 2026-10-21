@@ -185,8 +185,8 @@ test("the mode block and the line numbers change in the same frame, for each way
   await step("picker", [" ", " "], "snacks_picker_input", "i", 900);
   await step("picker confirms into the code window", ["matchparen", "<CR>"], "code", "n", 800);
   await step("to the prompt again", ["<C-w>l"], "input", "n");
-  // The mode changes in the explorer's list, a float, where lualine writes
-  // only the float's statusline.
+  // The mode changes in the explorer's list, a float, which the global
+  // statusline then belongs to.
   await step("explorer", [" ", "e"], "snacks_picker_list", "n", 900);
   await step("click into the code window", [click("Mouse"), click("Release")], "code", "n");
   await step("to the prompt from the code window", ["<C-w>l"], "input", "n");

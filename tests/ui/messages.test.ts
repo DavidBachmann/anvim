@@ -128,7 +128,7 @@ test("the command line shows a macro recording, and the statusline does not repe
   await ui.input("qq");
   await ui.drain();
   await ui.waitFor(() => cmdline().includes("recording @q"), 250);
-  // lualine refreshes a frame or more later, so watch a while.
+  // A later redraw could still show it, so watch a while.
   await Bun.sleep(500);
   await ui.drain();
   expect(ui.frames(mark).filter((f) => f.lines[last - 1]!.includes("recording")).length).toBe(0);
