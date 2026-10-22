@@ -113,4 +113,40 @@ describe("historyEvents", () => {
       { type: "output", text: "Compacted" },
     ]);
   });
+
+  test("an event that starts an item has the time that Claude Code saved, when it parses", () => {
+    const at = (timestamp: unknown) => ({ timestamp });
+    const seconds = (s: number) => Math.floor(Date.UTC(2026, 9, 22, 9, 5, s) / 1000);
+    const events = historyEvents([
+      user("Count the lines", at("2026-10-22T09:05:07.750Z")),
+      assistant(
+        [
+          { type: "text", text: "Counting." },
+          { type: "tool_use", id: "t1", name: "Bash", input: { command: "wc -l a" } },
+        ],
+        at("2026-10-22T09:05:09Z"),
+      ),
+      user([{ type: "tool_result", tool_use_id: "t1", content: "3 a" }], at("2026-10-22T09:05:10Z")),
+      user("<local-command-stdout>Done</local-command-stdout>", at("2026-10-22T09:05:11Z")),
+      user("[Request interrupted by user]", at("2026-10-22T09:05:12Z")),
+      user("Summary", { isCompactSummary: true, ...at("2026-10-22T09:05:13Z") }),
+      user("No time"),
+      user("Bad time", at("yesterday")),
+      user("A number", at(1792449658)),
+    ]);
+    expect(events).toStrictEqual([
+      { type: "user", text: "Count the lines", time: seconds(7) },
+      { type: "text_start", time: seconds(9) },
+      { type: "text_delta", text: "Counting." },
+      { type: "text_stop" },
+      { type: "tool_use", id: "t1", name: "Bash", input: { command: "wc -l a" }, parent_id: null, time: seconds(9) },
+      { type: "tool_result", id: "t1", is_error: false, text: "3 a", result: undefined, parent_id: null },
+      { type: "output", text: "Done" },
+      { type: "notice", level: "warn", text: "Interrupted by user", time: seconds(12) },
+      { type: "compact", time: seconds(13) },
+      { type: "user", text: "No time" },
+      { type: "user", text: "Bad time" },
+      { type: "user", text: "A number" },
+    ]);
+  });
 });

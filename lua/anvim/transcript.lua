@@ -10,11 +10,17 @@ local ns = api.nvim_create_namespace("anvim.transcript")
 -- Where Claude's text blocks start and end.
 local ns_text = api.nvim_create_namespace("anvim.transcript.text")
 local ns_focus = api.nvim_create_namespace("anvim.transcript.focus")
+local ns_time = api.nvim_create_namespace("anvim.time")
+
+-- The clock of the times that items show. Specs replace it.
+M.clock = os.time
 
 ---@class anvim.Tool
 ---@field id string
 ---@field name string
 ---@field mark integer?
+---@field time integer? When the call started, as the clock or a saved session tells it.
+---@field stamp integer? The mark that shows the time.
 ---@field input table?
 ---@field done boolean?
 ---@field outcome string[]?
@@ -250,6 +256,127 @@ local function hl(row, col, end_col, group, opts)
     col,
     vim.tbl_extend("force", { end_col = end_col, hl_group = group, priority = 200 }, opts or {})
   )
+end
+
+-- The text of each time, by buffer and by the id of the mark on its row.
+---@type table<integer, table<integer, string>>
+local stamps = {}
+
+-- Gives a row a time, which shows at the right edge of the row's last screen
+-- line where it fits. The mark goes when its line goes, so a caller that
+-- replaces the line stamps it again.
+---@param time integer? As M.clock() gives it.
+---@param id integer? The mark of the time to show again.
+---@return integer? id
+function M.stamp(buf, row, time, id)
+  if not time then
+    return nil
+  end
+  id = api.nvim_buf_set_extmark(buf, ns_time, row, 0, { id = id, invalidate = true, undo_restore = false })
+  if not stamps[buf] then
+    -- The buffers of agent logs that went.
+    for b in pairs(stamps) do
+      if not api.nvim_buf_is_loaded(b) then
+        stamps[b] = nil
+      end
+    end
+    stamps[buf] = {}
+  end
+  stamps[buf][id] = os.date("%H:%M:%S", time) --[[@as string]]
+  return id
+end
+
+-- Drops the times of rows first to last - 1, of lines that go. A `last` of
+-- -1 is the end.
+function M.unstamp(buf, first, last)
+  local times = stamps[buf] or {}
+  local stop = last < 0 and -1 or { last - 1, -1 }
+  for _, mark in ipairs(api.nvim_buf_get_extmarks(buf, ns_time, { first, 0 }, stop, {})) do
+    times[mark[1]] = nil
+  end
+  api.nvim_buf_clear_namespace(buf, ns_time, first, last)
+end
+
+---@return string? time The time of a row, as it shows where it fits.
+function M.time_of(buf, row)
+  local mark = api.nvim_buf_get_extmarks(buf, ns_time, { row, 0 }, { row, 0 }, { limit = 1 })[1]
+  return mark and (stamps[buf] or {})[mark[1]]
+end
+
+-- Whether `cells` more cells fit on the last screen line of a row in `win`,
+-- after the line's end and its other end of line marks. Neovim draws those
+-- marks one cell apart, after the cell of the line's end. Concealed text only
+-- makes a screen line shorter, so the check is too strict there, never too
+-- loose. Only reads, as a decoration provider may.
+local function fits(win, buf, row, cells)
+  local size = api.nvim_win_text_height(win, { start_row = row, end_row = row })
+  if size.all - size.fill < 1 then
+    return false
+  end
+  -- end_vcol is the line's width in cells, wrap padding and indent included.
+  local last = size.end_vcol + cells
+  local opts = { details = true, type = "virt_text" }
+  for _, mark in ipairs(api.nvim_buf_get_extmarks(buf, -1, { row, 0 }, { row, -1 }, opts)) do
+    if mark[4].virt_text_pos == "eol" then
+      for _, chunk in ipairs(mark[4].virt_text) do
+        last = last + api.nvim_strwidth(chunk[1])
+      end
+      last = last + 1
+    end
+  end
+  -- From the screen line of the time's last cell to the line's end: one
+  -- screen line when that is the last one.
+  return api.nvim_win_text_height(win, { start_row = row, end_row = row, start_vcol = last }).all == 1
+end
+
+-- Each window draws a time only where it fits whole. A cut time would read
+-- as another time, and a buffer can show at several widths at once.
+api.nvim_set_decoration_provider(ns_time, {
+  on_win = function(_, _, buf)
+    return stamps[buf] ~= nil and next(stamps[buf]) ~= nil
+  end,
+  -- A range holds the line ends of rows from_row to to_row - 1, because its
+  -- end is exclusive. It can start in the middle of its first row, after the
+  -- row's mark.
+  on_range = function(_, win, buf, from_row, from_col, to_row)
+    if to_row <= from_row then
+      return
+    end
+    local times = stamps[buf] or {}
+    for _, mark in ipairs(api.nvim_buf_get_extmarks(buf, ns_time, { from_row, 0 }, { to_row - 1, 0 }, {})) do
+      local row, time = mark[2], times[mark[1]]
+      if time and fits(win, buf, row, api.nvim_strwidth(time)) then
+        api.nvim_buf_set_extmark(buf, ns_time, row, row == from_row and from_col or 0, {
+          ephemeral = true,
+          virt_text = { { time, "AnvimTime" } },
+          virt_text_pos = "eol_right_align",
+          hl_mode = "combine",
+          -- Neovim draws end of line marks from low to high priority, and a
+          -- mark after this one finds no room. "◉ focused" has the default, 4096.
+          priority = 4097,
+        })
+      end
+    end
+  end,
+})
+
+-- The time of the history event that M.batch() draws, as Claude Code saved it.
+---@type integer?
+local past_time
+
+-- Sets the time of the items that M.batch() draws next.
+---@param time integer?
+function M.batch_time(time)
+  past_time = type(time) == "number" and time or nil
+end
+
+-- Live items get the clock's time, and a resumed session's items the time
+-- that Claude Code saved with them.
+local function now()
+  if batch then
+    return past_time
+  end
+  return M.clock()
 end
 
 local function first_line(text)
@@ -515,6 +642,7 @@ local function set_tool_line(tool, label, bullet_hl)
   tool.mark = hl(row, 0, bullet, bullet_hl)
   local name_end = label:find("(", 1, true)
   hl(row, bullet + 1, bullet + 1 + (name_end and name_end - 1 or #label), "AnvimToolName")
+  tool.stamp = M.stamp(M.buf(), row, tool.time, tool.stamp)
 end
 
 ---@param context string? The editor context that went with the prompt, such as a.lua#L12-30.
@@ -530,6 +658,7 @@ function M.user(text, context)
     api.nvim_buf_set_extmark(M.buf(), ns, row + i, 0, { line_hl_group = "AnvimUser" })
   end
   hl(row, 0, #"❯", "AnvimPrompt")
+  M.stamp(M.buf(), row, now())
   if context then
     local line = "  ⎿  ⧉ " .. context
     with_modifiable(function(buf)
@@ -551,6 +680,7 @@ function M.text_start()
   reply[#reply + 1] = ""
   local row = append_item({ "⏺ " })
   hl(row, 0, #"⏺", "AnvimBullet")
+  M.stamp(M.buf(), row, now())
   -- The end mark moves with the text that streams in after it.
   local col = #"⏺ "
   texts[#texts + 1] = {
@@ -592,10 +722,11 @@ function M.tool_start(id, name)
   end
   local label = tool_label(name)
   local row = append_item({ "⏺ " .. label })
-  local tool = { id = id, name = name }
+  local tool = { id = id, name = name, time = now() }
   tool.mark = hl(row, 0, #"⏺", pending(tool))
   tools[id] = tool
   hl(row, #"⏺" + 1, #"⏺" + 1 + #label, "AnvimToolName")
+  tool.stamp = M.stamp(M.buf(), row, tool.time)
 end
 
 function M.tool_field(ev)
@@ -744,6 +875,7 @@ local function end_agent(tool, ev)
   for i, line in ipairs(lines) do
     hl(row + i - 1, i == 1 and #"⏺" or 0, #line, "AnvimResult")
   end
+  M.stamp(M.buf(), row, now())
 end
 
 -- A background agent's end in a resumed session's past.
@@ -810,6 +942,7 @@ function M.notice(level, text)
   if info then
     hl(row, 0, #"✻", "AnvimClaude")
   end
+  M.stamp(M.buf(), row, now())
 end
 
 -- A slash command's output, as result lines under the prompt that ran it.
@@ -1083,7 +1216,7 @@ function M.batch(fn)
   end
   batch = true
   local ok, err = pcall(fn)
-  batch = false
+  batch, past_time = false, nil
   for win, level in pairs(levels) do
     if api.nvim_win_is_valid(win) then
       vim.wo[win].conceallevel = level
@@ -1108,6 +1241,7 @@ function M.clear()
   api.nvim_buf_clear_namespace(buf, ns, 0, -1)
   api.nvim_buf_clear_namespace(buf, ns_text, 0, -1)
   api.nvim_buf_clear_namespace(buf, ns_focus, 0, -1)
+  M.unstamp(buf, 0, -1)
   with_modifiable(function()
     api.nvim_buf_set_lines(buf, 0, -1, false, {})
   end)

@@ -44,6 +44,18 @@ local function groups(id, text)
   error(("no line %q in:\n%s"):format(text, table.concat(helpers.buf_lines(buf), "\n")))
 end
 
+-- Each time in the log as { row, text }.
+local function times(id)
+  local buf, out = agentlog.buf(id), {}
+  for row = 0, api.nvim_buf_line_count(buf) - 1 do
+    local time = transcript.time_of(buf, row)
+    if time then
+      out[#out + 1] = { row, time }
+    end
+  end
+  return out
+end
+
 local function start(id, extra)
   sidecar.dispatch(vim.tbl_extend("force", {
     type = "agent_start",
@@ -349,6 +361,71 @@ describe("agent logs", function()
     assert(#all <= 3000, #all)
     assert.are.same("⋯ earlier lines dropped", all[1])
     assert.are_not.same("⋯ earlier lines dropped", all[2])
+  end)
+
+  describe("times", function()
+    local first = os.time({ year = 2026, month = 10, day = 22, hour = 9, min = 5, sec = 7 })
+    local now = first
+    local max_lines, drop_lines = agentlog.max_lines, agentlog.drop_lines
+
+    before_each(function()
+      now = first
+      transcript.clock = function()
+        return now
+      end
+    end)
+
+    after_each(function()
+      transcript.clock = os.time
+      agentlog.max_lines, agentlog.drop_lines = max_lines, drop_lines
+    end)
+
+    it("gives the prompt, each call, text and message the time it came, and a new log the first prompt's", function()
+      fresh()
+      start("t")
+      call("t", "Look.")
+      now = first + 2
+      use("t", "t1", "Bash", { command = "ls" })
+      now = first + 4
+      result("t", "t1", { text = "a.lua" })
+      say("t", "Found it.")
+      now = first + 6
+      sidecar.dispatch({ type = "tool_use", id = "tu_m", name = "SendMessage", input = { to = "t", message = "More." } })
+      assert.are.same({
+        "❯ Look.",
+        "",
+        "⏺ Bash(ls)",
+        "  ⎿  a.lua",
+        "⏺ Found it.",
+        "",
+        "─── SendMessage ───",
+        "❯ More.",
+        "",
+      }, lines("t"))
+      assert.are.same({ { 0, "09:05:07" }, { 2, "09:05:09" }, { 4, "09:05:11" }, { 7, "09:05:13" } }, times("t"))
+      vim.cmd("bwipeout! " .. agentlog.buf("t"))
+      now = first + 60
+      say("t", "Again.")
+      assert.are.same({ "❯ Look.", "", "⏺ Again." }, lines("t"))
+      assert.are.same({ { 0, "09:05:07" }, { 2, "09:06:07" } }, times("t"))
+    end)
+
+    it("drops the times of the lines that the cap drops", function()
+      fresh()
+      agentlog.max_lines, agentlog.drop_lines = 8, 4
+      start("c")
+      for i = 1, 12 do
+        now = first + i
+        use("c", "c" .. i, "Bash", { command = "echo " .. i })
+      end
+      local all = lines("c")
+      assert.are.same(agentlog.dropped_text, all[1])
+      local want = {}
+      for row = 2, #all do
+        want[#want + 1] = { row - 1, ("09:05:%02d"):format(7 + tonumber(all[row]:match("echo (%d+)"))) }
+      end
+      assert.are.same(want, times("c"))
+    end)
   end)
 
   it("keeps a past agent's log, so a SendMessage restart after the next prompt goes on in it", function()

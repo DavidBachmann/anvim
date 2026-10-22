@@ -19,6 +19,7 @@ M.dropped_text = "⋯ earlier lines dropped"
 M.max_logs = 16
 
 ---@class anvim.Log
+---@field id string The agent_id.
 ---@field buf integer
 ---@field order integer The agent's order at the start that the log drew.
 ---@field empty boolean The buffer has only its first, empty line.
@@ -40,6 +41,9 @@ local seen = {}
 -- event can come before the call's tool_use.
 ---@type table<string, string>
 local sent_back = {}
+-- When each agent's first prompt came, for a new log that shows it again.
+---@type table<string, integer>
+local prompt_times = {}
 
 local function mark_row(buf, id)
   return id and api.nvim_buf_get_extmark_by_id(buf, ns, id, {})[1]
@@ -68,6 +72,7 @@ local function cap(log)
       end
     end
     api.nvim_buf_clear_namespace(buf, ns, first, last)
+    transcript.unstamp(buf, first, last)
     api.nvim_buf_set_lines(buf, first, last, false, log.dropped and {} or { M.dropped_text })
     if not log.dropped then
       log.dropped = true
@@ -95,8 +100,9 @@ end
 
 -- Inserts lines before `row`, or at the end without it. Each mark is
 -- { row, col, end_col, group } with rows counted from the first line,
--- { row, line = group }, or { row, anchor = true } for a mark without a
--- group. The cap can move the lines after that, so the marks are set first.
+-- { row, line = group }, { row, stamp = true, time = time } for the time of
+-- an item, or { row, anchor = true } for a mark without a group. The cap can
+-- move the lines after that, so the marks are set first.
 ---@return integer[] ids The id of each mark.
 local function put(log, lines, marks, row)
   local ids = {}
@@ -112,6 +118,8 @@ local function put(log, lines, marks, row)
     for i, m in ipairs(marks) do
       if m.line then
         ids[i] = api.nvim_buf_set_extmark(buf, ns, row + m[1], 0, { line_hl_group = m.line })
+      elseif m.stamp then
+        ids[i] = transcript.stamp(buf, row + m[1], m.time)
       elseif m.anchor then
         ids[i] = api.nvim_buf_set_extmark(buf, ns, row + m[1], 0, {})
       else
@@ -123,9 +131,9 @@ local function put(log, lines, marks, row)
 end
 
 -- A prompt as the transcript shows the user's, and a blank line after it.
-local function prompt_block(text)
+local function prompt_block(text, time)
   local lines = vim.split((text:gsub("%s+$", "")), "\n", { plain = true })
-  local marks = { { 0, 0, #"❯", "AnvimPrompt" } }
+  local marks = { { 0, 0, #"❯", "AnvimPrompt" }, { 0, stamp = true, time = time } }
   for i, line in ipairs(lines) do
     lines[i] = (i == 1 and "❯ " or "  ") .. line
     marks[#marks + 1] = { i - 1, line = "AnvimUser" }
@@ -134,7 +142,7 @@ local function prompt_block(text)
   return lines, marks
 end
 
--- A prompt goes after the row of the mark `after`, or at the top.
+-- The agent's first prompt goes after the row of the mark `after`, or at the top.
 local function place(log, after, text)
   if type(text) ~= "string" or vim.trim(text) == "" then
     return
@@ -144,7 +152,8 @@ local function place(log, after, text)
     row = mark_row(log.buf, after)
     row = row and row + 1 or api.nvim_buf_line_count(log.buf)
   end
-  local lines, marks = prompt_block(text)
+  prompt_times[log.id] = prompt_times[log.id] or transcript.clock()
+  local lines, marks = prompt_block(text, prompt_times[log.id])
   put(log, lines, marks, row)
 end
 
@@ -164,7 +173,7 @@ local function message(log, after, text)
   end
   row = row or api.nvim_buf_line_count(log.buf)
   local rule = "─── SendMessage ───"
-  local prompt, prompt_marks = prompt_block(text)
+  local prompt, prompt_marks = prompt_block(text, transcript.clock())
   local before = row > 0 and not log.empty and api.nvim_buf_get_lines(log.buf, row - 1, row, false)[1] ~= ""
   local lines = before and { "", rule } or { rule }
   local marks = { { #lines - 1, 0, #rule, "AnvimRule" } }
@@ -213,7 +222,7 @@ local function new_log(id)
       require("anvim.overview").close()
     end, { buffer = buf, nowait = true })
   end
-  local log = { buf = buf, order = 0, empty = true, tools = {}, text = false, dropped = false }
+  local log = { id = id, buf = buf, order = 0, empty = true, tools = {}, text = false, dropped = false }
   logs[id], seen[id] = log, true
   -- The user can delete or wipe the buffer. The log is gone then, and the
   -- agent's next event starts a new one. The buffer goes, and its name with it.
@@ -340,6 +349,7 @@ local function tool_use(log, agent, ev)
   local ids = put(log, { line }, {
     { 0, 0, bullet, agents.group(agent.slot) },
     { 0, bullet + 1, bullet + 1 + (name_end and name_end - 1 or #label), "AnvimToolName" },
+    { 0, stamp = true, time = transcript.clock() },
   })
   log.tools[ev.id] = {
     mark = ids[1],
@@ -432,7 +442,7 @@ function M.text(ev)
     lines[i] = (i == 1 and "⏺ " or "  ") .. line
   end
   log.text = true
-  put(log, lines, { { 0, 0, #"⏺", "AnvimBullet" } })
+  put(log, lines, { { 0, 0, #"⏺", "AnvimBullet" }, { 0, stamp = true, time = transcript.clock() } })
 end
 
 local ended = { failed = "Failed", stopped = "Stopped" }
@@ -552,7 +562,7 @@ function M.clear()
   for id in pairs(logs) do
     drop(id)
   end
-  messages, seen, sent_back = {}, {}, {}
+  messages, seen, sent_back, prompt_times = {}, {}, {}, {}
 end
 
 -- After agents.lua, whose handlers make and end the agents first.

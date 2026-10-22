@@ -230,6 +230,8 @@ export type Event =
       models: { value: string; name: string; description: string; resolved?: string; effort_levels?: EffortLevel[] }[];
     }
   // A resumed session's past, sent before it starts. Its events draw the
-  // transcript as live ones do. A "user" event is a past prompt.
-  | { type: "history"; session_id: string; events: (Event | { type: "user"; text: string })[] }
+  // transcript as live ones do. A "user" event is a past prompt. An event
+  // that starts an item has the time that Claude Code saved, in seconds since
+  // the epoch.
+  | { type: "history"; session_id: string; events: ((Event | { type: "user"; text: string }) & { time?: number })[] }
   | { type: "exit"; code: number };

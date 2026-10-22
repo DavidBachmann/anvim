@@ -96,33 +96,46 @@ function prompt(content: string): HistoryEvent | undefined {
   return content.trim() === "" ? undefined : { type: "user", text: content };
 }
 
+// When Claude Code saved a message, in seconds since the epoch. The SDK
+// returns each message's timestamp, but its SessionMessage type leaves it out.
+function savedAt(m: SessionMessage): number | undefined {
+  const stamp = (m as { timestamp?: unknown }).timestamp;
+  const ms = typeof stamp === "string" ? Date.parse(stamp) : NaN;
+  return Number.isNaN(ms) ? undefined : Math.floor(ms / 1000);
+}
+
 // The events that draw these messages, in the order they happened. Subagent
-// messages live in their own files, so they are not here.
+// messages live in their own files, so they are not here. An event that
+// starts an item has the message's time.
 export function historyEvents(messages: SessionMessage[]): HistoryEvent[] {
   const out: HistoryEvent[] = [];
   const names = new Map<string, string>();
   for (const m of messages) {
     const raw = m as AnyRecord;
     const content = (m.message as AnyRecord | undefined)?.content;
+    const time = savedAt(m);
+    // A slash command's output goes under its prompt, as no item of its own.
+    const at = (ev: HistoryEvent): HistoryEvent =>
+      time === undefined || ev.type === "output" ? ev : { ...ev, time };
     if (m.parent_tool_use_id != null) continue;
     if (raw.isCompactSummary) {
-      out.push({ type: "compact" });
+      out.push(at({ type: "compact" }));
       continue;
     }
     if (raw.is_meta || raw.isMeta) continue;
     if (m.type === "assistant" && Array.isArray(content)) {
       for (const block of content) {
         if (block.type === "text" && block.text) {
-          out.push({ type: "text_start" }, { type: "text_delta", text: block.text }, { type: "text_stop" });
+          out.push(at({ type: "text_start" }), { type: "text_delta", text: block.text }, { type: "text_stop" });
         } else if (block.type === "tool_use") {
           names.set(block.id, block.name);
-          out.push({ type: "tool_use", id: block.id, name: block.name, input: block.input ?? {}, parent_id: null });
+          out.push(at({ type: "tool_use", id: block.id, name: block.name, input: block.input ?? {}, parent_id: null }));
         }
       }
     } else if (m.type === "user") {
       if (typeof content === "string") {
         const ev = prompt(content);
-        if (ev) out.push(ev);
+        if (ev) out.push(at(ev));
       } else if (Array.isArray(content)) {
         const texts: string[] = [];
         for (const block of content) {
@@ -143,7 +156,7 @@ export function historyEvents(messages: SessionMessage[]): HistoryEvent[] {
           }
         }
         const ev = texts.length ? prompt(texts.join("\n")) : undefined;
-        if (ev) out.push(ev);
+        if (ev) out.push(at(ev));
       }
     }
   }

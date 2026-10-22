@@ -128,12 +128,14 @@ function M.history(ev)
     for _, e in ipairs(ev.events or {}) do
       local fn = draw[e.type]
       if fn then
+        transcript.batch_time(e.time)
         local ok, err = pcall(fn, e)
         if not ok then
           sidecar.log(("history %s failed: %s"):format(e.type, err))
         end
       end
     end
+    transcript.batch_time(nil)
     transcript.turn_end()
     transcript.settle_past()
   end)

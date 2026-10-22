@@ -347,6 +347,137 @@ describe("transcript polish", function()
   end)
 end)
 
+describe("item times", function()
+  local start = os.time({ year = 2026, month = 10, day = 22, hour = 9, min = 5, sec = 7 })
+  local now = start
+
+  before_each(function()
+    helpers.start()
+    transcript.clear()
+    now = start
+    transcript.clock = function()
+      return now
+    end
+  end)
+
+  after_each(function()
+    transcript.clock = os.time
+    transcript.turn_end()
+    transcript.clear()
+  end)
+
+  -- Each time in the transcript as { row, text }.
+  local function times()
+    local buf, out = transcript.buf(), {}
+    for row = 0, api.nvim_buf_line_count(buf) - 1 do
+      local time = transcript.time_of(buf, row)
+      if time then
+        out[#out + 1] = { row, time }
+      end
+    end
+    return out
+  end
+
+  it("gives a prompt, a text block, a notice and an agent's end the time they came, as virtual text only", function()
+    transcript.user("Fix the bug")
+    now = start + 1
+    transcript.text_delta("I will look.")
+    -- Text that streams into the first line later keeps the block's time.
+    now = start + 5
+    transcript.text_delta(" Then fix it.\nDone.")
+    transcript.text_stop()
+    now = start + 62
+    transcript.notice("info", "Conversation compacted")
+    now = start + 3600
+    transcript.agent_end({ status = "completed", description = "Find x", summary = "Found it." })
+    assert.are.same({
+      "❯ Fix the bug",
+      "",
+      "⏺ I will look. Then fix it.",
+      "  Done.",
+      "",
+      "✻ Conversation compacted",
+      "",
+      '⏺ Agent "Find x" finished',
+      "  ⎿  Found it.",
+    }, buf_lines(transcript.buf()))
+    assert.are.same({ { 0, "09:05:07" }, { 2, "09:05:08" }, { 5, "09:06:09" }, { 7, "10:05:07" } }, times())
+    assert.are.same("I will look. Then fix it.\nDone.", transcript.last_reply())
+  end)
+
+  it("keeps a tool line's time from its start through its label, result, children and interrupt", function()
+    local read = id()
+    transcript.tool_start(read, "Read")
+    now = start + 3
+    local path = state.cwd .. "/a.lua"
+    transcript.tool_field({ id = read, key = "file_path", phase = "end", value = path })
+    transcript.tool_use({ id = read, name = "Read", input = { file_path = path } })
+    transcript.tool_result({ id = read, is_error = false, text = "x", result = { file = { numLines = 4 } } })
+    now = start + 10
+    local agent = id()
+    transcript.tool_start(agent, "Agent")
+    now = start + 11
+    transcript.tool_use({ id = agent, name = "Agent", input = { description = "Find x", subagent_type = "Explore" } })
+    for i = 1, 5 do
+      transcript.tool_use({ id = agent .. i, name = "Bash", input = { command = "ls " .. i }, parent_id = agent })
+    end
+    api.nvim_exec_autocmds("User", { pattern = "AnvimAgents" })
+    transcript.tool_result({ id = agent, is_error = false, text = "Found.", result = { totalToolUseCount = 5 } })
+    now = start + 20
+    local bash = id()
+    transcript.tool_start(bash, "Bash")
+    transcript.tool_use({ id = bash, name = "Bash", input = { command = "sleep 9" } })
+    now = start + 30
+    transcript.turn_end()
+    assert.are.same({
+      "⏺ Read(a.lua)",
+      "  ⎿  Read 4 lines",
+      "",
+      "⏺ Explore(Find x)",
+      "  ⎿  Done (5 tool uses)",
+      "",
+      "⏺ Bash(sleep 9)",
+      "  ⎿  Interrupted",
+    }, buf_lines(transcript.buf()))
+    assert.are.same({ { 0, "09:05:07" }, { 3, "09:05:17" }, { 6, "09:05:27" } }, times())
+  end)
+
+  it("shows the times that a resumed session saved, none where it saved none, and the clock's after it", function()
+    local saved = { state.session_id, state.turns }
+    local past = start - 86400
+    sessions.history({
+      session_id = "times",
+      events = {
+        { type = "user", text = "Old prompt", time = past },
+        { type = "text_start", time = past + 2 },
+        { type = "text_delta", text = "Old reply." },
+        { type = "text_stop" },
+        { type = "tool_use", id = "old1", name = "Bash", input = { command = "ls" }, time = past + 4 },
+        { type = "tool_result", id = "old1", is_error = false, text = "a.lua" },
+        { type = "notice", level = "info", text = "Old notice" },
+        { type = "tool_use", id = "old2", name = "Bash", input = { command = "sleep 9" }, time = past + 6 },
+      },
+    })
+    state.session_id, state.turns = saved[1], saved[2]
+    assert.are.same({
+      "❯ Old prompt",
+      "",
+      "⏺ Old reply.",
+      "",
+      "⏺ Bash(ls)",
+      "  ⎿  a.lua",
+      "",
+      "✻ Old notice",
+      "",
+      "⏺ Bash(sleep 9)",
+      "  ⎿  Interrupted",
+    }, buf_lines(transcript.buf()))
+    assert.are.same({ { 0, "09:05:07" }, { 2, "09:05:09" }, { 4, "09:05:11" }, { 9, "09:05:13" } }, times())
+    transcript.user("New prompt")
+    assert.are.same({ row_of("❯ New prompt"), "09:05:07" }, times()[5])
+  end)
+end)
+
 describe("durations", function()
   it("write seconds under a minute, then minutes and seconds, then hours, as Claude Code does", function()
     local cases = {
