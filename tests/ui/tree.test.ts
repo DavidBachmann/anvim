@@ -24,7 +24,7 @@ test("the tree is narrow without focus, and with focus its list widens over the 
   await ui.waitFor("local api = vim.api");
   const tree = await anvim.box("tree");
   const code = await anvim.box("code");
-  expect(tree.width).toBe(24);
+  expect(tree.width).toBe(30);
   await ui.waitFor(() => shows(ui.lines(), tree, "a_file_with_a_rath", tree.width));
   expect(shows(ui.lines(), tree, LONG)).toBe(false);
   expect(wall(ui.lines(), code, tree.width)).toBe(true);
@@ -66,10 +66,106 @@ test("the focused tree widens again when a folder opens", async () => {
       end
     end
   `);
+  const mark = ui.mark();
   await ui.input("<CR>");
   // At once, and not at some later window event.
   await ui.waitFor(() => shows(ui.lines(), tree, deep), 300);
   expect(await anvim.where()).toEqual({ win: "snacks_picker_list", mode: "n" });
+  // No frame shows the new rows at the old width.
+  const cut = ui.frames(mark).filter((f) => shows(f.lines, tree, "the_deepest") && !shows(f.lines, tree, deep));
+  expect(cut.length).toBe(0);
+});
+
+// The choice in the prefs file, which the next start reads.
+const minimizes = () =>
+  anvim!.ui.exec_lua<boolean>(`
+    local f = assert(io.open(require("anvim.prefs").path))
+    local on = vim.json.decode(f:read("*a")).explorer_minimize
+    f:close()
+    return on
+  `);
+
+// The code window's left separator, below the notification that a toggle
+// shows at the top right, and whether the tree shows the name in full.
+const state = (lines: string[], code: Box) => ({
+  wall: lines.slice(code.row + 4, code.row + code.height).every((line) => [...line][code.col - 1] === "│"),
+  long: lines.some((line) => cells(line, 0, code.col).includes(LONG)),
+});
+
+// The separators on both sides of the code window, below the notification.
+const walls = (lines: string[], code: Box) =>
+  lines
+    .slice(code.row + 4, code.row + code.height)
+    .every((line) => [...line][code.col - 1] === "│" && [...line][code.col + code.width] === "│");
+
+test("<leader>ue keeps the tree at the width of its names, beside the code window, with no frame in between, and remembers it", async () => {
+  anvim = await start({ files: { [LONG]: "return {}\n" } });
+  const { ui } = anvim;
+  await anvim.toCode();
+  await ui.waitFor("local api = vim.api");
+  const narrow = await anvim.box("tree");
+  const code = await anvim.box("code");
+  await ui.waitFor(() => shows(ui.lines(), narrow, "a_file_with_a_rath", narrow.width));
+
+  let mark = ui.mark();
+  await ui.input("<Space>ue");
+  await ui.waitFor(async () => (await anvim!.box("tree")).width > narrow.width);
+  const tree = await anvim.box("tree");
+  const beside = { ...code, col: tree.width + 1, width: code.width - tree.width + narrow.width };
+  expect(await anvim.box("code")).toEqual(beside);
+  expect(await minimizes()).toBe(false);
+  await ui.waitFor(() => state(ui.lines(), beside).wall && state(ui.lines(), beside).long);
+  const torn = (lines: string[]) => {
+    const before = state(lines, code);
+    const after = state(lines, beside);
+    return !(before.wall && !before.long) && !(after.wall && after.long);
+  };
+  expect(ui.frames(mark).filter((f) => torn(f.lines)).length).toBe(0);
+
+  // Focus changes no width.
+  await ui.input("<C-w>h");
+  await anvim.waitWhere("snacks_picker_list", "n");
+  expect(await anvim.box("tree")).toEqual(tree);
+  expect(await anvim.box("code")).toEqual(beside);
+  await ui.input("<C-w>l");
+  await anvim.waitWhere("code", "n");
+  expect(await anvim.box("tree")).toEqual(tree);
+  expect(state(ui.lines(), beside)).toEqual({ wall: true, long: true });
+
+  mark = ui.mark();
+  await ui.input("<Space>ue");
+  await ui.waitFor(async () => (await anvim!.box("tree")).width === narrow.width);
+  expect(await anvim.box("code")).toEqual(code);
+  expect(await minimizes()).toBe(true);
+  await ui.waitFor(() => state(ui.lines(), code).wall && !state(ui.lines(), code).long);
+  expect(ui.frames(mark).filter((f) => torn(f.lines)).length).toBe(0);
+});
+
+test("a start with auto-minimize off opens the tree at the width of its names, and a side swap keeps it", async () => {
+  anvim = await start({ files: { [LONG]: "return {}\n" }, prefs: { explorer_minimize: false } });
+  const { ui } = anvim;
+  await anvim.toCode();
+  await ui.waitFor("local api = vim.api");
+  await ui.waitFor(async () => (await anvim!.box("tree")).width > 30);
+  const tree = await anvim.box("tree");
+  const code = await anvim.box("code");
+  expect(code.col).toBe(tree.width + 1);
+  await ui.waitFor(() => state(ui.lines(), code).long);
+  // From the first frame with rows, the tree has the width of its names.
+  const rows = ui.frames(0).filter((f) => shows(f.lines, tree, "matchparen", tree.width));
+  expect(rows.length).toBeGreaterThan(0);
+  expect(rows.filter((f) => !state(f.lines, code).wall).length).toBe(0);
+
+  const columns = await ui.exec_lua<number>("return vim.o.columns");
+  const mark = ui.mark();
+  await ui.input("<Space>uH");
+  await ui.waitFor(async () => (await anvim!.box("tree")).col > 0);
+  expect(await anvim.box("tree")).toEqual({ ...tree, col: columns - tree.width });
+  const mirrored = await anvim.box("code");
+  expect(mirrored.col + mirrored.width + 1).toBe(columns - tree.width);
+  await ui.waitFor(() => ui.lines().some((line) => cells(line, columns - tree.width, tree.width).includes(LONG)));
+  await ui.waitFor(() => walls(ui.lines(), mirrored));
+  expect(ui.frames(mark).filter((f) => !walls(f.lines, code) && !walls(f.lines, mirrored)).length).toBe(0);
 });
 
 // Sends events to the plugin as the sidecar would.

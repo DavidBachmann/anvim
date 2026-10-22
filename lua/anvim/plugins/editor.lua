@@ -25,8 +25,8 @@ return {
             -- preset into it. So this one has the list only, without the input
             -- window of the sidebar preset. Narrow, to leave the columns to the
             -- code. With focus, the tree widens over the code window to fit
-            -- its rows. A function, so that the side is the current one
-            -- each time snacks lays the explorer out.
+            -- its rows. A function, so that the side and the width are the
+            -- current ones each time snacks lays the explorer out.
             layout = function()
               return {
                 preset = "sidebar",
@@ -34,7 +34,7 @@ return {
                 cycle = true,
                 layout = {
                   backdrop = false,
-                  width = require("anvim.config").options.layout.tree.width,
+                  width = require("anvim.tree").split_width(),
                   min_width = require("anvim.config").options.layout.tree.width,
                   height = 0,
                   position = require("anvim.layout").tree_side(),

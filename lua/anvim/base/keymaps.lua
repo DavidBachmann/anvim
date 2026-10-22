@@ -130,3 +130,12 @@ Snacks.toggle({
     require("anvim.layout").set_claude_side(state and "left" or "right")
   end,
 }):map("<leader>uH", { desc = keys.desc("global", "n", "<leader>uH") })
+Snacks.toggle({
+  name = "Explorer auto-minimize",
+  get = function()
+    return require("anvim.tree").minimizes()
+  end,
+  set = function(state)
+    require("anvim.tree").set_minimize(state)
+  end,
+}):map("<leader>ue", { desc = keys.desc("global", "n", "<leader>ue") })

@@ -89,6 +89,7 @@ M.places = {
       { "<leader>uw", "Toggle wrap" },
       { "<leader>ud", "Toggle diagnostics" },
       { "<leader>uH", "Toggle Claude on the left" },
+      { "<leader>ue", "Toggle explorer auto-minimize" },
       { "q", "Close a help, quickfix or info window", ctx = "other" },
     },
   },

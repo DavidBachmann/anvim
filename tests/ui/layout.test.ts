@@ -94,7 +94,7 @@ test("a start after a choice of the left side is mirrored, and closed windows an
   await anvim.toCode();
   await ui.waitFor("local api = vim.api");
   const columns = await ui.exec_lua<number>("return vim.o.columns");
-  await ui.waitFor(async () => (await anvim!.box("tree")).col + 24 === columns);
+  await ui.waitFor(async () => (await anvim!.box("tree")).col + 30 === columns);
   const left = await boxes();
   expect(left.transcript.col).toBe(0);
   expect(left.input.col).toBe(0);
@@ -118,7 +118,7 @@ test("a start after a choice of the left side is mirrored, and closed windows an
 
   // snacks lays the explorer out again after a resize.
   await ui.resize(160, 40);
-  await ui.waitFor(async () => (await anvim!.box("tree")).col === 160 - 24);
+  await ui.waitFor(async () => (await anvim!.box("tree")).col === 160 - 30);
   const small = await boxes();
   expect(small.transcript).toMatchObject({ col: 0, width: Math.floor(160 * 0.36) });
   expect(small.code.col + small.code.width + 1).toBe(small.tree.col);

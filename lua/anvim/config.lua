@@ -25,8 +25,9 @@ M.defaults = {
     input_height = { min = 2, max = 12 },
     -- The explorer's columns. With focus, its list widens over the code
     -- window to fit its rows, up to max_width (columns, or a fraction of the
-    -- screen width).
-    tree = { width = 24, max_width = 0.4 },
+    -- screen width). With auto-minimize off (<leader>ue), the split itself
+    -- fits the rows.
+    tree = { width = 30, max_width = 0.4 },
   },
   input = {
     -- Start insert mode whenever the cursor enters the prompt, except at

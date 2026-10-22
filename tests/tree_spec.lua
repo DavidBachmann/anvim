@@ -79,7 +79,7 @@ end
 
 -- The dots that the explorer's format adds to a row, with their groups.
 local function dots(path, dir)
-  local picker = { opts = Snacks.picker.config.get({ source = "explorer" }) }
+  local picker = { opts = Snacks.picker.config.get({ source = "explorer" }), list = { win = {} } }
   for _, chunk in ipairs(tree.format({ file = path, dir = dir ~= nil, open = dir == "open" }, picker)) do
     if chunk.virt_text_pos == "right_align" and chunk.virt_text[1][1] ~= " " then
       return chunk.virt_text

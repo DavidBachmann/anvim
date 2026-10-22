@@ -1,12 +1,14 @@
 -- The explorer's width. Without focus, it keeps the narrow width of its split.
 -- With focus, its list widens over the code window to fit its rows, like a
--- drawer, and the code window keeps its place.
+-- drawer, and the code window keeps its place. With auto-minimize off, the
+-- split itself fits the rows, and the code window gives it the columns.
 -- Each agent also marks its place and the files it writes to in its color,
 -- and the closed folders above them, at the right edge as snacks shows git status.
 local agents = require("anvim.agents")
 local config = require("anvim.config")
 local follow = require("anvim.follow")
 local layout = require("anvim.layout")
+local prefs = require("anvim.prefs")
 local state = require("anvim.state")
 
 local M = {}
@@ -158,8 +160,26 @@ function M.marks(item)
   return all.files[item.file]
 end
 
+-- snacks flushes a frame when the list's rows change, before TextChanged.
+-- Fit the width first, so that no frame shows new rows at the old width.
+---@type table<snacks.win, true>
+local attached = setmetatable({}, { __mode = "k" })
+local function attach(win)
+  if attached[win] then
+    return
+  end
+  attached[win] = true
+  local redraw = win.redraw
+  win.redraw = function(...)
+    M.update()
+    return redraw(...)
+  end
+end
+
 ---@type snacks.picker.format
 function M.format(item, picker)
+  -- The list formats its first rows before it draws them.
+  attach(picker.list.win)
   local ret = Snacks.picker.format.file(item, picker)
   local list = M.marks(item)
   if list then
@@ -255,15 +275,38 @@ local function max_width(narrow)
   return max
 end
 
+-- Whether the explorer narrows when it loses focus, as the user last chose.
+function M.minimizes()
+  return prefs.get("explorer_minimize") ~= false
+end
+
+---@type integer? The split's width that fits the rows, with auto-minimize off.
+local wide
+
+-- The split's width when snacks lays the explorer out.
+function M.split_width()
+  local narrow = config.options.layout.tree.width
+  return not M.minimizes() and wide or narrow
+end
+
 function M.update()
   local picker = M.explorer()
   if not picker then
     return
   end
   local list = picker.list.win
-  local narrow = api.nvim_win_get_width(picker.layout.root.win)
+  local split = picker.layout.root.win
+  local narrow = api.nvim_win_get_width(split)
   local width = narrow
-  if picker:is_focused() then
+  if not M.minimizes() then
+    width = math.max(config.options.layout.tree.width, math.min(M.fit(picker), max_width(narrow)))
+    if width ~= narrow then
+      api.nvim_win_set_width(split, width)
+      -- Neovim keeps the code window at 'winminwidth'.
+      width = api.nvim_win_get_width(split)
+    end
+    narrow, wide = width, width
+  elseif picker:is_focused() then
     width = math.max(narrow, math.min(M.fit(picker), max_width(narrow)))
   end
   -- A tree on the right widens to the left.
@@ -278,6 +321,16 @@ function M.update()
       { relative = cfg.relative, win = cfg.win, row = cfg.row, col = col, width = width }
     )
   end
+end
+
+---@param on boolean
+function M.set_minimize(on)
+  prefs.set("explorer_minimize", on)
+  local picker = M.explorer()
+  if picker and on then
+    api.nvim_win_set_width(picker.layout.root.win, config.options.layout.tree.width)
+  end
+  M.update()
 end
 
 -- At SafeState, which comes before the redraw, so no frame shows the old
