@@ -148,4 +148,24 @@ describe("lsp tools", function()
       lines(helpers.ask("diagnostics", { path = "lsp/fresh.lua" }))
     )
   end)
+
+  it("start an enabled server for a workspace search before any file of its language opens", function()
+    setup()
+    local anvim_state = require("anvim.state")
+    local cold = helpers.tmp .. "/cold"
+    vim.fn.mkdir(cold, "p")
+    vim.fn.writefile({ "local function chill() end", "return chill" }, cold .. "/chill.lua")
+    vim.lsp.config("anvim_cold", { cmd = cmd, filetypes = { "lua" }, root_dir = cold, settings = settings })
+    vim.lsp.enable("anvim_cold")
+    local cwd = anvim_state.cwd
+    anvim_state.cwd = cold
+    local ok, reply = pcall(function()
+      assert.are.same({}, vim.lsp.get_clients({ name = "anvim_cold" }), "anvim_cold starts cold")
+      return helpers.ask("lsp_workspace_symbols", { query = "chill" })
+    end)
+    anvim_state.cwd = cwd
+    vim.lsp.enable("anvim_cold", false)
+    assert(ok, reply)
+    helpers.contains(lines(reply), "chill  chill%.lua:1$")
+  end)
 end)

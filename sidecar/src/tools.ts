@@ -111,7 +111,7 @@ export function editorTools(bridge: EditorBridge) {
     ),
     tool(
       "lsp_workspace_symbols",
-      `Find symbols by name across the workspace. It gives the path and line that the other lsp_ tools need. ${lsp} A server starts when a file of its language opens, so if this finds no server, call another LSP tool on such a file first.`,
+      `Find symbols by name across the workspace. It gives the path and line that the other lsp_ tools need. ${lsp} It starts the servers for the working directory's languages when none runs yet.`,
       { query: z.string().describe("Part of a symbol name") },
       call("lsp_workspace_symbols"),
       readOnly,

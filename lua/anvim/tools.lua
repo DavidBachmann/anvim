@@ -20,6 +20,10 @@ M.budget_ms = 9000
 -- servers a moment after.
 local START_MS = 1000
 local MAX_ITEMS = 50
+-- An outline line is short, and a cut outline hides the end of the file.
+local MAX_OUTLINE = 200
+-- The line numbers that a grouped diagnostic lists.
+local MAX_REPEATS = 20
 local MAX_HOVER_LINES = 40
 local MAX_TEXT = 120
 
@@ -40,13 +44,14 @@ local function clip(s, n)
   return s
 end
 
-local function capped(header, lines)
+local function capped(header, lines, max)
+  max = max or MAX_ITEMS
   local out = { header }
-  for i = 1, math.min(#lines, MAX_ITEMS) do
+  for i = 1, math.min(#lines, max) do
     out[#out + 1] = lines[i]
   end
-  if #lines > MAX_ITEMS then
-    out[#out + 1] = ("... %d more"):format(#lines - MAX_ITEMS)
+  if #lines > max then
+    out[#out + 1] = ("... %d more"):format(#lines - max)
   end
   return table.concat(out, "\n")
 end
@@ -471,7 +476,7 @@ local function lsp_document_symbols(params, done)
     if #lines == 0 then
       return nothing(("No symbols found in %s."):format(relpath(path)), errors)
     end
-    return capped(plural(#lines, "symbol"), lines)
+    return capped(plural(#lines, "symbol"), lines, MAX_OUTLINE)
   end)
 end
 
@@ -486,21 +491,84 @@ local function match_rank(name, query)
   return name:find(query, 1, true) and 1 or 2
 end
 
-local function lsp_workspace_symbols(params, done)
+-- One file in the cwd for each enabled server that runs nowhere yet. Servers
+-- start on FileType, so before the first open file nothing could answer a
+-- workspace search. The walk skips hidden dirs and node_modules, and stops
+-- after MAX_WALK entries, so it stays short in a large repo.
+local MAX_WALK = 5000
+
+local function cold_files()
+  local running = {}
+  for _, client in ipairs(vim.lsp.get_clients()) do
+    running[client.name] = true
+  end
+  local wanted = vim.tbl_filter(function(config)
+    return not running[config.name] and config.filetypes ~= nil
+  end, vim.lsp.get_configs({ enabled = true }))
+  local files, seen = {}, 0
+  if #wanted == 0 then
+    return files
+  end
+  local skip = function(dir)
+    return not vim.startswith(vim.fs.basename(dir), ".") and vim.fs.basename(dir) ~= "node_modules"
+  end
+  for name, kind in vim.fs.dir(state.cwd, { depth = 6, skip = skip }) do
+    seen = seen + 1
+    if #wanted == 0 or seen > MAX_WALK then
+      break
+    end
+    -- A loaded buffer gets no new FileType, so it would start nothing.
+    local path = vim.fs.joinpath(state.cwd, name)
+    local ft = kind == "file" and vim.fn.bufloaded(path) == 0 and vim.filetype.match({ filename = name })
+    if ft then
+      local before = #wanted
+      wanted = vim.tbl_filter(function(config)
+        return not vim.list_contains(config.filetypes, ft)
+      end, wanted)
+      if #wanted < before then
+        files[#files + 1] = path
+      end
+    end
+  end
+  return files
+end
+
+-- Loads the cold files, and calls cb once their servers have initialized, or
+-- when none starts.
+local function warm_up(done, cb)
+  local bufs = vim.tbl_map(follow.load, cold_files())
+  local start = vim.uv.now()
+  local function check()
+    local waited = vim.uv.now() - start
+    local busy = waited < M.attach_ms
+      and vim.iter(bufs):any(function(buf)
+        local all = api.nvim_buf_is_loaded(buf) and attached(buf) or {}
+        return (#all == 0 and waited < START_MS)
+          or vim.iter(all):any(function(c)
+            return not c.initialized
+          end)
+      end)
+    if busy then
+      return vim.defer_fn(guard(done, check), 50)
+    end
+    cb()
+  end
+  check()
+end
+
+local function search_workspace(params, done, deadline)
   local query = type(params.query) == "string" and params.query or ""
   local method = "workspace/symbol"
   local clients = vim.lsp.get_clients({ method = method })
   if #clients == 0 then
-    return done(
-      "No running language server supports workspace symbols. Servers start when a file of their language opens."
-    )
+    return done("No language server supports workspace symbols, and no file in the working directory starts one.")
   end
   request(
     clients,
     nil,
     method,
     { query = query },
-    vim.uv.now() + M.budget_ms,
+    deadline,
     guard(done, function(answers, errors)
       local found, seen = {}, {}
       for _, answer in ipairs(answers) do
@@ -535,6 +603,13 @@ local function lsp_workspace_symbols(params, done)
   )
 end
 
+local function lsp_workspace_symbols(params, done)
+  local deadline = vim.uv.now() + M.budget_ms
+  warm_up(done, function()
+    search_workspace(params, done, deadline)
+  end)
+end
+
 local severities = { "error", "warning", "info", "hint" }
 
 local function diagnostics_text(diags, path)
@@ -558,20 +633,36 @@ local function diagnostics_text(diags, path)
     return path and ("No diagnostics in %s."):format(relpath(path))
       or "No diagnostics in the open files of the working directory."
   end
-  local lines, counts = {}, {}
+  -- One line for each message in a file. Its repeats only add their lines.
+  local counts, groups, order = {}, {}, {}
   for _, item in ipairs(items) do
     local d = item.d
     local severity = severities[d.severity] or "info"
     counts[d.severity] = (counts[d.severity] or 0) + 1
     local source = d.source and (" [%s]"):format((d.source:gsub("%.$", ""))) or ""
-    lines[#lines + 1] = ("%s:%d:%d %s: %s%s"):format(
-      item.path,
-      d.lnum + 1,
-      d.col + 1,
-      severity,
-      clip(d.message, 300),
-      source
-    )
+    local text = ("%s: %s%s"):format(severity, clip(d.message, 300), source)
+    local key = item.path .. "\0" .. text
+    if groups[key] then
+      table.insert(groups[key].more, d.lnum + 1)
+    else
+      groups[key] = { first = ("%s:%d:%d %s"):format(item.path, d.lnum + 1, d.col + 1, text), more = {} }
+      order[#order + 1] = groups[key]
+    end
+  end
+  local lines = {}
+  for _, group in ipairs(order) do
+    local line, more = group.first, group.more
+    if #more > 0 then
+      local listed = table.concat(vim.list_slice(more, 1, MAX_REPEATS), ", ")
+      line = ("%s (and %d more, at %s %s%s)"):format(
+        line,
+        #more,
+        #more == 1 and "line" or "lines",
+        listed,
+        #more > MAX_REPEATS and ", ..." or ""
+      )
+    end
+    lines[#lines + 1] = line
   end
   local parts = {}
   for severity, word in ipairs(severities) do
