@@ -68,6 +68,20 @@ return {
     },
   },
 
+  -- Tells lua_ls about Neovim's runtime and the plugins that a file requires,
+  -- so that `vim` is no undefined global.
+  {
+    "folke/lazydev.nvim",
+    ft = "lua",
+    cmd = "LazyDev",
+    opts = {
+      library = {
+        { path = "${3rd}/luv/library", words = { "vim%.uv" } },
+        { path = "snacks.nvim", words = { "Snacks" } },
+      },
+    },
+  },
+
   -- Installs the servers and enables every server that mason installed.
   {
     "mason-org/mason-lspconfig.nvim",
