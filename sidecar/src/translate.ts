@@ -3,9 +3,8 @@ import { FieldStream } from "./fieldstream";
 import type { Event } from "./protocol";
 
 const MAX_TEXT = 2000;
-// A subagent's reply can be long. Its thinking only needs the gist.
+// A subagent's reply can be long.
 const MAX_AGENT_TEXT = 8000;
-const MAX_THINKING = 2000;
 // A local command such as /context prints about 10k characters of tables.
 const MAX_OUTPUT = 20000;
 // Claude Code's model name on the messages that it writes itself, such as a
@@ -239,14 +238,6 @@ export class Translator {
       // The main agent's text streamed already. A subagent's comes whole.
       if (agent && block.type === "text" && block.text?.trim()) {
         out.push({ type: "agent_text", agent_id: agent, parent_id: parent, text: truncate(block.text, MAX_AGENT_TEXT) });
-      } else if (agent && block.type === "thinking" && block.thinking?.trim()) {
-        out.push({
-          type: "agent_text",
-          agent_id: agent,
-          parent_id: parent,
-          text: truncate(block.thinking, MAX_THINKING),
-          thinking: true,
-        });
       } else if (block.type === "tool_use") {
         if (agent) this.agentTools.set(block.id, block.name);
         out.push({

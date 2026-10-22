@@ -23,7 +23,6 @@ local highlights = {
   AnvimToolOk = { link = "DiagnosticOk" },
   AnvimToolError = { link = "DiagnosticError" },
   AnvimResult = { link = "Comment" },
-  AnvimThinking = { link = "Comment" },
   AnvimModeManual = { link = "DiagnosticOk" },
   AnvimModeEdits = { link = "DiagnosticHint" },
   AnvimModePlan = { link = "DiagnosticInfo" },

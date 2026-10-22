@@ -279,20 +279,15 @@ describe("Translator", () => {
     ]);
   });
 
-  test("a subagent's text and thinking come as whole blocks, with caps", () => {
+  test("a subagent's text comes as whole blocks, with a cap", () => {
     const agent = { parent_tool_use_id: "toolu_A", agent_id: "a1" };
     const said = (content: object[]) => msg({ type: "assistant", ...agent, message: { content } });
     const long = "x".repeat(7999) + "😀" + "y";
     const events = run([
-      said([{ type: "thinking", thinking: "Read the file first." }]),
-      said([{ type: "thinking", thinking: "" }]),
-      said([{ type: "thinking", thinking: "t".repeat(2500) }]),
       said([{ type: "text", text: "It has 3 lines." }]),
       said([{ type: "text", text: long }]),
     ]);
     expect(events).toEqual([
-      { type: "agent_text", agent_id: "a1", parent_id: "toolu_A", text: "Read the file first.", thinking: true },
-      { type: "agent_text", agent_id: "a1", parent_id: "toolu_A", text: "t".repeat(2000) + "...", thinking: true },
       { type: "agent_text", agent_id: "a1", parent_id: "toolu_A", text: "It has 3 lines." },
       // The cut falls inside the emoji's surrogate pair, so the emoji goes whole.
       { type: "agent_text", agent_id: "a1", parent_id: "toolu_A", text: "x".repeat(7999) + "..." },
@@ -421,7 +416,6 @@ describe("Translator", () => {
     ];
     expect(between.flatMap((m) => t.translate(m))).toEqual([
       { type: "agent_progress", agent_id: "f1", description: "Editing alpha.js", tool_uses: 2, tokens: 900, last_tool: undefined },
-      { type: "agent_text", agent_id: "f1", parent_id: "toolu_F", text: "Now the edit.", thinking: true },
       { type: "tool_use", id: "e1", name: "Edit", input: { file_path: "/alpha.js" }, parent_id: "toolu_F", agent_id: "f1" },
       { type: "tool_result", id: "e1", is_error: false, text: "updated", result: undefined, parent_id: "toolu_F", agent_id: "f1" },
       { type: "agent_text", agent_id: "f1", parent_id: "toolu_F", text: "Done: alpha.js starts with // FAST." },

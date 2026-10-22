@@ -1,5 +1,5 @@
 -- One log buffer per subagent, keyed by its agent_id: its prompt, tool calls
--- with their results, text and thinking, drawn like the transcript.
+-- with their results, and text, drawn like the transcript.
 local agents = require("anvim.agents")
 local keys = require("anvim.keys")
 local transcript = require("anvim.transcript")
@@ -205,7 +205,7 @@ local function new_log(id)
   vim.bo[buf].bufhidden = "hide"
   vim.bo[buf].modifiable = false
   -- With breakindentopt=list:-1, wrapped lines align after the bullet.
-  vim.bo[buf].formatlistpat = [[^\s*\%(⏺\|❯\|⎿\|⚠\|∴\)\?\s*]]
+  vim.bo[buf].formatlistpat = [[^\s*\%(⏺\|❯\|⎿\|⚠\)\?\s*]]
   -- The Agent Overview shows the log, and <a-w> goes into it.
   for _, key in ipairs({ "q", "<Esc>" }) do
     keys.set("overview", "n", key, function()
@@ -427,18 +427,11 @@ function M.text(ev)
     return
   end
   local lines = vim.split(text, "\n", { plain = true })
-  local marks = {}
   for i, line in ipairs(lines) do
-    lines[i] = (i == 1 and (ev.thinking and "∴ " or "⏺ ") or "  ") .. line
-    if ev.thinking then
-      marks[#marks + 1] = { i - 1, 0, #lines[i], "AnvimThinking" }
-    end
+    lines[i] = (i == 1 and "⏺ " or "  ") .. line
   end
-  if not ev.thinking then
-    marks[1] = { 0, 0, #"⏺", "AnvimBullet" }
-    log.text = true
-  end
-  put(log, lines, marks)
+  log.text = true
+  put(log, lines, { { 0, 0, #"⏺", "AnvimBullet" } })
 end
 
 local ended = { failed = "Failed", stopped = "Stopped" }

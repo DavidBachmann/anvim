@@ -88,8 +88,8 @@ local function result(id, tool_id, extra)
   }, extra or {}))
 end
 
-local function say(id, text, thinking)
-  sidecar.dispatch({ type = "agent_text", agent_id = id, parent_id = "tu_" .. id, text = text, thinking = thinking })
+local function say(id, text)
+  sidecar.dispatch({ type = "agent_text", agent_id = id, parent_id = "tu_" .. id, text = text })
 end
 
 local function finish(id, extra)
@@ -235,15 +235,14 @@ describe("agent logs", function()
     assert.are.same({ "⏺ Read(a.lua)", "  ⎿  Read 3 lines", "⏺ Read(b.lua)", "  ⎿  Read 2 lines" }, lines("w5"))
   end)
 
-  it("draws thinking as a dim block", function()
+  it("draws text under a bullet with its next lines indented, and skips blank text", function()
     fresh()
     start("t")
-    say("t", "First I look.\nThen I read.", true)
-    say("t", "   ", true)
+    say("t", "   ")
     say("t", "Found it.\n\nIn a.lua.")
-    assert.are.same({ "∴ First I look.", "  Then I read.", "⏺ Found it.", "  ", "  In a.lua." }, lines("t"))
-    assert.are.same({ "0:AnvimThinking" }, groups("t", "∴ First I look."))
-    assert.are.same({ "0:AnvimThinking" }, groups("t", "  Then I read."))
+    assert.are.same({ "⏺ Found it.", "  ", "  In a.lua." }, lines("t"))
+    assert.are.same({ "0:AnvimBullet" }, groups("t", "⏺ Found it."))
+    assert.are.same({}, groups("t", "  In a.lua."))
   end)
 
   it("puts the prompt on top when the Agent call comes after agent_start, and names a nested agent's parent", function()
