@@ -32,6 +32,10 @@ local tools = {}
 -- starts, and the line lives on after the turn, until the agent ends.
 ---@type table<string, anvim.Tool>
 local held = {}
+-- The guard's reason of each main agent's call that anvim sent back. The
+-- event can come before the call's tool_start.
+---@type table<string, string>
+local sent_back = {}
 local text_open = false
 -- The blocks that other modules own, by the id of the extmark on their first
 -- line. The buffer tells a block from a mark of a rebuilt transcript.
@@ -420,9 +424,20 @@ end
 
 M.agent_done, M.tokens, M.duration = agent_done, tokens, duration
 
+-- Whether a failed call's text is a send-back's hint, as a resumed session
+-- keeps it. In bypass mode Claude Code puts the hook's words before it.
+local function held_back(ev)
+  local text = type(ev.text) == "string" and ev.text or ""
+  return text:find("^anvim held this ") ~= nil or text:find("^PreToolUse:%w+ hook error: anvim held this ") ~= nil
+end
+
+M.held_back = held_back
+
 local function summarize(tool, ev)
   if tool.outcome then
     return tool.outcome[1], tool.outcome[2]
+  elseif ev.is_error and held_back(ev) then
+    return "Sent back to Claude"
   elseif ev.is_error then
     return first_line(ev.text), "AnvimToolError"
   end
@@ -662,6 +677,11 @@ end
 
 function M.tool_result(ev)
   local tool = tools[ev.id]
+  local reason = sent_back[ev.id]
+  sent_back[ev.id] = nil
+  if tool and reason then
+    tool.outcome = { "Sent back to Claude: " .. reason }
+  end
   if tool and tool.todo then
     tool.done = true
     if not ev.is_error then
@@ -1065,6 +1085,7 @@ function M.clear()
     end
   end
   tools, held, todo, reply, reply_done, text_open, texts = {}, {}, nil, {}, true, false, {}
+  sent_back = {}
   tasks = { order = {}, by_id = {} }
   api.nvim_buf_clear_namespace(buf, ns, 0, -1)
   api.nvim_buf_clear_namespace(buf, ns_text, 0, -1)
@@ -1094,12 +1115,19 @@ function M.attach(sidecar)
     M.output(ev.text)
   end)
   sidecar.on("compact", M.compact)
+  -- A subagent's call has no line here. Its log shows the send-back.
+  sidecar.on("send_back", function(ev)
+    if not ev.agent_id and ev.tool_use_id then
+      sent_back[ev.tool_use_id] = ev.reason
+    end
+  end)
   api.nvim_create_autocmd("User", {
     group = api.nvim_create_augroup("anvim.transcript", {}),
     pattern = "AnvimAgents",
     callback = paint_agents,
   })
   sidecar.on("exit", function(ev)
+    sent_back = {}
     if not (bufnr and api.nvim_buf_is_loaded(bufnr)) then
       return
     end

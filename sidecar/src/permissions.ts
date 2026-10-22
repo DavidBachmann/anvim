@@ -7,14 +7,17 @@ import type {
   PermissionResult,
   PermissionUpdate,
   PermissionUpdateDestination,
+  SDKMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { homedir } from "node:os";
 import { isAbsolute, relative, sep } from "node:path";
 import type { Command, Event } from "./protocol";
+import { SendBack } from "./sendback";
 import { isEditorTool } from "./tools";
 
 type Response = Extract<Command, { type: "permission_response" }>;
 type Input = Record<string, unknown>;
+type Guard = { take(toolUseID: string): string | undefined };
 
 // Claude Code's own wording, so Claude reacts as it does in the terminal.
 const REJECTED =
@@ -40,19 +43,44 @@ export class PermissionBridge {
   // A session that started in bypass mode can switch back to it after a plan.
   bypass = false;
   // anvim's own asks (sandbox.ts), whose reason the request shows.
-  guard?: { take(toolUseID: string): string | undefined };
+  guard?: Guard;
+  // Sends the first guarded call of each agent back to Claude (sendback.ts).
+  sendBack?: SendBack;
 
   constructor(private emit: (ev: Event) => void) {}
+
+  // The sandbox's guards, or none while the sandbox is off. log takes the
+  // send-back's lines, which go to stderr by default.
+  useGuard(guard: (Guard & { tmpDir: string }) | undefined, log?: (line: string) => void): void {
+    this.guard = guard;
+    this.sendBack = guard ? new SendBack({ tmpDir: guard.tmpDir, log }) : undefined;
+  }
+
+  // Each SDK message of the session, for the send-back's reset.
+  message(msg: SDKMessage): void {
+    this.sendBack?.message(msg);
+  }
 
   canUseTool: CanUseTool = (tool, input, opts) => {
     // Read-only editor tools need no prompt (tools.ts).
     if (isEditorTool(opts.mcpServer)) return Promise.resolve({ behavior: "allow", updatedInput: input });
-    const req = this.next++;
     // Claude Code passes the hook's reason as decisionReason, but a user's own
     // hook can ask too, so the guard tells anvim's asks apart. A saved rule
     // would not stop anvim's hook from asking again, so its asks offer no
-    // "don't ask again".
+    // "don't ask again". In bypass mode the guard calls canUseTool itself, so
+    // both paths decide the send-back here, once per call.
     const reason = this.guard?.take(opts.toolUseID);
+    // A cancelled request does not use up the send-back.
+    const hint =
+      reason && !opts.signal.aborted
+        ? this.sendBack?.decide({ tool, input, reason, agentID: opts.agentID })
+        : undefined;
+    if (reason && hint) {
+      this.emit({ type: "send_back", tool_use_id: opts.toolUseID, agent_id: opts.agentID, reason });
+      // Without interrupt, so the turn goes on.
+      return Promise.resolve({ behavior: "deny", message: hint });
+    }
+    const req = this.next++;
     const remember =
       !reason && !opts.suppressAlwaysAllowRule && opts.suggestions?.length
         ? rememberLabel(opts.suggestions, this.cwd)

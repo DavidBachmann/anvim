@@ -138,6 +138,9 @@ export type Event =
     }
   // The request was aborted, for example by an interrupt. The plugin drops it.
   | { type: "permission_cancel"; req: number }
+  // anvim denied the first guarded call of an agent without asking, with a
+  // hint for Claude (sendback.ts). The call's tool_result comes after it.
+  | { type: "send_back"; tool_use_id: string; agent_id?: string; reason: string }
   // A subagent's tool calls have the id of the Agent tool call that started
   // it as parent_id, and the subagent's own id as agent_id.
   | {

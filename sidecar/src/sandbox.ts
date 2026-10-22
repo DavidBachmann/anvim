@@ -447,7 +447,7 @@ export class SandboxGuard {
   private asked = new Map<string, string>();
   private home: string;
   private configDir: string;
-  private tmpDir: string;
+  readonly tmpDir: string;
   private platform: NodeJS.Platform;
 
   constructor(private opts: GuardOptions) {
@@ -468,7 +468,8 @@ export class SandboxGuard {
   // In bypass mode, Claude Code drops a hook's ask where its own safety check
   // would ask, such as for .claude/settings.json or a .zshrc, and runs the
   // tool. So in bypass mode the guard asks the user itself, and answers with
-  // a deny or with nothing. In the other modes, Claude Code asks once.
+  // a deny or with nothing. In the other modes, Claude Code asks once. Both
+  // go through canUseTool, which can send the call back (sendback.ts).
   private async ask(input: HookInput, toolUseID: string | undefined, signal: AbortSignal, reason: string) {
     const id = toolUseID ?? (input as PreToolUseHookInput).tool_use_id;
     if (id) {

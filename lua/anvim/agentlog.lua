@@ -36,6 +36,10 @@ local messages = {}
 -- The agents that had a log, so a log that starts again knows it continues.
 ---@type table<string, true>
 local seen = {}
+-- The guard's reason of each call that anvim sent back to the agent. The
+-- event can come before the call's tool_use.
+---@type table<string, string>
+local sent_back = {}
 
 local function mark_row(buf, id)
   return id and api.nvim_buf_get_extmark_by_id(buf, ns, id, {})[1]
@@ -393,13 +397,26 @@ function M.tool_use(ev)
 end
 
 function M.tool_result(ev)
+  local reason = sent_back[ev.id]
+  sent_back[ev.id] = nil
   local agent = agents.of(ev)
   local log = agent and logs[agent.id]
   if not (log and log.tools[ev.id]) then
     return
   end
   local text, group = transcript.summary(log.tools[ev.id], ev)
+  if reason and agent then
+    text, group = ("Sent back to %s: %s"):format(agents.name(agent), reason), nil
+  elseif agent and ev.is_error and transcript.held_back(ev) then
+    text, group = "Sent back to " .. agents.name(agent), nil
+  end
   finish(log, ev.id, ev.is_error, text, group)
+end
+
+function M.send_back(ev)
+  if ev.agent_id and ev.tool_use_id then
+    sent_back[ev.tool_use_id] = ev.reason
+  end
 end
 
 function M.text(ev)
@@ -541,7 +558,7 @@ function M.clear()
   for id in pairs(logs) do
     drop(id)
   end
-  messages, seen = {}, {}
+  messages, seen, sent_back = {}, {}, {}
 end
 
 -- After agents.lua, whose handlers make and end the agents first.
@@ -551,6 +568,7 @@ function M.attach(sidecar)
   sidecar.on("agent_text", M.text)
   sidecar.on("tool_use", M.tool_use)
   sidecar.on("tool_result", M.tool_result)
+  sidecar.on("send_back", M.send_back)
   sidecar.on("reset", M.clear)
   sidecar.on("history", M.clear)
   sidecar.on("exit", M.clear)

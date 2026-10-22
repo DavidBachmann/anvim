@@ -207,7 +207,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
         prompt: (tool, input, opts) => permissions.canUseTool(tool, input, { ...opts, requestId: "anvim-guard" }),
       })
     : undefined;
-  permissions.guard = guard;
+  permissions.useGuard(guard);
   const notice = new SandboxNotice(
     (text) => emit({ type: "notice", level: "warn", text }),
     start,
@@ -253,6 +253,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
   const translator = new Translator();
   for await (const msg of session) {
     contexts.message(msg);
+    permissions.message(msg);
     for (const ev of translate(translator, msg)) emit(ev);
     if (msg.type === "result") {
       void reportContext();
