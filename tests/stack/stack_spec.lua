@@ -114,12 +114,11 @@ local function spawn(dir, personal, errors)
   env.ANVIM_REPLAY = helpers.recording
   env.ANVIM_REPLAY_SPEED = "50"
   env.ANVIM_MODEL = "haiku"
-  local addr = dir .. ".sock"
+  -- RPC over stdio, not a socket, which Claude's sandbox does not allow.
   local id = vim.fn.jobstart({
     vim.v.progpath,
     "--headless",
-    "--listen",
-    addr,
+    "--embed",
     "--cmd",
     "set columns=200 lines=48",
     "--cmd",
@@ -130,7 +129,7 @@ local function spawn(dir, personal, errors)
     cwd = helpers.tmp,
     env = env,
     clear_env = true,
-    stdin = "null",
+    rpc = true,
     on_stderr = function(_, data)
       for _, line in ipairs(data) do
         if line ~= "" then
@@ -139,14 +138,8 @@ local function spawn(dir, personal, errors)
       end
     end,
   })
-  assert(
-    vim.wait(5000, function()
-      local ok, ch = pcall(vim.fn.sockconnect, "pipe", addr, { rpc = true })
-      chan = ok and ch or nil
-      return ok
-    end, 20),
-    "child did not start"
-  )
+  assert(id > 0, "child did not start")
+  chan = id
   -- A headless Neovim has no UI, so lazy.nvim waits for UIEnter before VeryLazy.
   lua([[vim.api.nvim_exec_autocmds("UIEnter", {})]])
   wait(5000, "return vim.g.did_very_lazy == true", "VeryLazy did not run")
@@ -2753,6 +2746,8 @@ describe("stack", function()
           return vim.api.nvim_win_get_buf(p.preview.win.win) == require("anvim.agentlog").buf("quit_a1")]],
         "the preview showed no log"
       )
+      -- An embedded child prints no messages, so they go to a file.
+      lua("vim.o.verbosefile = ...", dir .. "/messages.log")
       -- Typed, because a :qa in an API call or a scheduled callback prints no
       -- errors from exit-time autocmds.
       keys(":qa<CR>")
@@ -2770,8 +2765,11 @@ describe("stack", function()
     for _, line in ipairs(log) do
       assert(not line:find("failed", 1, true), table.concat(log, "\n"))
     end
-    -- The typed command echoes on stderr, and its chunks can split a line.
-    assert.are.same(":qa", table.concat(errors))
+    local messages = vim.uv.fs_stat(dir .. "/messages.log") and vim.fn.readfile(dir .. "/messages.log") or {}
+    for _, line in ipairs(messages) do
+      assert(not line:find("^E%d+:") and not line:find("^Error"), table.concat(messages, "\n"))
+    end
+    assert.are.same({}, errors)
   end)
 
   it(":q in the prompt quits with two tabs, cleanly, and leaves the install dirs untouched", function()

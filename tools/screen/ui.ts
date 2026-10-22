@@ -449,6 +449,12 @@ function alive(procs: Map<number, string>): Map<number, string> {
   return now;
 }
 
+// Claude's sandbox does not let ps run. Then close() finds no children, and a
+// language server ends on its own once Neovim's pipe closes.
 function ps(args: string[]): string[] {
-  return Bun.spawnSync(["ps", "-ww", ...args]).stdout.toString().split("\n");
+  try {
+    return Bun.spawnSync(["ps", "-ww", ...args]).stdout.toString().split("\n");
+  } catch {
+    return [];
+  }
 }

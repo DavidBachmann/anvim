@@ -18,7 +18,16 @@ const named = (text: string) =>
     .split("\n")
     .flatMap((line) => (line.includes(text) ? [Number(line.trim().split(/\s+/)[0])] : []));
 
-test("close() stops the language server, and leaves other processes that name the XDG dir alone", async () => {
+// Claude's sandbox does not let ps run, and close() needs it to find the server.
+const psRuns = (() => {
+  try {
+    return Bun.spawnSync(["ps", "-o", "pid="]).success;
+  } catch {
+    return false;
+  }
+})();
+
+test.skipIf(!psRuns)("close() stops the language server, and leaves other processes that name the XDG dir alone", async () => {
   const anvim = await start();
   const { ui } = anvim;
   // Like a shell or an editor that has the log open. A shell that runs one
