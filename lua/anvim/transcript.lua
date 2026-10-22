@@ -402,9 +402,21 @@ local function tokens(n)
   return n < 1000 and tostring(n) or ("%.1fk"):format(n / 1000)
 end
 
-local function duration(ms)
+-- 2.8s, 1m 12s, 1h 5m 3s. A time that counts up each second, such as the
+-- spinner's, is `whole`: 12s.
+---@param whole boolean?
+local function duration(ms, whole)
   local s = ms / 1000
-  return s < 60 and ("%.1fs"):format(s) or ("%dm %ds"):format(math.floor(s / 60), math.floor(s % 60))
+  -- 59.96 s would round to "60.0s".
+  if s < (whole and 60 or 59.95) then
+    return whole and ("%ds"):format(math.floor(s)) or ("%.1fs"):format(s)
+  end
+  s = math.max(math.floor(s), 60)
+  local h, m = math.floor(s / 3600), math.floor(s % 3600 / 60)
+  if h > 0 then
+    return ("%dh %dm %ds"):format(h, m, s % 60)
+  end
+  return ("%dm %ds"):format(m, s % 60)
 end
 
 local function agent_done(tool, r)

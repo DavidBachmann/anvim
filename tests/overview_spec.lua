@@ -153,6 +153,8 @@ describe("the Agent Overview", function()
       duration_ms = 5600,
     })
     assert.are.same("Agent · Task a3 · stopped · 2 tool uses · 37.1k tokens · 5.6s", overview.title("a3"))
+    sidecar.dispatch({ type = "agent_end", agent_id = "a4", status = "completed", tool_uses = 1, duration_ms = 3723000 })
+    assert.are.same("Agent · Task a4 · done · 1 tool use · 1h 2m 3s", overview.title("a4"))
     assert.are.same("Claude · idle", overview.title(nil))
   end)
 

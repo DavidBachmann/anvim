@@ -346,3 +346,27 @@ describe("transcript polish", function()
     assert.are.same("It adds two numbers.\n\n```lua\nreturn a + b\n```", vim.fn.getreg("a"))
   end)
 end)
+
+describe("durations", function()
+  it("write seconds under a minute, then minutes and seconds, then hours, as Claude Code does", function()
+    local cases = {
+      { 12345, "12.3s", "12s" },
+      { 59900, "59.9s", "59s" },
+      -- Tenths that round to a minute.
+      { 59960, "1m 0s", "59s" },
+      { 60000, "1m 0s", "1m 0s" },
+      { 2400000, "40m 0s", "40m 0s" },
+      { 3599000, "59m 59s", "59m 59s" },
+      { 3600000, "1h 0m 0s", "1h 0m 0s" },
+      { 3723400, "1h 2m 3s", "1h 2m 3s" },
+      { 7200000, "2h 0m 0s", "2h 0m 0s" },
+    }
+    for _, c in ipairs(cases) do
+      assert.are.same({ c[2], c[3] }, { transcript.duration(c[1]), transcript.duration(c[1], true) }, c[1] .. " ms")
+    end
+    assert.are.same(
+      "Done (3 tool uses · 1.2k tokens · 1h 2m 3s)",
+      transcript.agent_done({}, { totalToolUseCount = 3, totalTokens = 1200, totalDurationMs = 3723000 })
+    )
+  end)
+end)

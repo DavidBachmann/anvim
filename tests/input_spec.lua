@@ -25,6 +25,18 @@ describe("input", function()
     assert(state.busy, "a turn without a prompt is busy too")
     input.set_busy(false)
   end)
+
+  it("writes a long turn's time with minutes and hours, while it runs and after it", function()
+    helpers.start()
+    local saved = { state.busy, state.turn_started, state.last_turn, state.cost_usd }
+    state.busy, state.turn_started = true, vim.uv.now() - 12300
+    assert(input.activity():find("(12s · esc twice to stop)", 1, true), input.activity())
+    state.turn_started = vim.uv.now() - 2400 * 1000
+    assert(input.activity():find("(40m 0s · esc twice to stop)", 1, true), input.activity())
+    state.busy, state.last_turn, state.cost_usd = false, { duration_ms = 3723400, cost_usd = 0.5 }, 0.5
+    assert(input.activity():find("1h 2m 3s · $0.50", 1, true), input.activity())
+    state.busy, state.turn_started, state.last_turn, state.cost_usd = unpack(saved, 1, 4)
+  end)
 end)
 
 describe("footer", function()

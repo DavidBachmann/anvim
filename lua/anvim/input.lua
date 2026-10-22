@@ -461,14 +461,14 @@ local function win_width(win)
 end
 
 -- As in Claude Code, the todo item in progress names what Claude does.
----@return string verb, integer secs
+---@return string verb, integer ms
 local function working()
   local active = transcript.todo_active()
   local verb = state.compacting and "Compacting..."
     or active and (active:gsub("%.+$", "") .. "...")
     or state.thinking and "Thinking..."
     or "Working..."
-  return verb, math.floor((vim.uv.now() - state.turn_started) / 1000)
+  return verb, vim.uv.now() - state.turn_started
 end
 
 -- In a narrow column, keep the start of a text, which says what to do.
@@ -497,14 +497,14 @@ function M.activity()
     width = api.nvim_strwidth("⏺ " .. hint .. " ")
   elseif state.busy and state.turn_started then
     local frame = spinner_frames[math.floor(vim.uv.now() / 120) % #spinner_frames + 1]
-    local verb, secs = working()
-    local hint = ("(%ds · esc twice to stop)"):format(secs)
+    local verb, elapsed = working()
+    local hint = ("(%s · esc twice to stop)"):format(transcript.duration(elapsed, true))
     text = ("%%#AnvimClaude#%s %s %%#Comment#%s "):format(frame, (verb:gsub("%%", "%%%%")), hint)
     width = vim.fn.strdisplaywidth(("%s %s %s "):format(frame, verb, hint))
   elseif state.last_turn or state.context then
     local parts = {}
     if state.last_turn then
-      parts[1] = ("%.1fs · $%.2f"):format(state.last_turn.duration_ms / 1000, state.cost_usd)
+      parts[1] = ("%s · $%.2f"):format(transcript.duration(state.last_turn.duration_ms), state.cost_usd)
     end
     if state.context and tonumber(state.context.percent) then
       parts[#parts + 1] = ("%d%%%% context"):format(state.context.percent)
