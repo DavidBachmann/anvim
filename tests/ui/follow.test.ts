@@ -185,11 +185,14 @@ test("the mode block and the line numbers change in the same frame, for each way
   await step("picker", [" ", " "], "snacks_picker_input", "i", 400);
   await step("picker confirms into the code window", ["matchparen", "<CR>"], "code", "n", 400);
   await step("to the prompt again", ["<C-w>l"], "input", "n");
-  // The mode changes in the explorer's list, a float, which the global
-  // statusline then belongs to.
+  // <leader>e closes the explorer, and opens it again with the cursor in its
+  // list. The mode changes there, in a float, which the global statusline
+  // then belongs to.
+  await step("explorer closes", [" ", "e"], "input", "n", 400);
   await step("explorer", [" ", "e"], "snacks_picker_list", "n", 400);
   await step("click into the code window", [click("Mouse"), click("Release")], "code", "n");
   await step("to the prompt from the code window", ["<C-w>l"], "input", "n");
+  await step("explorer closes again", [" ", "e"], "input", "n", 400);
   await step("explorer again", [" ", "e"], "snacks_picker_list", "n", 400);
   await step("open a file from the explorer", ["G", "<CR>"], "code", "n", 400);
   expect(await ui.exec_lua(`return vim.fn.expand("%:t")`)).toBe("other.lua");

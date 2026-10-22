@@ -164,14 +164,34 @@ end
 -- Fit the width first, so that no frame shows new rows at the old width.
 ---@type table<snacks.win, true>
 local attached = setmetatable({}, { __mode = "k" })
-local function attach(win)
+---@param picker snacks.Picker
+local function attach(picker)
+  local win = picker.list.win
   if attached[win] then
     return
   end
   attached[win] = true
   local redraw = win.redraw
+  local drawn_once = false
   win.redraw = function(...)
+    -- snacks draws a new list before it gives it the focus that <leader>e
+    -- asks for. Focus it at the first draw, so that no frame shows the tree
+    -- narrow, with the cursor still in the window before. A list whose rows
+    -- come late draws first after the user moved on, so it takes no focus.
+    if not drawn_once and win:win_valid() then
+      drawn_once = true
+      local wants = picker.opts.focus ~= false and picker.opts.enter ~= false
+      if wants and api.nvim_get_current_win() == picker:filter().current_win then
+        picker:focus()
+      end
+    end
     M.update()
+    -- snacks flushes without the cursor. After <leader>e the list has just
+    -- taken focus, and the frame would show the cursor in the window before.
+    -- Only in normal mode, so that a cursor on the command line stays there.
+    if api.nvim_get_current_win() == win.win and api.nvim_get_mode().mode == "n" then
+      return api.nvim__redraw({ win = win.win, valid = false, flush = true, cursor = true })
+    end
     return redraw(...)
   end
 end
@@ -179,7 +199,7 @@ end
 ---@type snacks.picker.format
 function M.format(item, picker)
   -- The list formats its first rows before it draws them.
-  attach(picker.list.win)
+  attach(picker)
   local ret = Snacks.picker.format.file(item, picker)
   local list = M.marks(item)
   if list then
@@ -321,6 +341,20 @@ function M.update()
       { relative = cfg.relative, win = cfg.win, row = cfg.row, col = col, width = width }
     )
   end
+end
+
+-- The explorer closes, as after <leader>e or q in its list. With the cursor
+-- in the tree, the cursor goes to the code window. snacks closes the windows
+-- only in the next loop iteration, after a frame that still shows the tree.
+-- Close them now, so the next frame shows the code window in its columns.
+---@param picker snacks.Picker
+function M.closing(picker)
+  local root = picker.layout.root.win
+  local focused = picker:is_focused() or (root ~= nil and api.nvim_get_current_win() == root)
+  if focused and api.nvim_get_current_tabpage() == layout.tab then
+    api.nvim_set_current_win(layout.code_win())
+  end
+  picker.layout:close()
 end
 
 ---@param on boolean

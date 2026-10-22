@@ -116,6 +116,9 @@ test("enter in the explorer opens a file in the code window while Claude writes 
   const other = join(anvim.dir, "matchparen.lua");
   await startWrite(path);
 
+  // <leader>e closes the explorer, and opens it again with the cursor in its list.
+  await ui.input(" e");
+  await ui.waitFor(() => ui.exec_lua<boolean>(`return require("anvim.tree").explorer() == nil`));
   await ui.input(" e");
   await anvim.waitWhere("snacks_picker_list", "n");
   await ui.exec_lua(

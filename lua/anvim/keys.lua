@@ -74,7 +74,7 @@ M.places = {
       { "<leader>/", "Grep the files" },
       { "<leader>,", "Pick a buffer" },
       { "<leader>fr", "Recent files" },
-      { "<leader>e", "Go to the explorer" },
+      { "<leader>e", "Toggle the explorer" },
       { "<leader>sw", "Grep the word or the selection", mode = { "n", "x" } },
       { "<leader>ss", "Symbols of the file" },
       { "<leader>sS", "Symbols of the workspace" },

@@ -1576,20 +1576,29 @@ describe("stack", function()
     end
   end)
 
-  it("goes to the explorer with <leader>e, which never closes it, and the explorer changes no files", function()
+  it("toggles the explorer with <leader>e, and the explorer changes no files", function()
     start()
+    local function closed(what)
+      wait(3000, [[return Snacks.picker.get({ source = "explorer" })[1] == nil]], what .. " left the explorer open")
+      wait_where({ win = "code", mode = "n" }, what)
+      assert_layout(what)
+    end
     lua([[
       require("anvim.layout").focus_input()
       vim.cmd.stopinsert()
     ]])
-    for _, from in ipairs({ "the prompt", "the explorer" }) do
-      keys("<leader>e")
-      wait_where({ win = "snacks_picker_list", mode = "n" }, "<leader>e from " .. from)
-      vim.wait(200)
-      assert(lua([[return Snacks.picker.get({ source = "explorer" })[1] ~= nil]]), "<leader>e closed the explorer")
-      -- The list is a float on the explorer's split, not on top of the prompt.
-      assert.are.same("review", lua([[return require("anvim.follow").mode()]]), "the explorer from " .. from)
-    end
+    keys("<C-h>")
+    wait_where({ win = "code", mode = "n" }, "<C-h> from the prompt")
+    keys("<leader>e")
+    closed("<leader>e in the code window")
+
+    lua([[require("anvim.layout").focus_input({ insert = false })]])
+    wait_where({ win = "input", mode = "n" }, "the prompt")
+    keys("<leader>e")
+    wait_where({ win = "snacks_picker_list", mode = "n" }, "<leader>e in the prompt")
+    -- The list is a float on the explorer's split, not on top of the prompt.
+    assert.are.same("review", lua([[return require("anvim.follow").mode()]]))
+    assert_layout("<leader>e in the prompt")
     local maps = lua([[
       local maps = {}
       for _, key in ipairs({ "a", "d", "r", "c", "m", "p", "<C-c>" }) do
@@ -1598,6 +1607,20 @@ describe("stack", function()
       return maps
     ]])
     assert.are.same({ a = "", d = "", r = "", c = "", m = "", p = "", ["<C-c>"] = "" }, maps)
+    keys("<leader>e")
+    closed("<leader>e in the explorer")
+
+    -- snacks' q closes the explorer too. The explorer opened from the prompt,
+    -- and the cursor still goes to the code window.
+    lua([[require("anvim.layout").focus_input({ insert = false })]])
+    keys("<leader>e")
+    wait_where({ win = "snacks_picker_list", mode = "n" }, "<leader>e in the prompt")
+    keys("q")
+    closed("q in the explorer")
+
+    keys("<leader>e")
+    wait_where({ win = "snacks_picker_list", mode = "n" }, "<leader>e in the code window")
+    assert_layout("<leader>e in the code window")
     keys("<C-l>")
     wait_where({ win = "code", mode = "n" }, "<C-l> from the tree")
     lua([[require("anvim.layout").focus_input({ insert = false })]])

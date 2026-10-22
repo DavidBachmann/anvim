@@ -109,6 +109,9 @@ test("no frame shows the block of the window before, through a picker and the ex
   const back = ui.mark();
   await ui.input("<C-w>l");
   await anvim.waitWhere("input", "n");
+  // <leader>e closes the explorer, and opens it again with the cursor in its list.
+  await ui.input(" e");
+  await ui.waitFor(() => ui.exec_lua<boolean>(`return require("anvim.tree").explorer() == nil`));
   await ui.input(" e");
   await anvim.waitWhere("snacks_picker_list", "n");
   await Bun.sleep(300);

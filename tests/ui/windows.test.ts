@@ -53,6 +53,33 @@ test("closing the code window with the explorer open reopens it, with the widths
   }
 });
 
+test("closing the code window with the explorer hidden reopens it, with the widths and the cursor", async () => {
+  anvim = await start();
+  const { ui } = anvim;
+  await anvim.toCode();
+  await ui.input("<Space>e");
+  await ui.waitFor(() => ui.exec_lua<boolean>(`return require("anvim.tree").explorer() == nil`));
+  for (const keys of [":close<CR>", "<C-w>c"]) {
+    await anvim.toCode();
+    await ui.waitFor("local api = vim.api");
+    const code = await anvim.box("code");
+    const transcript = await anvim.box("transcript");
+    expect(code.col).toBe(0);
+    const cols = [code.col + code.width];
+    expect(walls(ui.lines(), code, cols)).toBe(true);
+    const win = await codeWin();
+    const mark = ui.mark();
+    await ui.input(keys);
+    await ui.waitFor(async () => (await codeWin()) !== win);
+    await anvim.waitWhere("code", "n");
+    expect(await anvim.box("code")).toEqual(code);
+    expect(await anvim.box("transcript")).toEqual(transcript);
+    await ui.waitFor(() => walls(ui.lines(), code, cols) && inBox(ui.cursor, code));
+    // No frame shows the Claude column over the code window's columns.
+    expect(ui.frames(mark).filter((f) => !walls(f.lines, code, cols)).length, keys).toBe(0);
+  }
+});
+
 // Neovim gives the closed window's columns to the tree, and the explorer
 // flushes a redraw from WinResized. anvim must reopen the code window first.
 test("no frame shows the tree over the closed code window's columns", async () => {

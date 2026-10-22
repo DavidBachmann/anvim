@@ -187,7 +187,7 @@ function M.code_win()
 end
 
 -- Runs before the code window closes. Neovim then gives its columns to the
--- tree, because the Claude column has 'winfixwidth'.
+-- tree, if it shows, because the Claude column has 'winfixwidth'.
 function M.code_closing(buf)
   M.last_code_buf = buf
   local tree = tree_win()

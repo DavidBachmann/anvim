@@ -48,6 +48,9 @@ return {
             format = function(item, picker)
               return require("anvim.tree").format(item, picker)
             end,
+            on_close = function(picker)
+              require("anvim.tree").closing(picker)
+            end,
             actions = {
               anvim_reference = function(picker)
                 require("anvim.refs").files(vim.tbl_map(function(item)

@@ -62,14 +62,8 @@ map("n", "<leader>/", pick("grep"))
 map("n", "<leader>,", pick("buffers"))
 map("n", "<leader>fr", pick("recent"))
 
--- The explorer is part of the layout, so this key goes there and never closes it.
 map("n", "<leader>e", function()
-  local explorer = Snacks.picker.get({ source = "explorer" })[1]
-  if explorer then
-    explorer:focus("list")
-  else
-    Snacks.explorer()
-  end
+  Snacks.explorer()
 end)
 
 -- search

@@ -86,6 +86,61 @@ test("<leader>uH puts Claude on the left and the tree on the right, and back, wi
   expect(ui.frames(mark).filter((f) => !walls(f.lines, right) && !walls(f.lines, left)).length).toBe(0);
 });
 
+const hasExplorer = () => anvim!.ui.exec_lua<boolean>(`return require("anvim.tree").explorer() ~= nil`);
+
+// A separator in the column on every row of the code window, below the
+// notification that a toggle shows at the top right.
+const wallAt = (lines: string[], code: Box, col: number) =>
+  lines.slice(code.row + 4, code.row + code.height).every((line) => [...line][col] === "│");
+
+test("<leader>uH while the tree is hidden moves Claude, and <leader>e then opens the tree on the right", async () => {
+  anvim = await start();
+  const { ui } = anvim;
+  await anvim.toCode();
+  await ui.waitFor("local api = vim.api");
+  const columns = await ui.exec_lua<number>("return vim.o.columns");
+  const right = await boxes();
+  await ui.input("<Space>e");
+  await ui.waitFor(async () => !(await hasExplorer()));
+  const code = await anvim.box("code");
+  expect(code).toEqual({ ...right.code, col: 0, width: right.tree.width + 1 + right.code.width });
+
+  let mark = ui.mark();
+  await ui.input("<Space>uH");
+  await ui.waitFor(async () => (await anvim!.box("transcript")).col === 0);
+  const mirrored = { ...code, col: right.transcript.width + 1 };
+  expect(await anvim.box("code")).toEqual(mirrored);
+  expect(await anvim.box("transcript")).toEqual({ ...right.transcript, col: 0 });
+  expect(await anvim.box("input")).toEqual({ ...right.input, col: 0 });
+  expect(await anvim.where()).toEqual({ win: "code", mode: "n" });
+  expect(await remembered()).toBe("left");
+  expect(await hasExplorer()).toBe(false);
+  await ui.waitFor(() => wallAt(ui.lines(), mirrored, mirrored.col - 1));
+  const swapped = (lines: string[]) =>
+    wallAt(lines, code, code.col + code.width) || wallAt(lines, mirrored, mirrored.col - 1);
+  expect(ui.frames(mark).filter((f) => !swapped(f.lines)).length).toBe(0);
+
+  // The same layout as <leader>uH with the tree open. No frame shows the
+  // tree's split without its rows.
+  mark = ui.mark();
+  await ui.input("<Space>e");
+  await anvim.waitWhere("snacks_picker_list", "n");
+  const left = {
+    tree: { ...right.tree, col: columns - right.tree.width },
+    code: { ...right.code, col: right.transcript.width + 1 },
+    transcript: { ...right.transcript, col: 0 },
+    input: { ...right.input, col: 0 },
+  };
+  expect(await boxes()).toEqual(left);
+  const edge = left.tree.col - 1;
+  const hidden = (lines: string[]) => !wallAt(lines, left.code, edge);
+  const shown = (lines: string[]) =>
+    wallAt(lines, left.code, edge) && cells(lines[left.tree.row]!, left.tree.col, left.tree.width).includes("proj");
+  const torn = (lines: string[]) => !wallAt(lines, left.code, left.code.col - 1) || !(hidden(lines) || shown(lines));
+  await ui.waitFor(() => shown(ui.lines()));
+  expect(ui.frames(mark).filter((f) => torn(f.lines)).length).toBe(0);
+});
+
 const codeWin = () => anvim!.ui.exec_lua<number>(`return require("anvim.layout").wins.code`);
 
 test("a start after a choice of the left side is mirrored, and closed windows and a resize keep the sides", async () => {

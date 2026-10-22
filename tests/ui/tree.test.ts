@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { type Anvim, type Box, cells, cursorIn, start } from "./helpers.ts";
+import { type Anvim, type Box, cells, cursorIn, inBox, quiet, start } from "./helpers.ts";
 
 let anvim: Anvim | undefined;
 afterEach(async () => {
@@ -74,6 +74,113 @@ test("the focused tree widens again when a folder opens", async () => {
   // No frame shows the new rows at the old width.
   const cut = ui.frames(mark).filter((f) => shows(f.lines, tree, "the_deepest") && !shows(f.lines, tree, deep));
   expect(cut.length).toBe(0);
+});
+
+const hasExplorer = () => anvim!.ui.exec_lua<boolean>(`return require("anvim.tree").explorer() ~= nil`);
+
+// The tree shows its rows beside the code window: the root folder's row,
+// and the separator at its edge.
+const shown = (lines: string[], tree: Box, code: Box) =>
+  cells(lines[tree.row]!, 0, tree.width).includes("proj") && wall(lines, code, tree.width);
+
+// No tree: the code window's bar starts at the left edge, and no separator
+// is left at the tree's edge.
+const hidden = (lines: string[], tree: Box, code: Box) =>
+  cells(lines[code.row - 1]!, 0, tree.width).startsWith(" matchparen.lua") &&
+  lines.slice(code.row, code.row + code.height).every((line) => [...line][tree.width] !== "│");
+
+test("<leader>e closes the tree and opens it again with the cursor in its list, with no frame in between", async () => {
+  anvim = await start();
+  const { ui } = anvim;
+  await anvim.toCode();
+  await ui.waitFor("local api = vim.api");
+  const tree = await anvim.box("tree");
+  const code = await anvim.box("code");
+  const transcript = await anvim.box("transcript");
+  const input = await anvim.box("input");
+  // The code window takes the tree's columns, and the Claude column keeps its own.
+  const wide = { ...code, col: 0, width: tree.width + 1 + code.width };
+  const right = code.col + code.width;
+  // A frame with a gap where the tree was, or with the code window at its
+  // old place, is neither shown nor hidden.
+  const torn = (mark: number) =>
+    ui
+      .frames(mark)
+      .filter((f) => !wall(f.lines, code, right) || !(shown(f.lines, tree, code) || hidden(f.lines, tree, code)));
+
+  // The cursor goes to the code window, or stays in the prompt.
+  const close = async (keys: string, win: "code" | "input" = "code") => {
+    const at = win === "code" ? wide : input;
+    await quiet(ui);
+    const mark = ui.mark();
+    await ui.input(keys);
+    await ui.waitFor(async () => !(await hasExplorer()));
+    await anvim!.waitWhere(win, "n");
+    expect(await anvim!.box("code"), keys).toEqual(wide);
+    expect(await anvim!.box("transcript"), keys).toEqual(transcript);
+    await ui.waitFor(() => ui.frames(mark).some((f) => hidden(f.lines, tree, code) && inBox(f.cursor, at)));
+    await quiet(ui);
+    expect(torn(mark).length, keys).toBe(0);
+    // No frame shows the tree after the cursor left it.
+    expect(ui.frames(mark).filter((f) => shown(f.lines, tree, code) && !inBox(f.cursor, tree)).length, keys).toBe(0);
+  };
+  const open = async (keys: string) => {
+    const mark = ui.mark();
+    await ui.input(keys);
+    await anvim!.waitWhere("snacks_picker_list", "n");
+    expect(await anvim!.box("tree"), keys).toEqual(tree);
+    expect(await anvim!.box("code"), keys).toEqual(code);
+    expect(await anvim!.box("transcript"), keys).toEqual(transcript);
+    await ui.waitFor(() => ui.frames(mark).some((f) => shown(f.lines, tree, code) && inBox(f.cursor, tree)));
+    await quiet(ui);
+    expect(torn(mark).length, keys).toBe(0);
+    // No frame shows the tree before the cursor is in it.
+    expect(ui.frames(mark).filter((f) => shown(f.lines, tree, code) && !inBox(f.cursor, tree)).length, keys).toBe(0);
+  };
+
+  await close("<Space>e");
+  await open("<Space>e");
+  await close("<Space>e");
+
+  // From the prompt, and q in the list sends the cursor to the code window too.
+  await ui.exec_lua(`require("anvim.layout").focus_input({ insert = false })`);
+  await anvim.waitWhere("input", "n");
+  await open("<Space>e");
+  await close("q");
+  await open("<Space>e");
+  await ui.exec_lua(`require("anvim.layout").focus_input({ insert = false })`);
+  await anvim.waitWhere("input", "n");
+  await close("<Space>e", "input");
+  expect(await ui.exec_lua(`return require("anvim.follow").mode()`)).toBe("follow");
+});
+
+test("<leader>e opens the tree at the width of a long name from its first frame, with the cursor in its list", async () => {
+  anvim = await start({ files: { [LONG]: "return {}\n" } });
+  const { ui } = anvim;
+  await anvim.toCode();
+  await ui.waitFor("local api = vim.api");
+  const tree = await anvim.box("tree");
+  await ui.input("<Space>e");
+  await ui.waitFor(async () => !(await hasExplorer()));
+  for (const from of ["code", "input"]) {
+    if (from === "input") {
+      await ui.exec_lua(`require("anvim.layout").focus_input({ insert = false })`);
+      await anvim.waitWhere("input", "n");
+    }
+    await quiet(ui);
+    const mark = ui.mark();
+    await ui.input("<Space>e");
+    await anvim.waitWhere("snacks_picker_list", "n");
+    await ui.waitFor(() => shows(ui.lines(), tree, LONG));
+    await quiet(ui);
+    // Each frame with the tree shows the name in full, and the cursor in the list.
+    const opened = ui.frames(mark).filter((f) => shows(f.lines, tree, "proj", tree.width));
+    expect(opened.length, from).toBeGreaterThan(0);
+    const narrow = opened.filter((f) => !shows(f.lines, tree, LONG) || !inBox(f.cursor, tree));
+    expect(narrow.length, from).toBe(0);
+    await ui.input("<Space>e");
+    await ui.waitFor(async () => !(await hasExplorer()));
+  }
 });
 
 // The choice in the prefs file, which the next start reads.
@@ -166,6 +273,34 @@ test("a start with auto-minimize off opens the tree at the width of its names, a
   await ui.waitFor(() => ui.lines().some((line) => cells(line, columns - tree.width, tree.width).includes(LONG)));
   await ui.waitFor(() => walls(ui.lines(), mirrored));
   expect(ui.frames(mark).filter((f) => !walls(f.lines, code) && !walls(f.lines, mirrored)).length).toBe(0);
+});
+
+test("<leader>ue while the tree is hidden: <leader>e opens it at the width of its names", async () => {
+  anvim = await start({ files: { [LONG]: "return {}\n" } });
+  const { ui } = anvim;
+  await anvim.toCode();
+  await ui.waitFor("local api = vim.api");
+  const narrow = await anvim.box("tree");
+  const code = await anvim.box("code");
+  await ui.input("<Space>e");
+  await ui.waitFor(async () => !(await hasExplorer()));
+  await ui.input("<Space>ue");
+  await ui.waitFor(async () => (await minimizes()) === false);
+  expect(await hasExplorer()).toBe(false);
+  expect(await anvim.box("code")).toEqual({ ...code, col: 0, width: narrow.width + 1 + code.width });
+
+  const mark = ui.mark();
+  await ui.input("<Space>e");
+  await anvim.waitWhere("snacks_picker_list", "n");
+  await ui.waitFor(async () => (await anvim!.box("tree")).width > narrow.width);
+  const tree = await anvim.box("tree");
+  const beside = { ...code, col: tree.width + 1, width: code.width - tree.width + narrow.width };
+  expect(await anvim.box("code")).toEqual(beside);
+  await ui.waitFor(() => state(ui.lines(), beside).long);
+  // From the first frame with rows, the tree has the width of its names.
+  const rows = ui.frames(mark).filter((f) => shows(f.lines, tree, "matchparen", tree.width));
+  expect(rows.length).toBeGreaterThan(0);
+  expect(rows.filter((f) => !state(f.lines, beside).wall).length).toBe(0);
 });
 
 // Sends events to the plugin as the sidecar would.
@@ -292,6 +427,43 @@ test("agents' dots mark their places and the files they write to, and the closed
   expect(moved.length).toBe(0);
   expect(await anvim.where()).toEqual(where);
   expect(await listView()).toEqual(view);
+});
+
+test("the dots of an agent that wrote while the tree was hidden show when <leader>e opens it", async () => {
+  anvim = await start({ files: { "alpha.js": "a\n" } });
+  const { ui, dir } = anvim;
+  const tree = await anvim.box("tree");
+  await ui.waitFor(() => rowOf(ui.lines(), tree, " alpha.js") >= 0);
+  const alpha = rowOf(ui.lines(), tree, " alpha.js");
+  const hl = await colors();
+  await ui.input("<Space>e");
+  await ui.waitFor(async () => !(await hasExplorer()));
+
+  await dispatch(agentStart("a1"), edit("e1", `${dir}/alpha.js`, "a1"));
+  await ui.drain();
+  expect(await hasExplorer()).toBe(false);
+  await ui.input("<Space>e");
+  await anvim.waitWhere("snacks_picker_list", "n");
+  await ui.waitFor(() => dots(alpha, 80).length === 1);
+  expect(dots(alpha, 80)).toEqual([{ text: "⏺", fg: hl.AnvimAgent1 }]);
+});
+
+test("the code window follows Claude while the tree is hidden, and the tree stays hidden", async () => {
+  anvim = await start({ files: { "sub/deep.lua": "return 1\n" } });
+  const { ui, dir } = anvim;
+  await ui.input("<Space>e");
+  await ui.waitFor(async () => !(await hasExplorer()));
+  await anvim.waitWhere("input", "n");
+  const file = `${dir}/sub/deep.lua`;
+  await dispatch({ type: "turn_start" }, { type: "tool_use", id: "r1", name: "Read", input: { file_path: file } });
+  await ui.waitFor(() =>
+    ui.exec_lua<boolean>(
+      `return vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(require("anvim.layout").wins.code)) == ...`,
+      file,
+    ),
+  );
+  await ui.drain();
+  expect(await ui.exec_lua<boolean>(`return Snacks.picker.get({ source = "explorer" })[1] == nil`)).toBe(true);
 });
 
 test("the focused tree widens to fit the dots, in the frame that shows them", async () => {
