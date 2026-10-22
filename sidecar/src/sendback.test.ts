@@ -8,8 +8,10 @@ import type { Event } from "./protocol";
 import { REASONS, SandboxGuard } from "./sandbox";
 import { hint } from "./sendback";
 
-const TMP = "/tmp/claude-501";
 const root = realpathSync(mkdtempSync(join(tmpdir(), "anvim-sendback-")));
+// Not the real /tmp/claude-<uid>: in Claude's own sandbox, tmpdir() lies in
+// it, and the guard would trust the whole fixture.
+const TMP = join(root, "claude-tmp");
 const cwd = join(root, "project");
 const home = join(root, "home");
 mkdirSync(cwd);

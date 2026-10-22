@@ -2,4 +2,7 @@
 
 cd "$(dirname "$0")/.." || exit 1
 scripts/test-deps || exit 1
-nvim -l tests/minit.lua --minitest "$@"
+# In the sandbox, Neovim cannot write its log in ~/.local/state and writes
+# nvim.log into the repo instead.
+mkdir -p .tests
+NVIM_LOG_FILE=$PWD/.tests/nvim.log nvim -l tests/minit.lua --minitest "$@"
