@@ -8,9 +8,11 @@ local to_code = {
 }
 
 return {
-  -- The explorer's list is a float, and from a float <C-w>l goes to the
-  -- previous window, which can be the prompt. To its right is the code window.
-  -- The global <C-l> remaps to <C-w>l but does not reach this key, so map it too.
+  -- The explorer's list is a float, and from a float <C-w>h and <C-w>l go to
+  -- the previous window, which can be the prompt. The explorer is at an edge
+  -- of the screen, so the code window is its only neighbor. The global <C-h>
+  -- and <C-l> remap to <C-w>h and <C-w>l but do not reach these keys, so map
+  -- them too.
   -- `@` puts a reference to the files under the cursor or selected in the prompt.
   {
     "folke/snacks.nvim",
@@ -23,21 +25,25 @@ return {
             -- preset into it. So this one has the list only, without the input
             -- window of the sidebar preset. Narrow, to leave the columns to the
             -- code. With focus, the tree widens over the code window to fit
-            -- its rows.
-            layout = {
-              preset = "sidebar",
-              preview = false,
-              layout = {
-                backdrop = false,
-                width = require("anvim.config").options.layout.tree.width,
-                min_width = require("anvim.config").options.layout.tree.width,
-                height = 0,
-                position = "left",
-                border = "none",
-                box = "vertical",
-                { win = "list", border = "none" },
-              },
-            },
+            -- its rows. A function, so that the side is the current one
+            -- each time snacks lays the explorer out.
+            layout = function()
+              return {
+                preset = "sidebar",
+                preview = false,
+                cycle = true,
+                layout = {
+                  backdrop = false,
+                  width = require("anvim.config").options.layout.tree.width,
+                  min_width = require("anvim.config").options.layout.tree.width,
+                  height = 0,
+                  position = require("anvim.layout").tree_side(),
+                  border = "none",
+                  box = "vertical",
+                  { win = "list", border = "none" },
+                },
+              }
+            end,
             -- The agents' dots on the files they write to.
             format = function(item, picker)
               return require("anvim.tree").format(item, picker)
@@ -52,6 +58,8 @@ return {
             win = {
               list = {
                 keys = {
+                  ["<c-w>h"] = to_code,
+                  ["<c-h>"] = to_code,
                   ["<c-w>l"] = to_code,
                   ["<c-l>"] = to_code,
                   ["@"] = { "anvim_reference", desc = keys.desc("explorer", "n", "@") },

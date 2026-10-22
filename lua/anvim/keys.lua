@@ -88,6 +88,7 @@ M.places = {
       { "<leader>gb", "The line's git history" },
       { "<leader>uw", "Toggle wrap" },
       { "<leader>ud", "Toggle diagnostics" },
+      { "<leader>uH", "Toggle Claude on the left" },
       { "q", "Close a help, quickfix or info window", ctx = "other" },
     },
   },
@@ -190,7 +191,7 @@ M.places = {
     ctx = "explorer",
     keys = {
       { "@", "Point Claude at the file" },
-      { { "<C-w>l", "<C-l>" }, "Go to the code window" },
+      { { "<C-w>h", "<C-h>", "<C-w>l", "<C-l>" }, "Go to the code window", label = "<C-h> <C-l> <C-w>hl" },
       { "?", "Show the explorer's own keys", static = true },
     },
   },

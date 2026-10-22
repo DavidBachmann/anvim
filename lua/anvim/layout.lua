@@ -1,6 +1,8 @@
--- The three columns: tree | code | claude (transcript above input).
+-- The three columns: tree | code | claude (transcript above input), or
+-- mirrored, with Claude on the left.
 local config = require("anvim.config")
 local input = require("anvim.input")
+local prefs = require("anvim.prefs")
 local transcript = require("anvim.transcript")
 
 local M = {}
@@ -18,6 +20,18 @@ local tree_width
 
 local function valid(win)
   return win and api.nvim_win_is_valid(win)
+end
+
+-- A global statusline puts a separator row under the transcript. Blank it,
+-- so the prompt's activity line is the only rule. Both windows of the Claude
+-- column draw the corner where that row meets the vertical separator, and
+-- with Claude on the left they also draw the vertical separator.
+local function column_separator(win)
+  local wo = vim.wo[win]
+  local vert = vim.opt.fillchars:get().vert or "│"
+  local fill = ("horiz: ,vertright:%s,vertleft:%s"):format(vert, vert)
+  wo.fillchars = (vim.go.fillchars ~= "" and vim.go.fillchars .. "," or "") .. fill
+  wo.winhighlight = wo.winhighlight .. ",WinSeparator:AnvimSeparator"
 end
 
 local function setup_transcript_win(win)
@@ -47,11 +61,8 @@ local function setup_transcript_win(win)
   wo.smoothscroll = false
   wo.winfixwidth = true
   wo.winfixbuf = true
-  -- A global statusline puts a separator row under the transcript. Blank it,
-  -- so the prompt's activity line is the only rule.
-  local vert = vim.opt.fillchars:get().vert or "│"
-  wo.fillchars = (vim.go.fillchars ~= "" and vim.go.fillchars .. "," or "") .. "horiz: ,vertright:" .. vert
-  wo.winhighlight = "Normal:AnvimNormal,NormalNC:AnvimNormal,WinSeparator:AnvimSeparator"
+  wo.winhighlight = "Normal:AnvimNormal,NormalNC:AnvimNormal"
+  column_separator(win)
   -- In 0.12 this only drops the window number. Window commands and mouse
   -- clicks still enter it, so a WinEnter guard moves the cursor on.
   api.nvim_win_set_config(win, { focusable = false })
@@ -71,11 +82,22 @@ local function claude_width()
   return width < 1 and math.floor(vim.o.columns * width) or width
 end
 
+-- The side of the Claude column, as the user last chose it.
+---@return 'left'|'right'
+function M.claude_side()
+  return prefs.get("claude_side") == "left" and "left" or "right"
+end
+
+---@return 'left'|'right'
+function M.tree_side()
+  return M.claude_side() == "left" and "right" or "left"
+end
+
 -- The explorer's sidebar split. Its list is a float on top of it.
 local function tree_win()
   for _, win in ipairs(api.nvim_tabpage_list_wins(0)) do
     local snacks_win = vim.w[win].snacks_win
-    if api.nvim_win_get_config(win).relative == "" and snacks_win and snacks_win.position == "left" then
+    if api.nvim_win_get_config(win).relative == "" and snacks_win and snacks_win.position == M.tree_side() then
       return win
     end
   end
@@ -88,10 +110,11 @@ local function open_code_win(buf)
   if tree then
     local width = tree_width or api.nvim_win_get_width(tree)
     tree_width = nil
-    win = api.nvim_open_win(buf, false, { split = "right", win = tree })
+    -- The side of the tree that faces Claude.
+    win = api.nvim_open_win(buf, false, { split = M.claude_side(), win = tree })
     api.nvim_win_set_width(tree, width)
   else
-    win = api.nvim_open_win(buf, false, { split = "left", win = -1 })
+    win = api.nvim_open_win(buf, false, { split = M.tree_side(), win = -1 })
   end
   if valid(M.wins.transcript) then
     api.nvim_win_set_width(M.wins.transcript, claude_width())
@@ -206,7 +229,7 @@ function M.repair()
     return
   end
   if not valid(M.wins.transcript) then
-    local opts = { split = "right", win = -1, width = claude_width() }
+    local opts = { split = M.claude_side(), win = -1, width = claude_width() }
     if valid(M.wins.input) then
       opts = { split = "above", win = M.wins.input }
     end
@@ -220,10 +243,36 @@ function M.repair()
       height = config.options.layout.input_height.min + 1,
     })
     input.setup_win(M.wins.input)
+    column_separator(M.wins.input)
   end
   M.code_win()
   api.nvim_win_set_width(M.wins.transcript, claude_width())
   input.render()
+end
+
+-- Moves the Claude column to a side, and the tree to the other side. The
+-- code window stays between them.
+---@param side 'left'|'right'
+function M.set_claude_side(side)
+  prefs.set("claude_side", side)
+  local code, top, bottom = M.wins.code, M.wins.transcript, M.wins.input
+  if not (valid(code) and valid(top) and valid(bottom)) then
+    return
+  end
+  -- With win -1, the split goes to the current tab page. Make that the
+  -- layout's tab page.
+  api.nvim_win_call(code, function()
+    api.nvim_win_set_config(top, { split = side, win = -1 })
+  end)
+  api.nvim_win_set_config(bottom, { split = "below", win = top })
+  api.nvim_win_set_width(top, claude_width())
+  input.render()
+  -- Last, because snacks flushes a redraw when it lays the explorer out. The
+  -- layout takes the side from M.tree_side().
+  local explorer = require("anvim.tree").explorer()
+  if explorer then
+    explorer:set_layout()
+  end
 end
 
 function M.open()

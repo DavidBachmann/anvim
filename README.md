@@ -73,7 +73,7 @@ return {
 anvim's Neovim runs with `NVIM_APPNAME=anvim`, so its files are in dirs of their own:
 
 - `~/.local/share/anvim`, the install dir: the plugins in `lazy/`, the parsers in `site/`, mason's packages in `mason/`, lazy.nvim's lockfile and the stamp of the last install. `ANVIM_INSTALL_DIR` puts it elsewhere.
-- `~/.local/state/anvim`: the log, undo history, past prompts and the language servers' logs.
+- `~/.local/state/anvim`: the log, undo history, past prompts, the choices that you made with `<leader>u` keys, and the language servers' logs.
 - `~/.cache/anvim`: caches.
 - `~/.config/anvim`: your own specs, if you have any.
 - `sidecar/node_modules` in the repo.
@@ -96,7 +96,7 @@ anvim -c ~/dev/project                          # go on with the latest session 
 anvim --resume ~/dev/project                    # pick a session to go on with
 ```
 
-The screen has three columns: the explorer, code, and Claude. The explorer is 24 columns wide. While it has focus, it widens over the code window to fit its names, and the code window stays where it is. anvim starts with the cursor in the prompt at the bottom right, in normal mode, so your first keys can move around. Press `i` to type. While your cursor is in the prompt, the code window follows Claude. It opens the files Claude reads, and edits stream in with the old text struck through. Claude often reads with Bash, so `cat`, `head`, `tail`, `sed -n` and `nl` open their files too, and a `grep -n` opens at its first hit. Move the cursor anywhere else to take control and review code. The footer under the prompt then shows where Claude is, such as `⏺ Claude at stream.lua:40 +2`, and `<leader>j` jumps there. In the prompt it says `◉ following`. In a narrow column it drops the words, as in `⏺ stream.lua:40 +2`, and when even that does not fit, the statusline shows it.
+The screen has three columns: the explorer, code, and Claude. `<leader>uH` swaps the sides, so Claude is on the left and the explorer on the right. anvim remembers the choice for the next start. The explorer is 24 columns wide. While it has focus, it widens over the code window to fit its names, and the code window stays where it is. anvim starts with the cursor in the prompt at the bottom right, in normal mode, so your first keys can move around. Press `i` to type. While your cursor is in the prompt, the code window follows Claude. It opens the files Claude reads, and edits stream in with the old text struck through. Claude often reads with Bash, so `cat`, `head`, `tail`, `sed -n` and `nl` open their files too, and a `grep -n` opens at its first hit. Move the cursor anywhere else to take control and review code. The footer under the prompt then shows where Claude is, such as `⏺ Claude at stream.lua:40 +2`, and `<leader>j` jumps there. In the prompt it says `◉ following`. In a narrow column it drops the words, as in `⏺ stream.lua:40 +2`, and when even that does not fit, the statusline shows it.
 
 Follow mode is a mode of its own, next to Vim's normal, insert and visual mode. The mode block at the left of the statusline reads `FOLLOW` in Claude's orange, also while you type in the prompt. In follow mode the code window has no line numbers, so the text that Claude writes never moves right when a file grows past 9 or 99 lines. In review mode the block shows Vim's mode, and the code window has the line numbers that your config sets. A `:set number` there lasts until you go back to the prompt. A picker or the key view that opens over the prompt keeps follow mode. The compose window counts as the prompt, and a pinned selection means review mode.
 
@@ -135,6 +135,7 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 | `<leader>gs`, `<leader>gd` | Git status, git diff by hunk |
 | `<leader>gl`, `<leader>gf`, `<leader>gb` | Git log, the file's history, the line's history |
 | `<leader>uw`, `<leader>ud` | Toggle wrap, toggle diagnostics |
+| `<leader>uH` | Toggle Claude on the left and the explorer on the right |
 | `q` | Close a help, quickfix or info window |
 
 ### Code window
@@ -192,7 +193,7 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 | Key | Action |
 | --- | --- |
 | `@` | Put a reference to the file in the prompt |
-| `Ctrl-W l`, `Ctrl-L` | Go to the code window |
+| `Ctrl-H`, `Ctrl-L`, `Ctrl-W h`, `Ctrl-W l` | Go to the code window |
 | `?` | Show the explorer's own keys |
 
 ### Transcript and read mode

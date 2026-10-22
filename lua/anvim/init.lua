@@ -88,8 +88,14 @@ local function set_highlights()
   api.nvim_set_hl(0, "SnacksPickerList", { link = "SnacksPicker", default = true })
   api.nvim_set_hl(0, "SnacksPicker", { link = "NormalFloat", default = true })
   -- The blank row under the transcript takes the transcript's background. With
-  -- a default, it would keep the previous colorscheme's colors.
-  local sep = api.nvim_get_hl(0, { name = "WinSeparator", link = false })
+  -- a default, it would keep the previous colorscheme's colors. nvim_get_hl()
+  -- goes through the current window's 'winhighlight', and the Claude column
+  -- maps WinSeparator to AnvimSeparator, so read it in the code window.
+  local function get_sep()
+    return api.nvim_get_hl(0, { name = "WinSeparator", link = false })
+  end
+  local code = layout.wins.code
+  local sep = code and api.nvim_win_is_valid(code) and api.nvim_win_call(code, get_sep) or get_sep()
   local column = api.nvim_get_hl(0, { name = "AnvimNormal", link = false })
   api.nvim_set_hl(0, "AnvimSeparator", { fg = sep.fg, bg = column.bg })
   require("anvim.statusline").highlights()

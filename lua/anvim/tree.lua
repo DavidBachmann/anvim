@@ -244,7 +244,7 @@ function M.fit(picker)
   return measured.width
 end
 
--- Up to max_width, and never past the code window's right edge.
+-- Up to max_width, and never past the code window's far edge.
 local function max_width(narrow)
   local max = config.options.layout.tree.max_width
   max = max < 1 and math.floor(vim.o.columns * max) or max
@@ -266,11 +266,17 @@ function M.update()
   if picker:is_focused() then
     width = math.max(narrow, math.min(M.fit(picker), max_width(narrow)))
   end
-  if api.nvim_win_get_width(list.win) ~= width then
+  -- A tree on the right widens to the left.
+  local col = layout.tree_side() == "right" and narrow - width or 0
+  local cfg = api.nvim_win_get_config(list.win)
+  if cfg.width ~= width or cfg.col ~= col then
     -- On WinResized, snacks gives the split the list's new width, unless the
     -- list has the width that snacks set.
-    list.opts.width = width
-    api.nvim_win_set_config(list.win, { width = width })
+    list.opts.width, list.opts.col = width, col
+    api.nvim_win_set_config(
+      list.win,
+      { relative = cfg.relative, win = cfg.win, row = cfg.row, col = col, width = width }
+    )
   end
 end
 

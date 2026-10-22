@@ -121,3 +121,12 @@ end
 -- toggles
 Snacks.toggle.option("wrap", { name = "Wrap" }):map("<leader>uw", { desc = keys.desc("global", "n", "<leader>uw") })
 Snacks.toggle.diagnostics():map("<leader>ud", { desc = keys.desc("global", "n", "<leader>ud") })
+Snacks.toggle({
+  name = "Claude on the left",
+  get = function()
+    return require("anvim.layout").claude_side() == "left"
+  end,
+  set = function(state)
+    require("anvim.layout").set_claude_side(state and "left" or "right")
+  end,
+}):map("<leader>uH", { desc = keys.desc("global", "n", "<leader>uH") })

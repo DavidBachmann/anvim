@@ -46,9 +46,10 @@ const BOX = `
   local role = ...
   local win = require("anvim.layout").wins[role]
   if role == "tree" then
+    local side = require("anvim.layout").tree_side()
     for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
       local snacks_win = vim.w[w].snacks_win
-      if vim.api.nvim_win_get_config(w).relative == "" and snacks_win and snacks_win.position == "left" then
+      if vim.api.nvim_win_get_config(w).relative == "" and snacks_win and snacks_win.position == side then
         win = w
       end
     end
@@ -192,6 +193,8 @@ export type StartOptions = {
   env?: Record<string, string>;
   // More files in the project dir, by path.
   files?: Record<string, string>;
+  // The choices in anvim's prefs.json, as if made at an earlier start.
+  prefs?: Record<string, unknown>;
   cols?: number;
   rows?: number;
 };
@@ -212,6 +215,10 @@ export async function start(opts: StartOptions = {}): Promise<Anvim> {
   if (opts.frames) frames = opts.frames(frames);
   const recording = join(tmp, "session.jsonl");
   writeFileSync(recording, frames.join("\n") + "\n");
+  if (opts.prefs) {
+    mkdirSync(join(tmp, "xdg/state/anvim"), { recursive: true });
+    writeFileSync(join(tmp, "xdg/state/anvim/prefs.json"), JSON.stringify(opts.prefs));
+  }
   let started: Ui | undefined;
   try {
     const ui = (started = await Ui.start({
