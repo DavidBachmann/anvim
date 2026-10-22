@@ -33,6 +33,8 @@ function M.start()
   vim.o.showmode = false
   vim.o.number, vim.o.relativenumber, vim.o.signcolumn = true, true, "yes"
   require("anvim.history").dir = M.tmp .. "/history"
+  -- The choices of <leader>u start from none, and no spec keeps them for the next run.
+  require("anvim.prefs").path = vim.fn.tempname() .. "/prefs.json"
   local anvim = require("anvim")
   anvim.setup({
     permission_mode = "bypassPermissions",

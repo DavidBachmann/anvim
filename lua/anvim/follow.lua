@@ -202,6 +202,25 @@ local function follow_gutter(win)
   return gutter.options
 end
 
+-- Code wraps as the user chose, and text always wraps. The window's global
+-- value is the choice, so a float that opens from the code window, such as a
+-- picker's preview, wraps as code does. The follow gutter has no line
+-- numbers, so a mark starts each wrapped row of code. An empty local
+-- 'showbreak' would show the global one, and "NONE" shows none.
+---@param win integer
+local function apply_wrap(win)
+  local wraps = layout.wraps()
+  if api.nvim_get_option_value("wrap", { win = win, scope = "global" }) ~= wraps then
+    api.nvim_set_option_value("wrap", wraps, { win = win, scope = "global" })
+  end
+  local text = layout.text_filetypes[vim.bo[api.nvim_win_get_buf(win)].filetype] == true
+  for name, value in pairs({ wrap = wraps or text, showbreak = text and "NONE" or "↪ " }) do
+    if vim.wo[win][0][name] ~= value then
+      vim.wo[win][0][name] = value
+    end
+  end
+end
+
 -- Sets the gutter of the mode, and the code window's own options. These set
 -- the window's global values too, so a buffer that no window has shown gets
 -- them. Any other buffer brings back the options of its last window, so
@@ -226,6 +245,7 @@ function M.apply(win)
       vim.wo[win][name] = value
     end
   end
+  apply_wrap(win)
 end
 
 -- A float that opened on top, such as a picker, the key view or
@@ -844,6 +864,16 @@ function M.attach(sidecar)
     group = group,
     callback = function()
       M.apply(layout.wins.code)
+    end,
+  })
+  -- A buffer can get its filetype after the code window shows it.
+  api.nvim_create_autocmd("FileType", {
+    group = group,
+    callback = function(ev)
+      local win = layout.wins.code
+      if win and api.nvim_win_is_valid(win) and api.nvim_win_get_buf(win) == ev.buf then
+        apply_wrap(win)
+      end
     end,
   })
   -- A click on a 'statuscolumn' moves the cursor of the current window

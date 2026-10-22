@@ -126,11 +126,26 @@ end
 -- statusline names the prompt's buffer while the cursor is there. Groups in a
 -- winbar combine with WinBar, which often has the statusline's background.
 -- 'winhighlight' maps no other group, so a code window that split the prompt
--- drops the prompt's background.
+-- drops the prompt's background. Wrapped lines keep their indent.
 M.code_options = {
   winbar = "%!v:lua.require'anvim.layout'.winbar_text()",
   winhighlight = "WinBar:AnvimWinBar,WinBarNC:AnvimWinBar",
+  breakindent = true,
 }
+
+-- Text wraps in the code window, also when the user turned wrap off.
+M.text_filetypes = { text = true, plaintex = true, typst = true, gitcommit = true, markdown = true }
+
+-- Whether the code window wraps code, as the user last chose it.
+function M.wraps()
+  return prefs.get("code_wrap") ~= false
+end
+
+---@param on boolean
+function M.set_wrap(on)
+  prefs.set("code_wrap", on)
+  require("anvim.follow").apply(M.wins.code)
+end
 
 function M.winbar_text()
   local buf = api.nvim_win_get_buf(vim.g.statusline_winid)

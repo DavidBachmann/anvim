@@ -91,6 +91,29 @@ describe("show_user", function()
     tools.clear()
   end)
 
+  it("centers a range of wrapped lines by rows", function()
+    helpers.start()
+    local file = helpers.tmp .. "/wrapped.lua"
+    local lines = {}
+    for i = 1, 60 do
+      lines[i] = ("local x%d = %s0"):format(i, ("%d + "):format(i):rep(40))
+    end
+    vim.fn.writefile(lines, file)
+    layout.focus_input()
+    helpers.ask("show_user", { path = file, start_line = 30, end_line = 31 })
+    local win = layout.wins.code
+    local function rows(first, last)
+      return api.nvim_win_text_height(win, { start_row = first - 1, end_row = last - 1 }).all
+    end
+    assert(rows(1, 1) > 1, "the lines wrap")
+    local top, bottom = vim.fn.line("w0", win), vim.fn.line("w$", win)
+    assert(top < 30 and bottom >= 31, ("the range is in view, view is %d-%d"):format(top, bottom))
+    local above = rows(top, 29)
+    local below = vim.fn.winheight(win) - above - rows(30, 31)
+    assert(math.abs(above - below) <= rows(29, 29), ("%d rows above the range and %d below"):format(above, below))
+    tools.clear()
+  end)
+
   it("marks the range and points the statusline at it when the user reads elsewhere", function()
     helpers.start()
     local file = helpers.tmp .. "/elsewhere.lua"

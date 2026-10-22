@@ -157,10 +157,22 @@ local function note_lines(buf, row, note)
 end
 
 -- Centers the range and its note, or puts the note at the top when the range
--- is taller than the window. Notes above line 1 need topfill to show.
+-- is taller than the window. A wrapped line takes several rows, so this counts
+-- rows. The height of a line counts the note above it. Notes above line 1
+-- need topfill to show.
 local function reveal(win, first, last, fill)
-  local free = vim.fn.winheight(win) - (last - first + 1) - fill
-  local top = math.max(first - math.floor(math.max(free, 0) / 2), 1)
+  local function rows(from, to)
+    return api.nvim_win_text_height(win, { start_row = from - 1, end_row = to - 1 }).all
+  end
+  local above = math.floor(math.max(vim.fn.winheight(win) - rows(first, last), 0) / 2)
+  local top = first
+  while top > 1 do
+    local height = rows(top - 1, top - 1)
+    if height > above then
+      break
+    end
+    above, top = above - height, top - 1
+  end
   api.nvim_win_call(win, function()
     vim.fn.winrestview({ topline = top, topfill = top == first and fill or 0, lnum = first, col = 0 })
   end)

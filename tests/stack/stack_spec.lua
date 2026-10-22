@@ -1008,6 +1008,33 @@ describe("stack", function()
     assert.are.same({ ft = "markdown", wrap = true, code = false, input = false, transcript = false }, out)
   end)
 
+  it("toggles wrap in the code window with <leader>uw from the prompt, and remembers the choice", function()
+    start()
+    lua([[require("anvim.layout").focus_input({ insert = false })]])
+    wait_where({ win = "input", mode = "n" }, "the prompt has the cursor")
+    local function state()
+      return lua([[
+        local f = io.open(require("anvim.prefs").path)
+        local saved = f and vim.json.decode(f:read("*a")).code_wrap
+        if f then
+          f:close()
+        end
+        return { wrap = vim.wo[require("anvim.layout").wins.code].wrap, saved = saved }
+      ]])
+    end
+    assert.are.same({ wrap = true }, state(), "wrap is on before a choice")
+    for _, on in ipairs({ false, true }) do
+      keys("<leader>uw")
+      local got
+      vim.wait(3000, function()
+        got = state()
+        return got.saved == on
+      end, 20)
+      assert.are.same({ wrap = on, saved = on }, got)
+      assert.are.same({ win = "input", mode = "n" }, where(), "<leader>uw moved the cursor")
+    end
+  end)
+
   it("turns a buffer's diagnostics off while a preview runs", function()
     start()
     local file = helpers.tmp .. "/pinned.lua"

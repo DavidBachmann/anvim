@@ -86,7 +86,7 @@ M.places = {
       { "<leader>gl", "Git log" },
       { "<leader>gf", "The file's git history" },
       { "<leader>gb", "The line's git history" },
-      { "<leader>uw", "Toggle wrap" },
+      { "<leader>uw", "Toggle wrap in the code window" },
       { "<leader>ud", "Toggle diagnostics" },
       { "<leader>uH", "Toggle Claude on the left" },
       { "<leader>ue", "Toggle explorer auto-minimize" },

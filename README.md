@@ -100,7 +100,7 @@ The screen has three columns: the explorer, code, and Claude. `<leader>uH` swaps
 
 Follow mode is a mode of its own, next to Vim's normal, insert and visual mode. The mode block at the left of the statusline reads `FOLLOW` in Claude's orange, also while you type in the prompt. In follow mode the code window has no line numbers, so the text that Claude writes never moves right when a file grows past 9 or 99 lines. In review mode the block shows Vim's mode, and the code window has the line numbers that your config sets. A `:set number` there lasts until you go back to the prompt. A picker or the key view that opens over the prompt keeps follow mode. The compose window counts as the prompt, and a pinned selection means review mode.
 
-File buffers are read-only. `:w` does nothing but say so, and format on save never runs. Claude makes every change, and buffers reload when files change on disk. Markdown and text files wrap, with no spell checking.
+File buffers are read-only. `:w` does nothing but say so, and format on save never runs. Claude makes every change, and buffers reload when files change on disk. Long lines in the code window wrap, and `<leader>uw` turns that off for code. anvim remembers the choice for the next start. Markdown and text files always wrap, with no spell checking.
 
 A `:` command line opens in a window over the code, titled "Command line", so it never looks like the prompt. Search with `/` and `?` opens there too, titled "Search". No row at the bottom of the screen is kept for them: messages show for a few seconds at the bottom right, and the statusline shows a macro recording.
 
@@ -136,7 +136,7 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 | `<leader>sh` | Help pages |
 | `<leader>gs`, `<leader>gd` | Git status, git diff by hunk |
 | `<leader>gl`, `<leader>gf`, `<leader>gb` | Git log, the file's history, the line's history |
-| `<leader>uw`, `<leader>ud` | Toggle wrap, toggle diagnostics |
+| `<leader>uw`, `<leader>ud` | Toggle wrap in the code window, toggle diagnostics |
 | `<leader>uH` | Toggle Claude on the left and the explorer on the right |
 | `<leader>ue` | Toggle explorer auto-minimize |
 | `q` | Close a help, quickfix or info window |

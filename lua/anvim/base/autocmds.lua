@@ -59,16 +59,6 @@ vim.api.nvim_create_autocmd("FileType", {
   end,
 })
 
--- Text wraps. Nothing checks spelling, since nobody can fix a typo in a
--- read-only viewer.
-vim.api.nvim_create_autocmd("FileType", {
-  group = augroup("wrap"),
-  pattern = { "text", "plaintex", "typst", "gitcommit", "markdown" },
-  callback = function()
-    vim.opt_local.wrap = true
-  end,
-})
-
 vim.api.nvim_create_autocmd("FileType", {
   group = augroup("json_conceal"),
   pattern = { "json", "jsonc", "json5" },

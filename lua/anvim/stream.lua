@@ -44,6 +44,7 @@ local FLASH_MAX = 500
 ---@field deadline number? hrtime in ms when a typed preview must have caught up, from its first tick
 ---@field group string? The cursor's color
 ---@field before string[]? The text before the preview, for the flash when a result has no patch
+---@field scrolled_back boolean? scroll_back() ran after the catch-up
 
 ---@type table<string, anvim.Preview>
 local previews = {}
@@ -208,6 +209,14 @@ local function begin_insert(p)
   run()
 end
 
+-- The code window, while it shows the preview and the user follows its agent.
+local function following(p)
+  local win = require("anvim.layout").wins.code
+  if follow.shows(p.agent) and win and api.nvim_win_is_valid(win) and api.nvim_win_get_buf(win) == p.buf then
+    return win
+  end
+end
+
 local function draw_cursor(p)
   local row, col = p.head[1], p.head[2]
   p.cursor = api.nvim_buf_set_extmark(p.buf, ns, row, col, {
@@ -216,9 +225,20 @@ local function draw_cursor(p)
     virt_text_pos = "inline",
     right_gravity = true,
   })
-  local win = require("anvim.layout").wins.code
-  if follow.shows(p.agent) and win and api.nvim_win_is_valid(win) and api.nvim_win_get_buf(win) == p.buf then
+  local win = following(p)
+  if win then
     api.nvim_win_set_cursor(win, { row + 1, col })
+  end
+end
+
+-- Without wrap, the cursor at the end of a long line scrolls the view right.
+-- Once the preview has caught up, the cursor goes to the start of its line,
+-- so the view shows the left edge of the edit until the result, which moves
+-- the cursor to column 0 too. In review mode, the view is the user's.
+local function scroll_back(p)
+  local win = following(p)
+  if win and not vim.wo[win].wrap then
+    api.nvim_win_set_cursor(win, { api.nvim_win_get_cursor(win)[1], 0 })
   end
 end
 
@@ -272,6 +292,10 @@ local function step()
     end
     if caught_up(p) then
       answer(p)
+      if not (p.dead or p.scrolled_back) then
+        p.scrolled_back = true
+        scroll_back(p)
+      end
     else
       active = active or (p.head ~= nil and p.queue ~= "")
     end

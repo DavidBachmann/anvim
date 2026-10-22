@@ -119,7 +119,15 @@ for _, client in ipairs(vim.lsp.get_clients()) do
 end
 
 -- toggles
-Snacks.toggle.option("wrap", { name = "Wrap" }):map("<leader>uw", { desc = keys.desc("global", "n", "<leader>uw") })
+Snacks.toggle({
+  name = "Wrap in the code window",
+  get = function()
+    return require("anvim.layout").wraps()
+  end,
+  set = function(state)
+    require("anvim.layout").set_wrap(state)
+  end,
+}):map("<leader>uw", { desc = keys.desc("global", "n", "<leader>uw") })
 Snacks.toggle.diagnostics():map("<leader>ud", { desc = keys.desc("global", "n", "<leader>ud") })
 Snacks.toggle({
   name = "Claude on the left",

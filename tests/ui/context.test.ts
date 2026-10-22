@@ -23,7 +23,8 @@ function highlighted(box: Box, first: number, last: number): number[] {
 }
 
 test("V2j and <C-l> pin the lines with a footer chip, and follow mode waits until <C-x> unpins", async () => {
-  anvim = await start();
+  // Without wrap, each line of the code window is one row.
+  anvim = await start({ prefs: { code_wrap: false } });
   const { ui } = anvim;
   const other = join(anvim.dir, "other.lua");
   writeFileSync(other, "local other = 1\nreturn other\n");
