@@ -1,7 +1,8 @@
 // Claude Code's own Bash sandbox: Seatbelt (sandbox-exec) on macOS and
 // bubblewrap on Linux. With it on, a Bash command can write only in the
-// project and the sandbox's temp dir, so an accidental rm outside the project
-// fails. It does not stop a hostile agent, and it does not protect the project.
+// project, the sandbox's temp dir and a few caches, so an accidental rm
+// outside the project fails. It does not stop a hostile agent, and it does not
+// protect the project.
 // As a script, `bun src/sandbox.ts` prints why the sandbox cannot start here,
 // or nothing, for :checkhealth.
 import type {
@@ -10,6 +11,7 @@ import type {
   HookInput,
   HookJSONOutput,
   Options,
+  PermissionMode,
   PermissionResult,
   PreToolUseHookInput,
 } from "@anthropic-ai/claude-agent-sdk";
@@ -62,25 +64,65 @@ export function sandboxDisabled(stderr: string): string | undefined {
   return stderr.match(/Sandbox disabled: ([^\n]+)/)?.[1]?.trim();
 }
 
-export function sandboxWarning(problem: string): string {
+// "bypass": the user chose bypass mode, so nothing asks before a command.
+// "fallback": anvim runs in default mode in place of its own default, bypass.
+export type WarningKind = "plain" | "bypass" | "fallback";
+
+export function sandboxWarning(problem: string, kind: WarningKind = "plain"): string {
+  if (kind === "bypass") {
+    return `Claude's Bash commands run without a sandbox, and in bypass mode without asking: ${problem}. Start anvim with --mode default to be asked, or --no-sandbox to hide this warning.`;
+  }
+  if (kind === "fallback") {
+    return `Claude's Bash commands run without a sandbox: ${problem}. anvim runs in default mode, so Claude asks before it runs a tool. Start anvim with --mode bypassPermissions to skip the prompts.`;
+  }
   return `Claude's Bash commands run without a sandbox: ${problem}. Start anvim with --no-sandbox to hide this warning.`;
 }
 
+export type StartMode = {
+  mode: PermissionMode;
+  // The user named the mode, with --mode, ANVIM_MODE or a spec of their own.
+  chosen: boolean;
+  // The mode is default, because anvim's own default needs the sandbox.
+  fallback?: boolean;
+};
+
+// anvim's own default is bypass mode, where only the sandbox limits a Bash
+// command. So without a sandbox, a session whose mode nobody chose starts in
+// default mode. A mode that the user chose stays.
+export function startMode(requested: string | undefined, chosen: boolean, sandboxRuns: boolean): StartMode {
+  const mode = (requested ?? "bypassPermissions") as PermissionMode;
+  if (chosen || sandboxRuns || mode !== "bypassPermissions") return { mode, chosen };
+  return { mode: "default", chosen, fallback: true };
+}
+
 // Sends one warning per start, from the pre-check or from Claude Code's line.
+// Claude Code's line comes after the start, so a session in anvim's own
+// bypass mode then falls back to default mode (`onFallback`).
 export class SandboxNotice {
   private sent = false;
 
-  constructor(private send: (text: string) => void) {}
+  constructor(
+    private send: (text: string) => void,
+    private start: StartMode = { mode: "default", chosen: true },
+    private onFallback: () => void = () => {},
+  ) {}
 
-  warn(text: string | undefined): void {
-    if (!text || this.sent) return;
+  warn(problem: string | undefined): void {
+    if (!problem || this.sent) return;
     this.sent = true;
-    this.send(text);
+    let kind: WarningKind = this.start.fallback ? "fallback" : "plain";
+    if (this.start.mode === "bypassPermissions") {
+      kind = this.start.chosen ? "bypass" : "fallback";
+      if (!this.start.chosen) {
+        this.start = { mode: "default", chosen: false, fallback: true };
+        this.onFallback();
+      }
+    }
+    this.send(sandboxWarning(problem, kind));
   }
 
   stderr(data: string): void {
-    const reason = sandboxDisabled(data);
-    if (reason) this.warn(sandboxWarning(reason));
+    this.warn(sandboxDisabled(data));
   }
 }
 
@@ -101,10 +143,19 @@ export function gitRoot(cwd: string, h: Host = host): string | undefined {
   }
 }
 
+// The caches that npm (npx too), bun install and go build write to. Without
+// them, those commands fail in the sandbox, and Claude retries them outside
+// it, which asks. Absolute paths need no ~ expansion in any settings layer,
+// and the edit guard needs no home dir to resolve them.
+export function cacheDirs(h: Host = host): string[] {
+  const go = h.platform === "darwin" ? "Library/Caches/go-build" : ".cache/go-build";
+  return [".npm", ".bun/install/cache", go].map((dir) => join(h.home, dir));
+}
+
 export type SandboxSetup = {
   options: Pick<Options, "sandbox">;
-  // A warning for the user when the sandbox cannot start.
-  warning?: string;
+  // Why the sandbox cannot start here, from the pre-check.
+  problem?: string;
 };
 
 export function sandboxSetup(on: boolean, cwd: string, h: Host = host): SandboxSetup {
@@ -122,12 +173,13 @@ export function sandboxSetup(on: boolean, cwd: string, h: Host = host): SandboxS
         failIfUnavailable: false,
         // True would run most sandboxed commands without a permission prompt.
         autoAllowBashIfSandboxed: false,
-        // Only the sandbox's writes. Claude Code's Edit and Write still ask
-        // for a path outside the cwd. The settings files' lists merge in.
-        ...(root && { filesystem: { allowWrite: [root] } }),
+        // Only the sandbox's writes. In default mode, Claude Code's Edit and
+        // Write still ask for a path outside the cwd. The settings files'
+        // lists merge in.
+        filesystem: { allowWrite: [...(root ? [root] : []), ...cacheDirs(h)] },
       },
     },
-    warning: problem ? sandboxWarning(problem) : undefined,
+    problem,
   };
 }
 

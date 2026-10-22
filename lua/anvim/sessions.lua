@@ -58,12 +58,16 @@ end
 
 ---@param opts? table Fields to add, such as resume and history.
 function M.start_command(opts)
+  if config.end_fallback() then
+    state.permission_mode = config.options.permission_mode
+  end
   return vim.tbl_extend("force", {
     type = "start",
     cwd = state.cwd,
     model = M.model or config.options.model,
     effort = M.effort(),
     permission_mode = config.options.permission_mode,
+    permission_mode_chosen = config.mode_chosen,
     sandbox = config.options.sandbox ~= false,
     append_system_prompt = config.options.append_system_prompt,
   }, opts or {})

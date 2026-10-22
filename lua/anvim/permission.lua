@@ -30,7 +30,6 @@ M.guard_ms = 400
 ---@field ev table The permission_request event.
 ---@field kind 'tool'|'question'|'plan'
 ---@field cursor integer
----@field moved boolean? j or k moved the cursor, so <CR> may choose.
 ---@field opened number? When it was first shown, in ms.
 ---@field block integer? The transcript block.
 ---@field q integer The question on screen.
@@ -57,8 +56,9 @@ local function now()
   return vim.uv.hrtime() / 1e6
 end
 
+-- Replace mode runs the prompt's insert maps too, <CR> among them.
 local function inserting()
-  return api.nvim_get_mode().mode:sub(1, 1) == "i"
+  return api.nvim_get_mode().mode:find("^[iR]") ~= nil
 end
 
 local titles = {
@@ -77,6 +77,10 @@ local function first_line(text)
   return (vim.trim(text or ""):gsub("\n.*", "..."))
 end
 
+local function in_prompt()
+  return layout.wins.input ~= nil and api.nvim_get_current_win() == layout.wins.input
+end
+
 local function questions(r)
   return r.ev.input.questions or {}
 end
@@ -84,7 +88,7 @@ end
 local answer, start_typing, show
 
 local function next_question(r)
-  r.q, r.cursor, r.picked, r.other, r.moved = r.q + 1, 1, {}, nil, false
+  r.q, r.cursor, r.picked, r.other = r.q + 1, 1, {}, nil
   if r.q > #questions(r) then
     answer(r, { behavior = "allow", answers = r.answers })
   else
@@ -108,10 +112,8 @@ local function choices(r)
     -- session started in bypass mode.
     local bypass = vim.tbl_contains(input.modes(), "bypassPermissions")
     return {
-      bypass and approve(
-        "Yes, and switch to BYPASS PERMISSIONS (no further prompts) for this session",
-        "bypassPermissions"
-      ) or approve("Yes, auto-accept edits", "acceptEdits"),
+      bypass and approve("Yes, and switch to BYPASS PERMISSIONS for this session", "bypassPermissions")
+        or approve("Yes, auto-accept edits", "acceptEdits"),
       approve("Yes, manually approve edits", "default"),
       {
         label = "No, keep planning",
@@ -333,12 +335,25 @@ local function hint(r)
       or "Type what to do instead"
     return what .. " · enter to send · esc twice to go back"
   end
-  local keys = r.ev.default_to_no and "j/k and enter" or ("1-%d or j/k and enter"):format(#choices(r))
-  return "To answer: esc, then " .. keys
+  -- The keys answer only in normal mode in the prompt, so elsewhere the hint
+  -- starts with the way there. Going to the prompt while a request waits
+  -- leaves it in normal mode (input.resume()).
+  local digits = not r.ev.default_to_no and ("1-%d"):format(#choices(r))
+  local keys = digits and digits .. " or enter" or "j/k and enter"
+  if not in_prompt() then
+    return "To answer: go to the prompt, then " .. keys
+  elseif inserting() then
+    return "To answer: esc to leave insert mode, then " .. keys
+  end
+  return "To answer: " .. (digits and digits .. ", or j/k and enter" or "j/k and enter")
 end
 
-local function in_prompt()
-  return layout.wins.input ~= nil and api.nvim_get_current_win() == layout.wins.input
+-- The hint for the request on screen, for the current window and mode. The
+-- activity line reads it each time Neovim draws the prompt's winbar, which
+-- Neovim does after a window change. A mode change marks it (ModeChanged).
+---@return string?
+function M.hint()
+  return queue[1] and hint(queue[1]) or nil
 end
 
 local function guarded(r)
@@ -370,7 +385,6 @@ end
 local function move(r, delta)
   local n = #choices(r)
   r.cursor = (r.cursor - 1 + delta) % n + 1
-  r.moved = true
   show(r)
 end
 
@@ -633,9 +647,7 @@ function M.key(key)
     if seen(r) then
       answer(r, { behavior = "deny" })
     end
-  elseif r.moved then
-    -- <CR> chooses only after j or k, so <Esc><CR> from a habit of sending
-    -- with enter does not answer.
+  else
     choose(r, r.cursor)
   end
   return true
@@ -729,6 +741,18 @@ function M.attach()
     callback = function()
       if queue[1] and api.nvim_get_current_win() == layout.wins.transcript then
         safely("reveal", transcript.reveal, true)
+      end
+    end,
+  })
+  -- The hint names other keys in insert mode. A mode change can come from a
+  -- window command, so this only marks the winbar for the next redraw.
+  api.nvim_create_autocmd("ModeChanged", {
+    group = group,
+    callback = function()
+      local text = queue[1] and hint(queue[1])
+      if text and text ~= state.waiting then
+        state.waiting = text
+        require("anvim.statusline").refresh()
       end
     end,
   })

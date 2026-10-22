@@ -7,12 +7,13 @@ M.defaults = {
   ---@type 'low'|'medium'|'high'|'xhigh'|'max'|nil Nil uses your Claude Code settings, else the model's level.
   effort = nil,
   ---@type 'default'|'acceptEdits'|'plan'|'bypassPermissions'
-  permission_mode = "default",
+  permission_mode = "bypassPermissions",
   ---@type string? A session id to resume at start, or "pick" to choose one.
   resume = nil,
   -- Resume the latest session in the working directory at start.
   continue = false,
-  -- Run Claude's Bash commands in Claude Code's sandbox: they can write only in the project and a temp dir.
+  -- Run Claude's Bash commands in Claude Code's sandbox: they can write only in the project, a temp dir and
+  -- the npm, bun and go build caches.
   sandbox = true,
   bun = "bun",
   ---@type string[]? Replaces the sidecar command, e.g. to replay a recording.
@@ -49,8 +50,50 @@ M.options = vim.deepcopy(M.defaults)
 
 M.effort_levels = { "low", "medium", "high", "xhigh", "max" }
 
+-- Whether the user named the permission mode: --mode, ANVIM_MODE or a spec
+-- of their own. Only anvim's own default falls back without a sandbox.
+M.mode_chosen = false
+local DEFAULT_REASON = "it is anvim's default, and the sandbox is on"
+-- Why the session starts in its mode, for :checkhealth.
+M.mode_reason = DEFAULT_REASON
+-- The sidecar found no sandbox at this start, and fell back to default mode.
+M.fell_back = false
+
+-- No sandbox runs, so a mode that nobody chose becomes default mode. In
+-- bypass mode, nothing would limit or ask before a Bash command.
+---@param why string
+function M.fall_back(why)
+  M.options.permission_mode = "default"
+  M.mode_reason = why
+end
+
+-- The sidecar's fallback lasts for one start. The next start asks for
+-- anvim's own default again, so the sidecar checks the sandbox again.
+---@return boolean reset Whether a fallback ended.
+function M.end_fallback()
+  if not M.fell_back then
+    return false
+  end
+  M.fell_back = false
+  M.options.permission_mode = M.defaults.permission_mode
+  M.mode_reason = DEFAULT_REASON
+  return true
+end
+
 function M.setup(opts)
   M.options = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts or {})
+  local mode = (opts or {}).permission_mode
+  M.mode_chosen = mode ~= nil and mode ~= ""
+  M.fell_back = false
+  if M.mode_chosen then
+    M.mode_reason = "you chose it"
+  else
+    M.options.permission_mode = M.defaults.permission_mode
+    M.mode_reason = DEFAULT_REASON
+    if M.options.sandbox == false then
+      M.fall_back("the sandbox is off, and no mode was chosen")
+    end
+  end
   -- bin/anvim checks --effort, but a personal spec or a stale ANVIM_EFFORT
   -- can name anything.
   local effort = M.options.effort

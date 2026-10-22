@@ -53,6 +53,34 @@ describe("health", function()
     end)
   end)
 
+  it("says the start mode and why", function()
+    local reason, chosen = config.mode_reason, config.mode_chosen
+    local ok, err = pcall(function()
+      config.mode_reason = "it is anvim's default, and the sandbox is on"
+      with({ permission_mode = "bypassPermissions", sandbox = true }, {}, function()
+        helpers.contains(
+          checkhealth(),
+          "anvim starts in bypassPermissions mode, because it is anvim's default, and the sandbox is on"
+        )
+      end)
+      config.mode_reason = "the sandbox is off, and no mode was chosen"
+      with({ permission_mode = "default", sandbox = false }, {}, function()
+        helpers.contains(
+          checkhealth(),
+          "anvim starts in default mode, because the sandbox is off, and no mode was chosen"
+        )
+      end)
+      config.mode_reason, config.mode_chosen = "you chose it", true
+      with({ permission_mode = "bypassPermissions", sandbox = false }, {}, function()
+        local out = checkhealth()
+        helpers.contains(out, "WARNING anvim starts in bypassPermissions mode, because you chose it%. Claude's Bash")
+        helpers.contains(out, "Start anvim with %-%-mode default to be asked")
+      end)
+    end)
+    config.mode_reason, config.mode_chosen = reason, chosen
+    assert(ok, err)
+  end)
+
   it("warns when the sidecar's pre-check finds the sandbox cannot start", function()
     -- A bun whose pre-check answers as on a Linux without bubblewrap.
     local bun = helpers.tmp .. "/health-bun"
@@ -69,5 +97,22 @@ describe("health", function()
       )
       helpers.contains(out, "start anvim with %-%-no%-sandbox")
     end)
+    -- Without a sandbox, anvim's own default falls back, and a chosen bypass mode warns.
+    local chosen = config.mode_chosen
+    local ok, err = pcall(function()
+      config.mode_chosen = false
+      with({ sandbox = true, bun = bun, permission_mode = "bypassPermissions" }, {}, function()
+        helpers.contains(
+          checkhealth(),
+          "anvim starts in default mode, because the sandbox cannot start, and no mode was chosen"
+        )
+      end)
+      config.mode_chosen = true
+      with({ sandbox = true, bun = bun, permission_mode = "bypassPermissions" }, {}, function()
+        helpers.contains(checkhealth(), "WARNING anvim starts in bypassPermissions mode, because .*Claude's Bash")
+      end)
+    end)
+    config.mode_chosen = chosen
+    assert(ok, err)
   end)
 end)

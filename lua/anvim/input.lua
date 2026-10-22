@@ -371,7 +371,9 @@ function M.activity()
     text, width = "%#AnvimToolError#" .. info, api.nvim_strwidth(info)
   elseif state.waiting then
     -- In a narrow column, keep the start of the hint, which says what to do.
-    local hint, room = state.waiting, win_width(vim.g.statusline_winid) - 4
+    -- The hint depends on the window that has the cursor.
+    local hint = require("anvim.permission").hint() or state.waiting
+    local room = win_width(vim.g.statusline_winid) - 4
     if api.nvim_strwidth(hint) > room then
       hint = vim.fn.strcharpart(hint, 0, math.max(room - 3, 0)) .. "..."
     end

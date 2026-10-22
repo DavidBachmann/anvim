@@ -553,9 +553,66 @@ describe("sessions", function()
     end)
   end)
 
+  it("starts in default mode without a sandbox, unless the user chose a mode", function()
+    local config = require("anvim.config")
+    local saved = { config.options, config.mode_chosen, config.mode_reason }
+    local function start(opts)
+      config.setup(opts)
+      local cmd = sessions.start_command()
+      return { cmd.permission_mode, cmd.permission_mode_chosen, cmd.sandbox }
+    end
+    local ok, err = pcall(function()
+      assert.are.same({ "bypassPermissions", false, true }, start({}))
+      -- An empty ANVIM_MODE chooses nothing.
+      assert.are.same({ "bypassPermissions", false, true }, start({ permission_mode = "" }))
+      assert.are.same({ "default", false, false }, start({ sandbox = false }))
+      assert.are.same("the sandbox is off, and no mode was chosen", config.mode_reason)
+      assert.are.same(
+        { "bypassPermissions", true, false },
+        start({ sandbox = false, permission_mode = "bypassPermissions" })
+      )
+      assert.are.same({ "acceptEdits", true, false }, start({ sandbox = false, permission_mode = "acceptEdits" }))
+      assert.are.same({ "plan", true, true }, start({ permission_mode = "plan" }))
+    end)
+    config.options, config.mode_chosen, config.mode_reason = unpack(saved)
+    assert(ok, err)
+  end)
+
+  it("takes the sidecar's fallback to default mode as the start mode, for one start", function()
+    local config = require("anvim.config")
+    local saved = {
+      config.options.permission_mode,
+      state.permission_mode,
+      config.mode_reason,
+      config.mode_chosen,
+      config.fell_back,
+    }
+    local ok, err = pcall(function()
+      config.options.permission_mode, state.permission_mode = "bypassPermissions", "bypassPermissions"
+      config.mode_chosen = false
+      require("anvim.sidecar").dispatch({ type = "start_mode", mode = "default" })
+      assert.are.same({ "default", "default" }, { config.options.permission_mode, state.permission_mode })
+      assert.are.same("the sandbox cannot start, and no mode was chosen", config.mode_reason)
+      assert.are.same({ "default", "acceptEdits", "plan" }, input.modes(), "Shift-Tab offers no bypass")
+      assert(not footer():find("manual mode", 1, true), footer())
+      -- The next start, as after :AnvimRestart or /resume, lets the sidecar check the sandbox again.
+      local cmd = sessions.start_command()
+      assert.are.same({ "bypassPermissions", false }, { cmd.permission_mode, cmd.permission_mode_chosen })
+      assert.are.same(
+        { "bypassPermissions", "bypassPermissions" },
+        { config.options.permission_mode, state.permission_mode }
+      )
+      assert.are.same("it is anvim's default, and the sandbox is on", config.mode_reason)
+      assert.is_false(config.fell_back)
+    end)
+    config.options.permission_mode, state.permission_mode, config.mode_reason, config.mode_chosen, config.fell_back =
+      unpack(saved)
+    assert(ok, err)
+  end)
+
   it("drops an effort option that is no level, with a warning", function()
     local config = require("anvim.config")
-    local options = config.options
+    local options, chosen, reason = config.options, config.mode_chosen, config.mode_reason
     local notes, unnotify = stub(vim, "notify")
     config.setup({ effort = "turbo" })
     local dropped = config.options.effort
@@ -563,7 +620,7 @@ describe("sessions", function()
     local empty = config.options.effort
     config.setup({ effort = "xhigh" })
     local kept = config.options.effort
-    config.options = options
+    config.options, config.mode_chosen, config.mode_reason = options, chosen, reason
     vim.wait(100, function()
       return #notes > 0
     end)

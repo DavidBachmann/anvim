@@ -12,7 +12,7 @@ import { contextHook, PendingContexts } from "./context";
 import { PermissionBridge } from "./permissions";
 import { PreviewBridge } from "./preview";
 import type { Command, EffortLevel, Event } from "./protocol";
-import { preToolUse, SandboxGuard, SandboxNotice, sandboxSetup } from "./sandbox";
+import { preToolUse, SandboxGuard, SandboxNotice, sandboxSetup, startMode } from "./sandbox";
 import * as sessions from "./sessions";
 import { EditorBridge, editorServer, SERVER } from "./tools";
 import { commandsEvent, modelsEvent, Translator } from "./translate";
@@ -177,13 +177,28 @@ function translate(translator: Translator, msg: SDKMessage): Event[] {
   }
 }
 
+// No sandbox runs, so anvim's own default, bypass mode, becomes default mode.
+// The plugin's start mode decides the footer's label and which modes
+// Shift-Tab and plan approval offer. Claude Code's own line comes after the
+// start, so a running session switches too. It switches at once, as
+// set_permission_mode does, so a Shift-Tab that comes later wins.
+export function fallBack(): void {
+  permissions.bypass = false;
+  emit({ type: "start_mode", mode: "default" });
+  session?.setPermissionMode("default").catch((err) => {
+    process.stderr.write(`could not fall back to default mode: ${err}\n`);
+  });
+}
+
 async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
-  const mode = (cmd.permission_mode ?? "default") as PermissionMode;
-  permissions.cwd = cmd.cwd;
-  permissions.bypass = mode === "bypassPermissions";
   // Only false turns the sandbox off, so a start without the field keeps it.
   const sandboxOn = cmd.sandbox !== false;
   const sandbox = sandboxSetup(sandboxOn, cmd.cwd);
+  const start = startMode(cmd.permission_mode, cmd.permission_mode_chosen === true, sandboxOn && !sandbox.problem);
+  const mode = start.mode;
+  permissions.cwd = cmd.cwd;
+  permissions.bypass = mode === "bypassPermissions";
+  if (start.fallback) fallBack();
   // With the sandbox off, its guards are off too. One switch has one meaning.
   const guard = sandboxOn
     ? new SandboxGuard({
@@ -193,7 +208,11 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
       })
     : undefined;
   permissions.guard = guard;
-  const notice = new SandboxNotice((text) => emit({ type: "notice", level: "warn", text }));
+  const notice = new SandboxNotice(
+    (text) => emit({ type: "notice", level: "warn", text }),
+    start,
+    fallBack,
+  );
   const options: Options = {
     ...sandbox.options,
     cwd: cmd.cwd,
@@ -218,7 +237,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     },
   };
   // After a resumed session's history, which draws the transcript again.
-  notice.warn(sandbox.warning);
+  notice.warn(sandbox.problem);
   inheriting = !cmd.effort;
   session = query({ prompt: inbox, options });
   sessionReady(session);

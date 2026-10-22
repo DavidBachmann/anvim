@@ -46,6 +46,8 @@ local function sandbox_problem()
   return true, problem ~= "" and problem or nil
 end
 
+-- Returns whether the sandbox runs, as far as the pre-check knows.
+---@return boolean
 local function sandbox()
   local ran, problem = sandbox_problem()
   if config.options.sandbox == false then
@@ -56,7 +58,7 @@ local function sandbox()
     if ran then
       health.info(problem and ("It could not start here: " .. problem) or "It could start here")
     end
-    return
+    return false
   end
   if not ran then
     health.warn("The sandbox is on, but its pre-check could not run")
@@ -66,7 +68,27 @@ local function sandbox()
       { "Install what is missing, or start anvim with --no-sandbox" }
     )
   else
-    health.ok("The sandbox is on: Claude's Bash commands can write only in the project and a temp dir")
+    health.ok(
+      "The sandbox is on: Claude's Bash commands can write only in the project, a temp dir and the npm, bun and go build caches"
+    )
+  end
+  return not problem
+end
+
+---@param runs boolean Whether the sandbox runs.
+local function start_mode(runs)
+  local mode, reason = config.options.permission_mode, config.mode_reason
+  -- The sidecar's own pre-check finds the same problem at the next start.
+  if not runs and mode == "bypassPermissions" and not config.mode_chosen then
+    mode, reason = "default", "the sandbox cannot start, and no mode was chosen"
+  end
+  local text = ("anvim starts in %s mode, because %s"):format(mode, reason)
+  if mode == "bypassPermissions" and not runs then
+    health.warn(text .. ". Claude's Bash commands run anywhere without asking.", {
+      "Start anvim with --mode default to be asked",
+    })
+  else
+    health.info(text)
   end
 end
 
@@ -136,7 +158,8 @@ function M.check()
     health.error("The Agent SDK has no Claude Code binary", { run_install })
   end
 
-  sandbox()
+  local runs = sandbox()
+  start_mode(runs)
 
   executables({
     { "git", "lazy.nvim installs the plugins with it.", error = true },

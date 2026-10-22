@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  cacheDirs,
   commandParts,
   excludedCommand,
   GUARD_TIMEOUT_S,
@@ -17,7 +18,9 @@ import {
   SandboxNotice,
   sandboxDisabled,
   sandboxProblem,
+  type StartMode,
   sandboxSetup,
+  startMode,
 } from "./sandbox";
 
 // A host with these dirs and files, and these commands on PATH.
@@ -33,10 +36,24 @@ function host(platform: NodeJS.Platform, dirs: string[] = [], cmds: string[] = [
 
 const mac = host("darwin", [], [], ["/usr/bin/sandbox-exec"]);
 const on = { enabled: true, failIfUnavailable: false, autoAllowBashIfSandboxed: false };
+const macCaches = ["/home/u/.npm", "/home/u/.bun/install/cache", "/home/u/Library/Caches/go-build"];
 
 describe("the sandbox", () => {
   test("is on with prompts for Bash, and goes on unsandboxed where it cannot start", () => {
-    expect(sandboxSetup(true, "/p", mac)).toEqual({ options: { sandbox: on }, warning: undefined });
+    expect(sandboxSetup(true, "/p", mac)).toEqual({
+      options: { sandbox: { ...on, filesystem: { allowWrite: macCaches } } },
+      problem: undefined,
+    });
+  });
+
+  test("lets npm, bun install and go build write their caches", () => {
+    expect(cacheDirs(mac)).toEqual(macCaches);
+    const linux = host("linux", [], ["bwrap", "socat"]);
+    expect(cacheDirs(linux)).toEqual(["/home/u/.npm", "/home/u/.bun/install/cache", "/home/u/.cache/go-build"]);
+    expect(sandboxSetup(true, "/p", linux).options.sandbox).toEqual({
+      ...on,
+      filesystem: { allowWrite: cacheDirs(linux) },
+    });
   });
 
   test("off is enabled false, so that no settings file turns it on", () => {
@@ -50,9 +67,64 @@ describe("the sandbox", () => {
     expect(sandboxProblem(host("linux", [], ["socat"]))).toBe("bwrap is not on PATH (install bubblewrap)");
     expect(sandboxProblem(host("linux"))).toBe("bwrap and socat are not on PATH (install bubblewrap and socat)");
     expect(sandboxProblem(host("win32"))).toBe("anvim uses the sandbox only on macOS and Linux, not on win32");
-    expect(sandboxSetup(true, "/p", host("linux", [], ["bwrap"])).warning).toBe(
-      "Claude's Bash commands run without a sandbox: socat is not on PATH (install socat). Start anvim with --no-sandbox to hide this warning.",
+    expect(sandboxSetup(true, "/p", host("linux", [], ["bwrap"])).problem).toBe(
+      "socat is not on PATH (install socat)",
     );
+  });
+
+  test("starts anvim's own bypass mode only with a sandbox, and keeps a mode that the user chose", () => {
+    const bypass = "bypassPermissions";
+    // The shipped default, with the sandbox on, off, or unable to start.
+    expect(startMode(bypass, false, true)).toEqual({ mode: bypass, chosen: false });
+    expect(startMode(bypass, false, false)).toEqual({ mode: "default", chosen: false, fallback: true });
+    expect(startMode(undefined, false, false)).toEqual({ mode: "default", chosen: false, fallback: true });
+    // A restart after a fallback starts in default mode again, with no new fallback.
+    expect(startMode("default", false, false)).toEqual({ mode: "default", chosen: false });
+    // A chosen mode stays, bypass too.
+    expect(startMode(bypass, true, false)).toEqual({ mode: bypass, chosen: true });
+    expect(startMode("acceptEdits", true, false)).toEqual({ mode: "acceptEdits", chosen: true });
+    expect(startMode("plan", true, true)).toEqual({ mode: "plan", chosen: true });
+  });
+
+  test("the warning says how each mode runs without a sandbox", () => {
+    const warn = (start: StartMode, problem = "socat is not on PATH") => {
+      const sent: string[] = [];
+      new SandboxNotice((text) => sent.push(text), start).warn(problem);
+      return sent;
+    };
+    expect(warn({ mode: "acceptEdits", chosen: true })).toEqual([
+      "Claude's Bash commands run without a sandbox: socat is not on PATH. Start anvim with --no-sandbox to hide this warning.",
+    ]);
+    expect(warn({ mode: "bypassPermissions", chosen: true })).toEqual([
+      "Claude's Bash commands run without a sandbox, and in bypass mode without asking: socat is not on PATH. Start anvim with --mode default to be asked, or --no-sandbox to hide this warning.",
+    ]);
+    // The pre-check's fallback: the session started in default mode already.
+    expect(warn(startMode("bypassPermissions", false, false))).toEqual([
+      "Claude's Bash commands run without a sandbox: socat is not on PATH. anvim runs in default mode, so Claude asks before it runs a tool. Start anvim with --mode bypassPermissions to skip the prompts.",
+    ]);
+  });
+
+  test("Claude Code's late line moves anvim's own bypass mode to default mode, once", () => {
+    const sent: string[] = [];
+    let fallbacks = 0;
+    const notice = new SandboxNotice((text) => sent.push(text), startMode("bypassPermissions", false, true), () => {
+      fallbacks++;
+    });
+    notice.stderr("Loading plugins\n");
+    expect(fallbacks).toBe(0);
+    notice.stderr("\n⚠ Sandbox disabled: WSL 1 is not supported\n");
+    notice.stderr("\n⚠ Sandbox disabled: WSL 1 is not supported\n");
+    expect(fallbacks).toBe(1);
+    expect(sent).toEqual([
+      "Claude's Bash commands run without a sandbox: WSL 1 is not supported. anvim runs in default mode, so Claude asks before it runs a tool. Start anvim with --mode bypassPermissions to skip the prompts.",
+    ]);
+    // A chosen bypass mode stays, and the warning says what that means.
+    const chosen = new SandboxNotice((text) => sent.push(text), startMode("bypassPermissions", true, true), () => {
+      fallbacks++;
+    });
+    chosen.stderr("\n⚠ Sandbox disabled: WSL 1 is not supported\n");
+    expect(fallbacks).toBe(1);
+    expect(sent.at(-1)).toStartWith("Claude's Bash commands run without a sandbox, and in bypass mode without asking:");
   });
 
   test("reads the reason from Claude Code's warning on stderr", () => {
@@ -81,7 +153,7 @@ describe("the sandbox", () => {
     expect(gitRoot("/w/repo/a/b", repo)).toBe("/w/repo");
     expect(sandboxSetup(true, "/w/repo/a", repo).options.sandbox).toEqual({
       ...on,
-      filesystem: { allowWrite: ["/w/repo"] },
+      filesystem: { allowWrite: ["/w/repo", ...macCaches] },
     });
     // The cwd is the root, or in no repo.
     expect(gitRoot("/w/repo", repo)).toBeUndefined();
@@ -371,6 +443,21 @@ describe("the edit guard", () => {
     expect(await write(g, join(repo, "README.md"))).toBeUndefined();
     // A glob entry is no trusted dir.
     expect(await write(g, join(root, "glob", "x"))).toBe(REASONS.outside(join(root, "glob", "x")));
+  });
+
+  test("trusts the caches that the sandbox may write, next to a settings file's allowWrite", async () => {
+    // getSettings() merges the flag settings' list with the settings files' lists.
+    const own = sandboxSetup(true, cwd, { ...host("darwin"), home }).options.sandbox!.filesystem!.allowWrite!;
+    const g = guard({ effective: { sandbox: { filesystem: { allowWrite: [...own, "~/cache"] } } } });
+    expect(await write(g, join(home, ".npm", "_cacache", "x"))).toBeUndefined();
+    expect(await write(g, join(home, ".bun", "install", "cache", "x"))).toBeUndefined();
+    expect(await write(g, join(home, "Library", "Caches", "go-build", "x"))).toBeUndefined();
+    expect(await write(g, join(home, "cache", "x"))).toBeUndefined();
+    // Only the caches themselves, not their neighbors.
+    expect(await write(g, join(home, ".npmrc"))).toBe(REASONS.outside("~/.npmrc"));
+    expect(await write(g, join(home, ".bun", "bin", "bun"))).toBe(REASONS.outside("~/.bun/bin/bun"));
+    // Claude Code's protected names still ask below them.
+    expect(await write(g, join(home, ".npm", ".npmrc"))).toBe(REASONS.config);
   });
 
   test("asks for the project's settings files, in the cwd and in the git root", async () => {

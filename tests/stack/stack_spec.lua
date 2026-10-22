@@ -87,7 +87,7 @@ local function spawn(dir, personal, errors)
   for key in pairs(env) do
     -- Without the cmux variables, the child posts no notifications. A shell
     -- profile can set ANVIM_MODE, ANVIM_EFFORT or ANVIM_SANDBOX, and the child
-    -- runs in the default mode, with the default effort and the sandbox.
+    -- runs in anvim's start mode, with the default effort and the sandbox.
     if
       key:match("^XDG_")
       or key:match("^LAZY_")
@@ -347,9 +347,13 @@ describe("stack", function()
     assert.are.same("haiku", lua([[return require("anvim.config").options.model]]))
   end)
 
-  it("starts in the default permission mode without ANVIM_MODE, so Claude asks before it runs a tool", function()
+  it("starts in bypass mode with the sandbox on without ANVIM_MODE, so Claude runs tools without asking", function()
     start()
-    assert.are.same("default", lua([[return require("anvim.config").options.permission_mode]]))
+    local out = lua([[
+      local options = require("anvim.config").options
+      return { mode = options.permission_mode, sandbox = options.sandbox }
+    ]])
+    assert.are.same({ mode = "bypassPermissions", sandbox = true }, out)
   end)
 
   it("starts without errors", function()
@@ -760,9 +764,9 @@ describe("stack", function()
       }
     ]])
     assert(out.winbar:find("^%d+%.%ds · %$%d+%.%d%d ─"), out.winbar)
-    -- The session started in default mode, so bypass shows. The model goes
-    -- first, to leave room for the follow status.
-    assert(out.footer:find("^ anvim   ⧉ In [%w._-]+ +◉ following  ⏵⏵ bypass permissions on $"), out.footer)
+    -- The session started in bypass mode, as the replay reports, so no mode
+    -- label shows, and the empty prompt shows the shortcuts hint.
+    assert(out.footer:find("^ anvim %a+ [%d.]+  ⧉ In [%w._-]+ +◉ following  %? for shortcuts $"), out.footer)
     assert.are.same(out.width, vim.fn.strdisplaywidth(out.footer))
     assert.are.same(3, out.height, "one prompt line, the footer and the winbar")
     lua([[vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "a", "b", "c" })]])
@@ -2588,7 +2592,8 @@ describe("stack", function()
       }
     ]])
     assert(out.code, "the request took focus")
-    assert(out.winbar:find("^⏺ To answer: esc, then 1%-2 or j/k and enter ─"), out.winbar)
+    -- The cursor is in the code window, where the choice keys do not work.
+    assert(out.winbar:find("^⏺ To answer: go to the prompt, then 1%-2 or enter ─"), out.winbar)
     local text = statusline()
     assert(text:find("⏺ Claude is waiting", 1, true), text)
     lua([[
@@ -2674,7 +2679,7 @@ describe("stack", function()
     ]])
   end)
 
-  it("takes no answer from esc and enter, the habit of sending a prompt", function()
+  it("answers esc and enter with the highlighted choice, and changes the hint with the mode", function()
     start()
     capture()
     lua([[
@@ -2686,19 +2691,19 @@ describe("stack", function()
     vim.wait(100)
     type_keys("ship it", 50)
     ask(80, "make deploy")
+    local function hint()
+      return lua([[return require("anvim.state").waiting]])
+    end
+    assert.are.same("To answer: esc to leave insert mode, then 1-2 or enter", hint())
     vim.wait(1000)
     hide_menu()
     lua([[vim.api.nvim_input("<Esc>")]])
+    wait(2000, [[return vim.api.nvim_get_mode().mode == "n"]], "esc did not leave insert mode")
+    assert.are.same("To answer: 1-2, or j/k and enter", hint())
+    assert(prompt().waiting, "esc answered")
     vim.wait(150)
     lua([[vim.api.nvim_input("<CR>")]])
-    vim.wait(300)
-    assert.are.same({}, answers(), "esc and enter answered")
-    assert(prompt().waiting, "the request is gone")
-    -- Enter chooses after j or k.
-    lua([[vim.api.nvim_input("jk")]])
-    vim.wait(100)
-    lua([[vim.api.nvim_input("<CR>")]])
-    wait(2000, [[return #_G.sent > 0]], "j, k and enter did not answer")
+    wait(2000, [[return #_G.sent > 0]], "esc and enter did not answer")
     assert.are.same({ { type = "permission_response", req = 80, behavior = "allow" } }, answers())
     release()
     lua([[

@@ -32,6 +32,9 @@ const session = {
     calls.push(["setModel", model]);
     applied.model = ids[model ?? ""] ?? model ?? "claude-opus-5-5";
   },
+  setPermissionMode: async (mode: string) => {
+    calls.push(["setPermissionMode", mode]);
+  },
   applyFlagSettings: async (settings: { effortLevel?: string | null }) => {
     calls.push(["effortLevel", settings.effortLevel]);
     applied.effort = settings.effortLevel ?? "medium";
@@ -54,16 +57,16 @@ mock.module("@anthropic-ai/claude-agent-sdk", () => ({
 }));
 // The pre-check finds nothing on this machine, so a test can ask for a
 // warning. The other tests that import ./sandbox share this mock.
-let sandboxWarning: string | undefined;
+let sandboxProblem: string | undefined;
 const realSandbox = { ...sandbox };
 mock.module("./sandbox", () => ({
   ...realSandbox,
   sandboxSetup: (...args: Parameters<typeof sandbox.sandboxSetup>) => {
     const setup = realSandbox.sandboxSetup(...args);
-    return sandboxWarning ? { ...setup, warning: sandboxWarning } : setup;
+    return sandboxProblem ? { ...setup, problem: sandboxProblem } : setup;
   },
 }));
-const { handle, settingsEffort } = await import("./main");
+const { fallBack, handle, settingsEffort } = await import("./main");
 
 // The events that the sidecar writes while fn runs.
 async function emitted(fn: () => Promise<unknown>, until: (events: any[]) => boolean): Promise<any[]> {
@@ -86,7 +89,7 @@ const efforts = (events: any[]) => events.filter((e) => e.type === "effort").map
 
 describe("the sidecar's session", () => {
   test("model and effort changes wait for a resumed session, and then run in order", async () => {
-    sandboxWarning = "the sandbox cannot start";
+    sandboxProblem = "the sandbox cannot start";
     const events = await emitted(
       async () => {
         await handle({ type: "start", cwd: "/tmp", model: "haiku", resume: "s1", history: true, sandbox: false });
@@ -99,12 +102,19 @@ describe("the sidecar's session", () => {
         started[0]!.stderr!("\n⚠ Sandbox disabled: no bwrap\n");
       },
       (evs) => evs.some((e) => e.type === "models"),
-    ).finally(() => (sandboxWarning = undefined));
+    ).finally(() => (sandboxProblem = undefined));
     expect(started.map((o) => [o.model, o.effort, o.resume])).toEqual([["haiku", undefined, "s1"]]);
     expect(started[0]!.sandbox).toEqual({ enabled: false });
     // The history draws the transcript again, so the warning comes after it.
     const order = events.filter((e) => e.type === "history" || e.type === "notice").map((e) => e.text ?? e.type);
-    expect(order).toEqual(["history", "the sandbox cannot start"]);
+    expect(order).toEqual([
+      "history",
+      "Claude's Bash commands run without a sandbox: the sandbox cannot start. anvim runs in default mode, so Claude asks before it runs a tool. Start anvim with --mode bypassPermissions to skip the prompts.",
+    ]);
+    // Nobody chose a mode, and no sandbox runs, so the session starts in
+    // default mode. The late line switches nothing more.
+    expect([started[0]!.permissionMode, started[0]!.allowDangerouslySkipPermissions]).toEqual(["default", false]);
+    expect(events.filter((e) => e.type === "start_mode")).toEqual([{ type: "start_mode", mode: "default" }]);
     expect(calls).toEqual([
       ["setModel", "sonnet"],
       ["effortLevel", "low"],
@@ -153,6 +163,22 @@ describe("the sidecar's session", () => {
       ["setModel", "opus"],
     ]);
     expect(efforts(events)).toEqual(["low", "xhigh", "medium", "high", "high"]);
+  });
+
+  test("a late fallback switches the running session at once, so a later Shift-Tab wins", async () => {
+    calls.length = 0;
+    const events = await emitted(
+      async () => {
+        fallBack();
+        await handle({ type: "set_permission_mode", mode: "acceptEdits" });
+      },
+      (evs) => evs.some((e) => e.type === "start_mode"),
+    );
+    expect(events.filter((e) => e.type === "start_mode")).toEqual([{ type: "start_mode", mode: "default" }]);
+    expect(calls).toEqual([
+      ["setPermissionMode", "default"],
+      ["setPermissionMode", "acceptEdits"],
+    ]);
   });
 
   test("the settings' effort for a model comes from the highest file that names one", () => {

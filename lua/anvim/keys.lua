@@ -213,7 +213,7 @@ M.places = {
       { { "1", "2", "3", "4", "5", "6", "7", "8", "9" }, "Choose that option", label = "1-9" },
       { { "j", "<Down>" }, "Next choice", row = "Next and previous choice" },
       { { "k", "<Up>" }, "Previous choice", row = "Next and previous choice" },
-      { "<CR>", "Choose, after j or k", static = true },
+      { "<CR>", "Choose the highlighted option", static = true },
       { "<Esc>", "No", static = true },
     },
   },

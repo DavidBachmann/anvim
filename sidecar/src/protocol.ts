@@ -30,6 +30,9 @@ export type Command =
       model?: string;
       effort?: EffortLevel;
       permission_mode?: string;
+      // The user named the mode. Without a sandbox, a mode that nobody chose
+      // becomes default mode (startMode() in sandbox.ts).
+      permission_mode_chosen?: boolean;
       // Claude Code's Bash sandbox (sandbox.ts). False turns it off, also
       // over the settings files.
       sandbox: boolean;
@@ -203,6 +206,9 @@ export type Event =
     }
   | { type: "status"; status: string | null; permission_mode?: string }
   | { type: "notice"; level: "info" | "warn" | "error"; text: string }
+  // The session starts in, or fell back to, this mode in place of the start
+  // command's, because no sandbox runs.
+  | { type: "start_mode"; mode: string }
   // A slash command's own output, such as the text of /cost.
   | { type: "output"; text: string }
   // /clear dropped the conversation. The init that follows has the new session id.

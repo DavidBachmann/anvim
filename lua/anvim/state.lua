@@ -5,7 +5,7 @@ local M = {
   -- The effort level that the session uses, as Claude Code reports it. Nil for
   -- a model without effort, and until the sidecar reports it.
   effort = nil, ---@type string?
-  permission_mode = "default",
+  permission_mode = "bypassPermissions",
   cwd = vim.fn.getcwd(),
   branch = nil, ---@type string?
   busy = false,

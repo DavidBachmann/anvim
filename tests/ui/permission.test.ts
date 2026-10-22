@@ -71,27 +71,72 @@ test("a replayed request: prose, digits and enter typed in insert mode never ans
   expect(await promptText()).toBe(prose);
 });
 
-test("esc, a pause and enter never answer, the habit of sending a prompt; j, k and enter do", async () => {
+test("the hint follows the mode, and esc, a pause and enter choose the highlighted choice", async () => {
   anvim = await start();
   const { ui } = anvim;
   await anvim.capture();
+  await anvim.insert();
   await anvim.type("ship it");
   await ask(80, "make deploy");
   await ui.waitFor("Do you want to proceed?");
+  await ui.waitFor("To answer: esc to leave insert mode, then 1-2 or enter");
   await Bun.sleep(1000);
   await hideMenu();
   await ui.input("<Esc>");
+  await ui.waitFor("To answer: 1-2, or j/k and enter");
+  expect(ui.screen()).not.toContain("esc to leave insert mode");
+  await anvim.waitWhere("input", "n");
   await Bun.sleep(150);
-  await ui.input("<CR>");
-  await ui.drain();
-  expect(await anvim.answers()).toEqual([]);
-  expect(ui.screen()).toContain("Do you want to proceed?");
-  await ui.input("jk");
-  await ui.drain();
   await ui.input("<CR>");
   await ui.waitFor(async () => (await anvim!.answers()).length > 0);
   expect(await anvim.answers()).toEqual(allow(80));
   await ui.waitFor(() => !ui.screen().includes("Do you want to proceed?"));
+});
+
+test("the hint says to go to the prompt while the cursor is elsewhere", async () => {
+  anvim = await start();
+  const { ui } = anvim;
+  const here = "To answer: 1-2, or j/k and enter";
+  const away = "To answer: go to the prompt, then 1-2 or enter";
+  await ask(82, "make deploy");
+  await ui.waitFor(here);
+  await ui.input("<C-w>h");
+  await anvim.waitWhere("code", "n");
+  await ui.waitFor(away);
+  await ui.input("<C-l>");
+  await anvim.waitWhere("input", "n");
+  await ui.waitFor(here);
+  // The key view covers the activity line, and it closes with window hops
+  // that fire no autocmds.
+  await ui.input("<Space>?");
+  await anvim.waitWhere("anvim_keys", "n");
+  expect(await ui.exec_lua<string>(`return require("anvim.permission").hint()`)).toBe(away);
+  await ui.input("q");
+  await anvim.waitWhere("input", "n");
+  await ui.waitFor(here);
+  await ui.input("<C-g>");
+  await ui.waitFor(async () => (await ui.exec_lua<boolean>(`return require("anvim.compose").win() ~= nil`)) === true);
+  await ui.waitFor(away);
+  await ui.input("<C-g>");
+  await anvim.waitWhere("input", "n");
+  await ui.waitFor(here);
+});
+
+test("j, a pause and enter choose the next choice", async () => {
+  anvim = await start();
+  const { ui } = anvim;
+  await anvim.capture();
+  await ask(81, "make deploy");
+  await ui.waitFor("Do you want to proceed?");
+  await anvim.waitWhere("input", "n");
+  await Bun.sleep(800);
+  await ui.input("j");
+  await ui.waitFor("❯ 2. No");
+  await ui.input("<CR>");
+  // No means typing what to do instead.
+  await ui.waitFor("Type what to do instead");
+  await anvim.waitWhere("input", "i");
+  expect(await anvim.answers()).toEqual([]);
 });
 
 test("enter held down in insert mode never answers", async () => {
