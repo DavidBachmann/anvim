@@ -237,7 +237,7 @@ local function append_item(lines, last)
       row = 0
       api.nvim_buf_set_lines(buf, 0, -1, false, lines)
     elseif stop == 0 then
-      -- The todo list is the only item.
+      -- The todo list is the first item.
       row = 0
       api.nvim_buf_set_lines(buf, 0, 0, false, vim.list_extend(vim.list_slice(lines), { "" }))
     else
@@ -1014,7 +1014,9 @@ function M.block(lines, marks, opts)
   text_open = false
   local quiet = opts and opts.quiet
   local row = append_item(lines, not quiet)
-  local id = api.nvim_buf_set_extmark(M.buf(), ns, row, 0, { right_gravity = false })
+  -- Lines that go in on the mark's row push it down, as when an item goes
+  -- above a todo list that came first.
+  local id = api.nvim_buf_set_extmark(M.buf(), ns, row, 0, {})
   blocks[id] = { buf = M.buf(), count = #lines }
   for _, m in ipairs(marks or {}) do
     hl(row + m[1], m[2], m[3], m[4])
@@ -1038,6 +1040,9 @@ function M.set_block(id, lines, marks, opts)
   with_modifiable(function(buf)
     api.nvim_buf_set_lines(buf, row, row + blocks[id].count, false, lines)
   end)
+  -- The new lines push the mark down too, so it goes back to the block's
+  -- first row.
+  api.nvim_buf_set_extmark(M.buf(), ns, row, 0, { id = id })
   blocks[id].count = #lines
   for _, m in ipairs(marks or {}) do
     hl(row + m[1], m[2], m[3], m[4])

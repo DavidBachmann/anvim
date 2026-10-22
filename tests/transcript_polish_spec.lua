@@ -476,6 +476,77 @@ describe("item times", function()
     transcript.user("New prompt")
     assert.are.same({ row_of("❯ New prompt"), "09:05:07" }, times()[5])
   end)
+
+  -- The todo list can be the first item, as when Claude writes it before
+  -- anything else. The next item then goes in on the list's first row.
+  local firsts = {
+    {
+      "text block",
+      function()
+        transcript.text_delta("I will look.")
+        transcript.text_delta("\nDone.")
+        transcript.text_stop()
+      end,
+      { "⏺ I will look.", "  Done." },
+    },
+    {
+      "tool call",
+      function()
+        local tid = id()
+        transcript.tool_start(tid, "Bash")
+        transcript.tool_use({ id = tid, name = "Bash", input = { command = "ls" } })
+        transcript.tool_result({ id = tid, is_error = false, text = "a.lua" })
+      end,
+      { "⏺ Bash(ls)", "  ⎿  a.lua" },
+    },
+    {
+      "prompt",
+      function()
+        transcript.user("Go on")
+      end,
+      { "❯ Go on" },
+    },
+    {
+      "notice",
+      function()
+        transcript.notice("info", "Conversation compacted")
+      end,
+      { "✻ Conversation compacted" },
+    },
+  }
+  for _, first in ipairs(firsts) do
+    for _, ask in ipairs({ false, true }) do
+      local name = ("keeps a todo list that came first at the end, after a %s%s"):format(
+        first[1],
+        ask and " and before a request" or ""
+      )
+      it(name, function()
+        todos({ item("Read the file", "in_progress"), item("Fix the bug", "pending") })
+        local block = ask and transcript.block({ "  Do you want to proceed?", "  ❯ 1. Yes" }, {})
+        first[2]()
+        todos({ item("Read the file", "completed"), item("Fix the bug", "in_progress") })
+        local want = vim.list_extend(vim.list_slice(first[3]), {
+          "",
+          "⏺ Todos · 1 of 2 done",
+          "  ⎿  ☒ Read the file",
+          "     ☐ Fix the bug",
+        })
+        if block then
+          local all = buf_lines(transcript.buf())
+          assert.are.same({ "", "  Do you want to proceed?", "  ❯ 1. Yes" }, vim.list_slice(all, #all - 2))
+          transcript.remove_block(block)
+        end
+        assert.are.same(want, buf_lines(transcript.buf()))
+        assert(vim.tbl_contains(groups_at(row_of("  ⎿  ☒ Read the file")), "AnvimTodoDone"))
+        assert.are.same({ { 0, "09:05:07" } }, times())
+        local ns_text = api.nvim_get_namespaces()["anvim.transcript.text"]
+        local text_marks = vim.tbl_map(function(m)
+          return { m[2], m[3] }
+        end, api.nvim_buf_get_extmarks(transcript.buf(), ns_text, 0, -1, {}))
+        assert.are.same(first[1] == "text block" and { { 0, #"⏺ " }, { 1, #"  Done." } } or {}, text_marks)
+      end)
+    end
+  end
 end)
 
 describe("durations", function()
