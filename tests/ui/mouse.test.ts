@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { type Anvim, type Box, cells, cursorIn, inBox, start } from "./helpers.ts";
+import { type Anvim, type Box, cells, cursorIn, inBox, quiet, start } from "./helpers.ts";
 
 let anvim: Anvim | undefined;
 afterEach(async () => {
@@ -308,4 +308,58 @@ test("a mouse drag in the transcript selects the dragged lines, at its top and n
     return still;
   });
   await drag(transcript.height - 6);
+});
+
+test("the wheel and the scroll keys stop where the last row of the transcript is at the bottom, with no frame past it", async () => {
+  anvim = await start();
+  const { ui } = anvim;
+  await anvim.notices(60, "transcript line");
+  await ui.waitFor("transcript line 60");
+  const transcript = await anvim.box("transcript");
+  // The row of the last line, from the top of the transcript, or -1.
+  const lastRow = (lines: string[]) =>
+    lines
+      .slice(transcript.row, transcript.row + transcript.height)
+      .findIndex((l) => cells(l, transcript.col, transcript.width).includes("transcript line 60"));
+  // New output keeps the view at the end, where the last line is as low as it goes.
+  const end = lastRow(ui.lines());
+  expect(end).toBeGreaterThan(0);
+  const past = (from: number) => ui.frames(from).filter((f) => {
+    const row = lastRow(f.lines);
+    return row >= 0 && row < end;
+  }).length;
+  const atEnd = async () => {
+    await ui.drain();
+    await quiet(ui);
+    return lastRow(ui.lines()) === end;
+  };
+  const at = { row: transcript.row + 5, col: transcript.col + 5 };
+
+  // snacks.scroll is on, and leaves the transcript alone.
+  expect(
+    await ui.exec_lua(`return { Snacks.scroll.enabled, vim.b[require("anvim.transcript").buf()].snacks_scroll }`),
+  ).toEqual([true, false]);
+
+  for (const mode of ["n", "i"]) {
+    if (mode === "i") await anvim.insert();
+    const mark = ui.mark();
+    for (let i = 0; i < 5; i++) {
+      await ui.inputMouse("wheel", "down", at.row, at.col);
+      await Bun.sleep(30);
+    }
+    expect(await atEnd(), `wheel in mode ${mode}`).toBe(true);
+    expect(past(mark), `wheel in mode ${mode}`).toBe(0);
+  }
+
+  await ui.input("<Esc>");
+  await anvim.waitWhere("input", "n");
+  for (let i = 0; i < 4; i++) await ui.inputMouse("wheel", "up", at.row, at.col);
+  await ui.waitFor(() => lastRow(ui.lines()) === -1);
+  const mark = ui.mark();
+  for (let i = 0; i < 4; i++) {
+    await ui.input("<C-f>");
+    await Bun.sleep(30);
+  }
+  expect(await atEnd(), "<C-f>").toBe(true);
+  expect(past(mark), "<C-f>").toBe(0);
 });

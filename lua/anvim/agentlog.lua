@@ -194,6 +194,7 @@ local named = {}
 local function new_log(id)
   local buf = api.nvim_create_buf(false, true)
   vim.b[buf].anvim_agentlog = id
+  require("anvim.windows").stop_at_end(buf)
   local name = "anvim://agent/" .. id
   local old = named[name]
   if old and api.nvim_buf_is_valid(old) and not api.nvim_buf_is_loaded(old) then

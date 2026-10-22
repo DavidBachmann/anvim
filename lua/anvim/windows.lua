@@ -186,6 +186,39 @@ function M.drag()
   end
 end
 
+-- The windows of such a buffer, such as the transcript, stop scrolling at its
+-- end, as a chat does. snacks.scroll animates toward the view that its own
+-- WinScrolled handler sees, which is past the end if it runs before ours, so
+-- it leaves these buffers alone.
+function M.stop_at_end(buf)
+  vim.b[buf].anvim_stop_at_end = true
+  vim.b[buf].snacks_scroll = false
+end
+
+-- Neovim scrolls a window until its last line is at the top. Past the end,
+-- the view goes back to where the last row is at the bottom row, or the
+-- whole text shows from line 1. The view only moves back toward line 1, so
+-- the cursor stays in view.
+function M.clamp(win)
+  local rows = vim.fn.winheight(win)
+  local view = api.nvim_win_call(win, vim.fn.winsaveview)
+  local opts = { start_row = view.topline - 1, start_vcol = view.skipcol, max_height = rows }
+  if view.topfill + api.nvim_win_text_height(win, opts).all >= rows then
+    return
+  end
+  -- The first line from which the rest fits.
+  local top = api.nvim_buf_line_count(api.nvim_win_get_buf(win))
+  while top > 1 and api.nvim_win_text_height(win, { start_row = top - 2 }).all <= rows do
+    top = top - 1
+  end
+  local fill = api.nvim_win_text_height(win, { start_row = top - 1, end_row = top - 1, end_vcol = 0 }).fill
+  if view.topline ~= top or view.topfill ~= fill or view.skipcol ~= 0 then
+    api.nvim_win_call(win, function()
+      vim.fn.winrestview({ topline = top, topfill = fill, skipcol = 0 })
+    end)
+  end
+end
+
 function M.scroll(key)
   local win = wins.transcript
   if valid(win) then
@@ -302,6 +335,20 @@ end
 
 function M.setup()
   local group = api.nvim_create_augroup("anvim.windows", {})
+  -- WinScrolled comes before the redraw, in normal and in insert mode, so no
+  -- frame shows a view past the end. It names every window that scrolled,
+  -- such as the transcript under the wheel while the prompt has the cursor.
+  api.nvim_create_autocmd("WinScrolled", {
+    group = group,
+    callback = function()
+      for id in pairs(vim.v.event) do
+        local win = tonumber(id)
+        if win and api.nvim_win_is_valid(win) and vim.b[api.nvim_win_get_buf(win)].anvim_stop_at_end then
+          M.clamp(win)
+        end
+      end
+    end,
+  })
   api.nvim_create_autocmd({ "BufWinEnter", "BufEnter", "TabEnter" }, { group = group, callback = mark })
   api.nvim_create_autocmd("WinNewPre", {
     group = group,

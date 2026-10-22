@@ -405,3 +405,127 @@ describe("windows", function()
     layout.focus_input()
   end)
 end)
+
+describe("the transcript's view", function()
+  -- WinScrolled does not fire under nvim -l, so the spec caps the view after
+  -- each scroll, as the handler does.
+  local function scroll(key)
+    windows.scroll(key)
+    windows.clamp(layout.wins.transcript)
+  end
+
+  local function top()
+    return vim.fn.line("w0", layout.wins.transcript)
+  end
+
+  -- The top line when the last line is at the bottom row, as Neovim puts it
+  -- with zb.
+  local function bottom()
+    return api.nvim_win_call(layout.wins.transcript, function()
+      local view = vim.fn.winsaveview()
+      vim.cmd("normal! Gzb")
+      local line = vim.fn.line("w0")
+      vim.fn.winrestview(view)
+      return line
+    end)
+  end
+
+  -- Lines that wrap to several rows, and short ones between them.
+  local function fill(n)
+    transcript.clear()
+    for i = 1, n do
+      transcript.notice("warn", ("word "):rep(i % 3 == 0 and 60 or 1) .. i)
+    end
+  end
+
+  before_each(function()
+    helpers.start()
+    layout.focus_input({ insert = false })
+  end)
+
+  after_each(function()
+    layout.focus_input({ insert = false })
+    transcript.clear()
+  end)
+
+  it("stops <C-f>, <PageDown> and <C-e> where the last row is at the bottom, with wrapped lines", function()
+    fill(60)
+    local want = bottom()
+    assert(want > 1, "the text is taller than the window")
+    for _, key in ipairs({ "<C-f>", "<PageDown>" }) do
+      for _ = 1, 10 do
+        scroll("<C-b>")
+      end
+      assert(top() < want, key)
+      for _ = 1, 10 do
+        scroll(key)
+      end
+      assert.are.same(want, top(), key)
+    end
+    -- In read mode, with the cursor on the last line.
+    windows.read()
+    vim.cmd("normal! G")
+    local last = api.nvim_buf_line_count(transcript.buf())
+    for _ = 1, 5 do
+      vim.cmd.normal({ vim.keycode("<C-e>"), bang = true })
+      windows.clamp(layout.wins.transcript)
+    end
+    assert.are.same(want, top(), "<C-e>")
+    assert.are.same(last, api.nvim_win_get_cursor(0)[1], "the cursor stays on the last line")
+  end)
+
+  it("keeps a text shorter than the window at its first line", function()
+    fill(3)
+    for _, key in ipairs({ "<C-f>", "<PageDown>", "<C-d>" }) do
+      scroll(key)
+      assert.are.same(1, top(), key)
+    end
+    api.nvim_win_call(layout.wins.transcript, function()
+      vim.cmd.normal({ vim.keycode("20<C-e>"), bang = true })
+    end)
+    assert.are.same(api.nvim_buf_line_count(transcript.buf()), top(), "Neovim scrolls the last line to the top")
+    windows.clamp(layout.wins.transcript)
+    assert.are.same(1, top())
+  end)
+
+  it("follows new output at the end, leaves a view that the user scrolled up, and keeps no empty rows", function()
+    fill(60)
+    transcript.notice("warn", "more")
+    assert.are.same(bottom(), top(), "new output follows the end")
+    for _ = 1, 3 do
+      scroll("<C-u>")
+    end
+    local up = top()
+    assert(up < bottom())
+    transcript.notice("warn", "more")
+    assert.are.same(up, top(), "new output leaves a view that the user scrolled up")
+    for _ = 1, 20 do
+      scroll("<C-d>")
+    end
+    local lines = {}
+    for i = 1, 12 do
+      lines[i] = "  choice " .. i
+    end
+    local id = transcript.block(lines)
+    assert.are.same(bottom(), top(), "the block shows at the bottom")
+    transcript.remove_block(id)
+    assert.are.same(bottom(), top(), "no empty rows where the block was")
+
+    -- A view that hides the block's last line does not follow new output, but
+    -- the block's lines still go from under it. More one-row lines than the
+    -- window has rows end the text, so the view can fill.
+    for _ = 1, 20 do
+      transcript.notice("warn", "more")
+    end
+    id = transcript.block(lines)
+    api.nvim_win_call(layout.wins.transcript, function()
+      vim.cmd.normal({ vim.keycode("<C-y>"), bang = true })
+    end)
+    local win = layout.wins.transcript
+    assert(vim.fn.line("w$", win) < api.nvim_buf_line_count(transcript.buf()), "the view hides the block's end")
+    transcript.remove_block(id)
+    local rows = api.nvim_win_text_height(win, { start_row = top() - 1 }).all
+    assert.are.same(api.nvim_win_get_height(win), rows, "no empty rows after a block went from under the view")
+    assert.are.same(bottom(), top())
+  end)
+end)

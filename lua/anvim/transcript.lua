@@ -87,6 +87,7 @@ function M.buf()
   bufnr = api.nvim_create_buf(false, true)
   texts = {}
   vim.b[bufnr].anvim_transcript = true
+  require("anvim.windows").stop_at_end(bufnr)
   api.nvim_buf_set_name(bufnr, "anvim://transcript")
   vim.treesitter.language.register("markdown", "anvim_transcript")
   vim.bo[bufnr].filetype = "anvim_transcript"
@@ -191,6 +192,11 @@ local function with_modifiable(fn)
   vim.bo[buf].modifiable = false
   if tail then
     scroll(tail)
+  end
+  -- Lines that go from the end, such as an answered request's, do not scroll
+  -- a window, so no WinScrolled fires.
+  for _, win in ipairs(vim.fn.win_findbuf(buf)) do
+    require("anvim.windows").clamp(win)
   end
   if not regions_pending then
     regions_pending = true
