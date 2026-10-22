@@ -27,6 +27,26 @@ local stopped_tick
 local follows = false
 local spinner_frames = { "·", "✢", "✳", "✶", "✻", "✽", "✻", "✶", "✳", "✢" }
 
+-- <Esc> in normal mode in the prompt stops Claude or answers a request only on
+-- a second press. The first press arms it. The second acts when it comes after
+-- the pause and before the time limit. A press inside the pause starts the
+-- pause again, so a burst of presses never acts.
+M.esc_pause_ms = 400
+M.esc_limit_ms = 3000
+
+---@class anvim.EscAction
+---@field id any What the second press acts on: "stop", or a request.
+---@field text string What the activity line says while armed.
+---@field run fun()
+---@field changed fun()? Runs when it arms and when it disarms.
+
+-- `keys` counts the typed keys since the last press, that press excluded.
+---@type { action: anvim.EscAction, at: number, keys: integer }?
+local armed
+local esc_ns = api.nvim_create_namespace("anvim.input.esc")
+---@type uv.uv_timer_t?
+local esc_timer
+
 -- Each label, its highlight, and a short form for a narrow column.
 local mode_labels = {
   default = { "⏵ manual mode on", "AnvimModeManual", "⏵ manual" },
@@ -54,14 +74,6 @@ function M.buf()
   local map = function(modes, lhs, rhs, opts)
     keys.set("prompt", modes, lhs, rhs, vim.tbl_extend("force", { buffer = bufnr }, opts or {}))
   end
-  -- While a permission prompt waits, these keys answer it.
-  local or_answer = function(key, fn)
-    return function()
-      if not require("anvim.permission").key(key) then
-        fn()
-      end
-    end
-  end
   map("n", "<CR>", M.enter)
   -- With the completion menu open, <CR> takes its highlighted item. A slash
   -- command that needs no argument then goes out, as in Claude Code. A menu
@@ -80,7 +92,7 @@ function M.buf()
   end
   map("i", "<S-CR>", newline, { expr = true })
   map("i", "<M-CR>", newline, { expr = true })
-  map("n", "<Esc>", or_answer("<Esc>", M.interrupt))
+  map("n", "<Esc>", M.escape, { nowait = true })
   map({ "i", "n" }, "<C-c>", M.interrupt)
   map({ "i", "n" }, "<S-Tab>", M.cycle_mode)
   map({ "i", "n" }, "<C-x>", function()
@@ -125,6 +137,7 @@ function M.buf()
       if api.nvim_get_mode().mode:sub(1, 1) == "i" then
         stopped, stopped_tick = api.nvim_win_get_cursor(0), vim.b[bufnr].changedtick
       end
+      M.disarm()
     end,
   })
   api.nvim_create_autocmd("InsertEnter", {
@@ -247,7 +260,7 @@ end
 
 -- <CR> answers a waiting permission request, or sends the prompt.
 function M.enter()
-  if not require("anvim.permission").key("<CR>") then
+  if not require("anvim.permission").key() then
     M.submit()
   end
 end
@@ -284,6 +297,100 @@ function M.interrupt()
   end
 end
 
+-- The action that a second <Esc> takes, while armed.
+---@return anvim.EscAction?
+function M.armed()
+  return armed and armed.action
+end
+
+-- Another key, leaving the prompt, the end of the time limit, a change of the
+-- busy state and a request that opens, closes or changes disarm it. So the
+-- second press always does what the activity line said. This marks the winbar
+-- for the next redraw and draws nothing now, so window events can call it.
+function M.disarm()
+  local was = armed
+  if not was then
+    return
+  end
+  armed = nil
+  vim.on_key(nil, esc_ns)
+  if esc_timer then
+    esc_timer:stop()
+  end
+  if was.action.changed then
+    was.action.changed()
+  end
+  require("anvim.statusline").refresh()
+end
+
+local function start_limit()
+  local a = assert(armed)
+  esc_timer = esc_timer or assert(vim.uv.new_timer())
+  esc_timer:start(
+    M.esc_limit_ms,
+    0,
+    vim.schedule_wrap(function()
+      if armed == a then
+        M.disarm()
+      end
+    end)
+  )
+end
+
+local function ms()
+  return vim.uv.hrtime() / 1e6
+end
+
+-- <Esc> in normal mode: a waiting request gets its answer, and otherwise a
+-- busy Claude stops, but only on a second press (see M.esc_pause_ms).
+function M.escape()
+  -- The map hides the global <Esc>, which clears the search highlight.
+  vim.cmd.nohlsearch()
+  local action = require("anvim.permission").escape()
+  if action == true then
+    M.disarm()
+    return
+  end
+  if not action then
+    if not state.busy then
+      M.disarm()
+      return
+    end
+    action = { id = "stop", text = "esc again to stop Claude", run = M.interrupt }
+  end
+  local now, a = ms(), armed
+  -- Keys fed without the typed flag count for nothing, so `keys` can be 0.
+  if a and a.action.id == action.id and a.keys <= 1 and now - a.at <= M.esc_limit_ms then
+    if now - a.at >= M.esc_pause_ms then
+      M.disarm()
+      action.run()
+    else
+      a.at, a.keys = now, 0
+      start_limit()
+    end
+    return
+  end
+  M.disarm()
+  armed = { action = action, at = now, keys = 0 }
+  vim.on_key(function(_, typed)
+    -- Keys from :normal, such as the steps of snacks.scroll, have no typed form.
+    if typed ~= "" and armed then
+      armed.keys = armed.keys + 1
+      -- A press of <Esc> resets the count before this runs.
+      vim.schedule(function()
+        if armed and armed.keys > 0 then
+          M.disarm()
+        end
+      end)
+    end
+  end, esc_ns)
+  start_limit()
+  if action.changed then
+    action.changed()
+  end
+  require("anvim.statusline").refresh()
+end
+
 function M.modes()
   local modes = { "default", "acceptEdits", "plan" }
   if config.options.permission_mode == "bypassPermissions" then
@@ -314,6 +421,7 @@ function M.redraw()
 end
 
 function M.set_busy(busy)
+  M.disarm()
   state.busy = busy
   if busy then
     state.turn_started = vim.uv.now()
@@ -363,26 +471,34 @@ local function working()
   return verb, math.floor((vim.uv.now() - state.turn_started) / 1000)
 end
 
+-- In a narrow column, keep the start of a text, which says what to do.
+-- `spare` columns stay for the rest of the line.
+local function fit(text, spare)
+  local room = win_width(vim.g.statusline_winid) - spare
+  if api.nvim_strwidth(text) > room then
+    return vim.trim(vim.fn.strcharpart(text, 0, math.max(room - 3, 0))) .. "..."
+  end
+  return text
+end
+
 -- The line between transcript and prompt: a rule, with the spinner while Claude works.
 function M.activity()
   local text, width = "", 0
   if state.process == "exited" then
     local info = "sidecar exited · :AnvimRestart "
     text, width = "%#AnvimToolError#" .. info, api.nvim_strwidth(info)
+  elseif armed then
+    local say = fit(armed.action.text, 1) .. " "
+    text, width = "%#AnvimDanger#" .. say:gsub("%%", "%%%%"), api.nvim_strwidth(say)
   elseif state.waiting then
-    -- In a narrow column, keep the start of the hint, which says what to do.
     -- The hint depends on the window that has the cursor.
-    local hint = require("anvim.permission").hint() or state.waiting
-    local room = win_width(vim.g.statusline_winid) - 4
-    if api.nvim_strwidth(hint) > room then
-      hint = vim.fn.strcharpart(hint, 0, math.max(room - 3, 0)) .. "..."
-    end
+    local hint = fit(require("anvim.permission").hint() or state.waiting, 4)
     text = ("%%#AnvimClaude#⏺ %s "):format((hint:gsub("%%", "%%%%")))
     width = api.nvim_strwidth("⏺ " .. hint .. " ")
   elseif state.busy and state.turn_started then
     local frame = spinner_frames[math.floor(vim.uv.now() / 120) % #spinner_frames + 1]
     local verb, secs = working()
-    local hint = ("(%ds · esc to interrupt)"):format(secs)
+    local hint = ("(%ds · esc twice to stop)"):format(secs)
     text = ("%%#AnvimClaude#%s %s %%#Comment#%s "):format(frame, (verb:gsub("%%", "%%%%")), hint)
     width = vim.fn.strdisplaywidth(("%s %s %s "):format(frame, verb, hint))
   elseif state.last_turn or state.context then

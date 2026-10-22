@@ -34,6 +34,8 @@ local highlights = {
   AnvimTodoActive = { bold = true },
   AnvimAsk = { link = "Title" },
   AnvimChoice = { link = "Special" },
+  -- What a second <Esc> in the prompt does: the activity line's text, and the choice.
+  AnvimDanger = { link = "DiagnosticError" },
   AnvimShow = { link = "Visual" },
   AnvimNote = { link = "DiagnosticInfo" },
   AnvimSelection = { link = "Visual" },
@@ -165,7 +167,7 @@ function M.setup(opts)
   windows.setup()
   require("anvim.tree").setup()
   api.nvim_create_user_command("Anvim", M.start, { desc = "Open the anvim layout and start Claude" })
-  api.nvim_create_user_command("AnvimInterrupt", input.interrupt, { desc = "Interrupt Claude" })
+  api.nvim_create_user_command("AnvimStop", input.interrupt, { desc = "Stop Claude" })
   api.nvim_create_user_command("AnvimTranscript", windows.read, { desc = "Focus the transcript to yank and search" })
   local sessions = require("anvim.sessions")
   api.nvim_create_user_command("AnvimSessions", sessions.pick, { desc = "Resume a session of this directory" })

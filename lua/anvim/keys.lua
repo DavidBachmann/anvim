@@ -151,8 +151,8 @@ M.places = {
     keys = {
       { "<CR>", "Send the prompt", mode = { "i", "n" } },
       { { "<S-CR>", "<M-CR>" }, "New line", mode = "i" },
-      { "<Esc>", "Interrupt Claude" },
-      { "<C-c>", "Interrupt Claude", mode = { "i", "n" } },
+      { "<Esc>", "Stop Claude (press twice)" },
+      { "<C-c>", "Stop Claude", mode = { "i", "n" } },
       { "<S-Tab>", "Cycle the permission mode", mode = { "i", "n" } },
       { "<C-x>", "Unpin the selection", mode = { "i", "n" } },
       { "<C-g>", "Write the prompt in a large window", mode = { "i", "n" } },
@@ -214,7 +214,7 @@ M.places = {
       { { "j", "<Down>" }, "Next choice", row = "Next and previous choice" },
       { { "k", "<Up>" }, "Previous choice", row = "Next and previous choice" },
       { "<CR>", "Choose the highlighted option", static = true },
-      { "<Esc>", "No", static = true },
+      { "<Esc>", "No (press twice)", static = true },
     },
   },
   {

@@ -163,7 +163,8 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 | --- | --- |
 | `Enter` | Send |
 | `Shift-Enter`, `Alt-Enter` | New line, in insert mode |
-| `Esc` in normal mode, `Ctrl-C` | Interrupt Claude |
+| `Esc`, a pause, `Esc`, in normal mode | Stop Claude |
+| `Ctrl-C`, `:AnvimStop` | Stop Claude at once |
 | `Shift-Tab` | Cycle the permission mode |
 | `Ctrl-X` | Unpin the selection |
 | `Ctrl-G` | Write the prompt in a large window |
@@ -212,7 +213,7 @@ These keys work in the prompt, in normal mode, while Claude waits for your answe
 | `1` to `9` | Choose that option |
 | `Enter` | Choose the highlighted option |
 | `j`, `k` | Move to the next or previous option |
-| `Esc` | No |
+| `Esc`, a pause, `Esc` | No |
 
 ### Claude and its agents
 
@@ -276,6 +277,8 @@ When Claude needs your yes, the request appears at the bottom of the Claude colu
 The keys that answer are under [Permission requests](#permission-requests).
 
 While a request waits, normal mode in the prompt is for choosing. Typing your prompt never answers: if you are typing when a request opens, you keep typing, digits are text, and `Enter` keeps your prompt without sending it or answering. Press `Esc`, then choose. `Enter` chooses the highlighted option. The line above the prompt says which keys answer, and in insert mode it starts with `esc to leave insert mode`. A choice also does nothing within 0.4 s of the request opening or of the last character you typed. Going to the prompt while Claude waits leaves you in normal mode. After you answer, the prompt goes back to insert mode where you stopped typing, if you were typing.
+
+`Esc` in normal mode in the prompt answers No, or stops Claude while Claude works. It acts only when you press it twice. The first press only arms it. The line above the prompt then says in red what the next press does, such as "esc again to stop Claude". The request shows that choice in red too. Press `Esc` again after a pause of at least 0.4 s and within 3 s. A press within the pause does nothing and starts the pause again, so a burst of `Esc` presses never stops Claude. A busy change, a new or changed request, any other key, leaving the prompt and the end of the 3 s limit take the red text away. The next `Esc` then starts over. `Ctrl-C` stops Claude at once.
 
 "No, and tell Claude what to do differently", "No, keep planning" and a question's "Other" take typed text. `Enter` sends it, and `Esc` twice goes back to the options. Your draft prompt comes back afterwards. If Claude Code names a path outside the working directory, the request shows it. "Yes, and don't ask again" names the rules that Claude Code suggests, such as `Bash(npm test:*)`, and applies them all. Claude Code saves project rules in the project's `.claude/settings.local.json`. Plan approval offers Claude Code's choices: accept edits or manual approval, with bypass in place of accept edits when anvim started in bypass mode. The plan stays in the transcript. A multi-select question has a Submit option after its choices.
 

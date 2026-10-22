@@ -12,8 +12,9 @@ local transcript = require("anvim.transcript")
 local api = vim.api
 local buf_lines, field = helpers.buf_lines, helpers.field
 
--- The specs press keys right after a request opens.
+-- The specs press keys right after a request opens, and <Esc> twice at once.
 permission.guard_ms = 0
+input.esc_pause_ms = 0
 
 -- Typed keys. A call that ends in insert mode leaves it, as if <Esc> was typed,
 -- so a typed answer goes in one call with the key that starts it.
@@ -80,7 +81,7 @@ describe("permission", function()
         "  Do you want to proceed?",
         "  ❯ 1. Yes",
         "    2. " .. remember,
-        "    3. No, and tell Claude what to do differently (esc)",
+        "    3. No, and tell Claude what to do differently (esc twice)",
       }, tail(7))
       assert.are.same("", tail(8)[1], "a blank line separates the block from the tool line")
       assert(permission.waiting())
@@ -124,8 +125,8 @@ describe("permission", function()
     focus()
     helpers.capture_sends(function(sent)
       local req, id = request("Bash", { command = "make" })
-      assert.are.same("    2. No, and tell Claude what to do differently (esc)", tail(1)[1])
-      keys("<Esc>")
+      assert.are.same("    2. No, and tell Claude what to do differently (esc twice)", tail(1)[1])
+      keys("<Esc><Esc>")
       assert.are.same({ { type = "permission_response", req = req, behavior = "deny" } }, sent)
       result(id, true, "The user doesn't want to proceed with this tool use.")
       assert.are.same("  ⎿  Rejected", tail(1)[1])
@@ -204,7 +205,7 @@ describe("permission", function()
       assert.are.same("    make one", tail(5)[2])
       keys("1")
       assert.are.same("    make two", tail(5)[2])
-      keys("<Esc>")
+      keys("<Esc><Esc>")
       assert.are.same({
         { type = "permission_response", req = first, behavior = "allow" },
         { type = "permission_response", req = second, behavior = "deny" },
@@ -224,7 +225,11 @@ describe("permission", function()
         keys("1<CR>")
         assert.are.same({}, sent)
         keys("j")
-        assert.are.same("  ❯ 2. No, and tell Claude what to do differently (esc)", tail(1)[1], "moving still works")
+        assert.are.same(
+          "  ❯ 2. No, and tell Claude what to do differently (esc twice)",
+          tail(1)[1],
+          "moving still works"
+        )
         permission.guard_ms = 0
         keys("1")
         assert.are.same({ { type = "permission_response", req = req, behavior = "allow" } }, sent)
@@ -264,7 +269,7 @@ describe("permission", function()
     helpers.capture_sends(function()
       local _, id = request("Bash", { command = "make" })
       assert.are.same(api.nvim_buf_line_count(transcript.buf()), vim.fn.line("w$", tr), "the block's end is in view")
-      keys("<Esc>")
+      keys("<Esc><Esc>")
       result(id, true)
     end)
   end)
@@ -343,7 +348,7 @@ describe("permission", function()
       assert.are.same("To answer: esc to leave insert mode, then 1-3 or enter", replace)
       assert.are.same({}, sent, "enter in Replace mode answered")
       assert.are.same({ "" }, buf_lines(input.buf()))
-      keys("<Esc>")
+      keys("<Esc><Esc>")
       assert.are.same("deny", sent[1].behavior)
       result(id, true)
 
@@ -365,7 +370,7 @@ describe("permission", function()
       assert.are.same("To answer: j/k and enter", state.waiting)
       assert.are.same("To answer: esc to leave insert mode, then j/k and enter", in_insert())
       assert.are.same("To answer: j/k and enter", state.waiting)
-      keys("<Esc>")
+      keys("<Esc><Esc>")
       result(id3, true)
     end)
   end)
@@ -404,7 +409,7 @@ describe("permission", function()
       api.nvim_set_current_win(layout.code_win())
       check("To answer: go to the prompt, then j/k and enter", "the code window, with care")
       focus()
-      keys("<Esc>")
+      keys("<Esc><Esc>")
       result(id2, true)
     end)
   end)
@@ -533,7 +538,7 @@ describe("permission", function()
       assert.are.same(1, go(), "the prompt starts insert mode")
       local _, id = request("Bash", { command = "make" })
       assert.are.same(0, go(), "a waiting request keeps normal mode")
-      keys("<Esc>")
+      keys("<Esc><Esc>")
       result(id, true)
     end)
     api.nvim_del_autocmd(au)
@@ -568,7 +573,7 @@ describe("permission", function()
     helpers.capture_sends(function()
       local _, outside = request("Bash", { command = "cat /etc/hosts" }, { blocked_path = "/etc/hosts" })
       assert.are.same("    outside the working directory: /etc/hosts", tail(6)[3])
-      keys("<Esc>")
+      keys("<Esc><Esc>")
       result(outside, true)
       local _, inside = request("Bash", { command = "mkdir build" }, { blocked_path = helpers.tmp .. "/build" })
       assert.are.same(
@@ -576,7 +581,7 @@ describe("permission", function()
         vim.list_slice(tail(4), 1, 2),
         "a path inside it gets no line"
       )
-      keys("<Esc>")
+      keys("<Esc><Esc>")
       result(inside, true)
     end)
   end)
@@ -614,7 +619,7 @@ describe("permission", function()
         "  Do you want to allow this connection?",
         "  ❯ 1. Yes",
         "    2. Yes, and don't ask again for WebFetch(domain:example.com) in this project",
-        "    3. No, and tell Claude what to do differently (esc)",
+        "    3. No, and tell Claude what to do differently (esc twice)",
       }, tail(6))
       keys("2")
       assert.are.same({ { type = "permission_response", req = req, behavior = "allow", remember = true } }, sent)
@@ -630,7 +635,7 @@ describe("permission", function()
     helpers.capture_sends(function()
       local _, id = request("Bash", { command = "rm -rf ~/.cache/x", dangerouslyDisableSandbox = true })
       assert.are.same({ "  Bash command (unsandboxed)", "    rm -rf ~/.cache/x" }, vim.list_slice(tail(5), 1, 2))
-      keys("<Esc>")
+      keys("<Esc><Esc>")
       result(id, true)
     end)
   end)
@@ -667,11 +672,11 @@ describe("permission", function()
         assert.are.same({ "WarningMsg" }, groups("    " .. case[3]), case[3])
         assert.are.same({
           "  ❯ 1. Yes",
-          "    2. No, and tell Claude what to do differently (esc)",
+          "    2. No, and tell Claude what to do differently (esc twice)",
         }, tail(2))
         -- The reason takes the place of the blocked path's line.
         assert(not vim.tbl_contains(tail(8), "    outside the working directory: /etc/hosts"), case[3])
-        keys("<Esc>")
+        keys("<Esc><Esc>")
         result(id, true)
       end
     end)
@@ -705,7 +710,7 @@ describe("permission", function()
         if ev.type == "permission_request" then
           blocks[#blocks + 1] = tail(8)
           -- The recording denied the escape and the Write, and allowed the rest.
-          keys((ev.reason and "<Esc>" or "1"))
+          keys((ev.reason and "<Esc><Esc>" or "1"))
         end
       end
       local answers = vim.tbl_map(
@@ -729,7 +734,7 @@ describe("permission", function()
       "    runs outside the sandbox",
       "  Do you want to proceed?",
       "  ❯ 1. Yes",
-      "    2. No, and tell Claude what to do differently (esc)",
+      "    2. No, and tell Claude what to do differently (esc twice)",
     }, vim.list_slice(blocks[2], 2))
     assert.are.same({
       "  Network access",
@@ -737,7 +742,7 @@ describe("permission", function()
       "  Do you want to allow this connection?",
       "  ❯ 1. Yes",
       "    2. Yes, and don't ask again for WebFetch(domain:example.com) in this project",
-      "    3. No, and tell Claude what to do differently (esc)",
+      "    3. No, and tell Claude what to do differently (esc twice)",
     }, vim.list_slice(blocks[4], 3))
     assert.are.same({
       "  Write file",
@@ -745,7 +750,7 @@ describe("permission", function()
       "    outside the trusted dirs: ~/anvim-sandbox-probe/notes.txt",
       "  Do you want to create notes.txt?",
       "  ❯ 1. Yes",
-      "    2. No, and tell Claude what to do differently (esc)",
+      "    2. No, and tell Claude what to do differently (esc twice)",
     }, vim.list_slice(blocks[5], 3), "Claude Code's description, the ~ path, shows no second time")
     assert(not permission.waiting())
     local lines = buf_lines(transcript.buf())
@@ -759,7 +764,7 @@ describe("permission", function()
     focus()
     helpers.capture_sends(function(sent)
       local req, id = request("Bash", { command = "rm -rf out" }, { default_to_no = true })
-      assert.are.same("  ❯ 2. No, and tell Claude what to do differently (esc)", tail(1)[1])
+      assert.are.same("  ❯ 2. No, and tell Claude what to do differently (esc twice)", tail(1)[1])
       assert(not state.waiting:find("1%-2"), state.waiting)
       keys("1")
       assert.are.same({}, sent)
@@ -828,9 +833,9 @@ describe("permission", function()
         "  Do you want to make this edit to deny.lua?",
         "  ❯ 1. Yes",
         "    2. Yes, allow all edits during this session",
-        "    3. No, and tell Claude what to do differently (esc)",
+        "    3. No, and tell Claude what to do differently (esc twice)",
       }, tail(6))
-      keys("<Esc>")
+      keys("<Esc><Esc>")
       assert.are.same({ type = "permission_response", req = 62, behavior = "deny" }, sent[2])
       -- Claude Code answers a deny with an error result, which ends the preview.
       result("pe1", true, "The user doesn't want to proceed with this tool use.")

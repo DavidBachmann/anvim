@@ -183,7 +183,7 @@ local function choices(r)
     }
   end
   list[#list + 1] = {
-    label = "No, and tell Claude what to do differently (esc)",
+    label = "No, and tell Claude what to do differently (esc twice)",
     run = function()
       start_typing(r, "deny")
     end,
@@ -315,12 +315,36 @@ local function add_header(b, r)
   end
 end
 
+-- The choice that <Esc> stands for. A question has none, because <Esc>
+-- declines all of its questions.
+---@return integer?
+local function esc_choice(r)
+  if r.kind == "plan" then
+    return 3
+  elseif r.kind == "tool" then
+    return #choices(r)
+  end
+end
+
+local function esc_text(r)
+  if r.kind == "plan" then
+    return "esc again to keep planning"
+  elseif r.kind == "question" then
+    return "esc again to decline to answer"
+  elseif r.ev.tool == "SandboxNetworkAccess" then
+    return "esc again to refuse the connection"
+  end
+  return "esc again to answer No"
+end
+
 local function render(r)
   local b = builder()
   add_header(b, r)
+  local armed = input.armed()
+  local danger = armed and armed.id == r and esc_choice(r)
   for i, c in ipairs(choices(r)) do
     local text = ("%s%d. %s"):format(i == r.cursor and "  ❯ " or "    ", i, c.label)
-    b.add(text, i == r.cursor and "AnvimChoice" or nil, 2)
+    b.add(text, i == danger and "AnvimDanger" or i == r.cursor and "AnvimChoice" or nil, 2)
     if c.desc and c.desc ~= "" then
       b.add("       " .. first_line(c.desc), "Comment")
     end
@@ -441,14 +465,17 @@ local function safely(what, fn, ...)
   end
 end
 
-local function draw(r)
+---@param opts? { quiet: boolean? }
+local function draw(r, opts)
   local lines, marks = render(r)
-  if not (r.block and transcript.set_block(r.block, lines, marks)) then
-    r.block = transcript.block(lines, marks)
+  if not (r.block and transcript.set_block(r.block, lines, marks, opts)) then
+    r.block = transcript.block(lines, marks, opts)
   end
 end
 
 function show(r)
+  -- The request changed, so a second <Esc> must not answer it.
+  input.disarm()
   safely("block", draw, r)
   if not r.opened then
     r.opened = now()
@@ -547,6 +574,8 @@ local function close(r, answered)
       break
     end
   end
+  -- After the removal, so that the disarm draws no block that goes at once.
+  input.disarm()
   local was_typing = typing ~= nil and typing.r == r
   if was_typing then
     safely("draft", end_typing)
@@ -612,45 +641,77 @@ function answer(r, res)
   close(r, true)
 end
 
--- Handles the prompt's <CR> and <Esc> while a request waits. Returns false
--- when there is none, so the keys do their usual work. In insert mode, <CR>
--- keeps the prompt as it is: it neither answers nor sends.
+-- Ends a typed answer: <CR> sends it, and <Esc> goes back to the choices.
 ---@param key '<CR>'|'<Esc>'
+local function end_answer(r, key)
+  local t = assert(typing)
+  local text = vim.trim(table.concat(api.nvim_buf_get_lines(input.buf(), 0, -1, false), "\n"))
+  end_typing()
+  if key == "<Esc>" or (t.purpose == "other" and text == "") then
+    show(r)
+  elseif t.purpose == "deny" then
+    answer(r, { behavior = "deny", message = text ~= "" and text or nil })
+  elseif questions(r)[r.q].multiSelect then
+    r.other = text
+    show(r)
+  else
+    r.answers[questions(r)[r.q].question] = { text }
+    next_question(r)
+  end
+  -- Typing the answer started insert mode. Back at the choices, end it.
+  if queue[1] == r and not typing and inserting() then
+    vim.cmd.stopinsert()
+  end
+end
+
+-- Handles the prompt's <CR> while a request waits. Returns false when there
+-- is none, so the key does its usual work. In insert mode, <CR> keeps the
+-- prompt as it is: it neither answers nor sends.
 ---@return boolean
-function M.key(key)
+function M.key()
   local r = queue[1]
   if not r then
     return false
   end
   if typing then
-    local t = typing
-    local text = vim.trim(table.concat(api.nvim_buf_get_lines(input.buf(), 0, -1, false), "\n"))
-    end_typing()
-    if key == "<Esc>" or (t.purpose == "other" and text == "") then
-      show(r)
-    elseif t.purpose == "deny" then
-      answer(r, { behavior = "deny", message = text ~= "" and text or nil })
-    elseif questions(r)[r.q].multiSelect then
-      r.other = text
-      show(r)
-    else
-      r.answers[questions(r)[r.q].question] = { text }
-      next_question(r)
-    end
-    -- Typing the answer started insert mode. Back at the choices, end it.
-    if queue[1] == r and not typing and inserting() then
-      vim.cmd.stopinsert()
-    end
-  elseif inserting() or guarded(r) then
-    return true
-  elseif key == "<Esc>" then
-    if seen(r) then
-      answer(r, { behavior = "deny" })
-    end
-  else
+    end_answer(r, "<CR>")
+  elseif not (inserting() or guarded(r)) then
     choose(r, r.cursor)
   end
   return true
+end
+
+-- What <Esc> in normal mode in the prompt does while a request waits
+-- (input.escape()). It is false when none waits, and true when the press is
+-- done: it left a typed answer, or it does nothing. Otherwise it is the
+-- action of a second press, which answers No.
+---@return boolean|anvim.EscAction
+function M.escape()
+  local r = queue[1]
+  if not r then
+    return false
+  end
+  if typing then
+    end_answer(r, "<Esc>")
+    return true
+  end
+  if inserting() or guarded(r) or not seen(r) then
+    return true
+  end
+  return {
+    id = r,
+    text = esc_text(r),
+    run = function()
+      if queue[1] == r and not typing and seen(r) then
+        answer(r, { behavior = "deny" })
+      end
+    end,
+    changed = function()
+      if queue[1] == r then
+        safely("block", draw, r, { quiet = true })
+      end
+    end,
+  }
 end
 
 ---@return boolean
