@@ -1,6 +1,6 @@
--- The : command line in a window over the code, as noice shows it in LazyVim,
+-- The command line in a window over the code, as noice shows it in LazyVim,
 -- so that it never looks like the prompt. ui2 draws the command line in a
--- float of its own at the bottom of the screen. While a : command line is
+-- float of its own at the bottom of the screen. While a command line is
 -- open, this moves that float after each of ui2's updates, which come before
 -- ui2 flushes the redraw. The cursor and the completion menu go with it.
 local M = {}
@@ -8,6 +8,8 @@ local M = {}
 local api = vim.api
 
 local WIDTH = 60
+
+local titles = { [":"] = " Command line ", ["/"] = " Search ", ["?"] = " Search " }
 
 ---@type table<string, any>? The float's options from before it moved.
 local saved
@@ -17,7 +19,7 @@ local function set(win, name, value)
 end
 
 -- The upper part of the code window, or of the screen without one.
-local function popup(win)
+local function popup(win, firstc)
   local columns = vim.o.columns
   local width = math.min(WIDTH, columns - 4)
   local left, span = 0, columns
@@ -32,13 +34,13 @@ local function popup(win)
     col = math.max(0, math.min(col, columns - width - 2)),
     width = width,
     border = "rounded",
-    title = " Command line ",
+    title = titles[firstc] or " Input ",
     title_pos = "center",
   })
   if not saved then
     saved = { wrap = vim.wo[win].wrap, winhighlight = vim.wo[win].winhighlight }
-    -- ui2 sets 'cmdheight' to the rows of the command line, which would move
-    -- the windows. A long command scrolls instead.
+    -- ui2 sets 'cmdheight' to the rows of the command line. A long command
+    -- scrolls instead.
     set(win, "wrap", false)
     set(win, "winhighlight", (saved.winhighlight:gsub("Normal:MsgArea", "Normal:NormalFloat")))
   end
@@ -64,23 +66,28 @@ function M.setup(ui2)
     return
   end
   local show, hide = cmd.cmdline_show, cmd.cmdline_hide
-  -- Whether the outer command line is a : one. A nested one, such as <C-r>=,
+  -- The outer command line's first character. A nested one, such as <C-r>=,
   -- stays where the outer one is.
-  local colon = false
+  local firstc
   cmd.cmdline_show = function(...)
     show(...)
-    local firstc, level = select(3, ...), select(6, ...)
+    local level = select(6, ...)
     if level == 1 then
-      colon = firstc == ":"
+      firstc = select(3, ...)
     end
-    if colon then
-      popup(ui2.wins.cmd)
+    popup(ui2.wins.cmd, firstc)
+    -- ui2 gives the command line a row at the bottom, which would move the
+    -- windows. The popup needs none.
+    if vim.o.cmdheight ~= ui2.cmdheight then
+      vim._with({ noautocmd = true, o = { splitkeep = "screen" } }, function()
+        vim.o.cmdheight = ui2.cmdheight
+      end)
     end
   end
   cmd.cmdline_hide = function(...)
     hide(...)
     if cmd.level == 0 then
-      colon = false
+      firstc = nil
       restore(ui2.wins.cmd)
     end
   end

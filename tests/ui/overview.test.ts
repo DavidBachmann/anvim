@@ -60,7 +60,7 @@ const torn = (frames: Frame[]) =>
   });
 
 // The cell row of the statusline, under it the command line.
-const statusline = (f: Frame) => f.lines.at(-2) ?? "";
+const statusline = (f: Frame) => f.lines.at(-1) ?? "";
 
 // Each layout window's place and size, the number of splits and tab pages.
 const LAYOUT = `
@@ -164,7 +164,7 @@ test("tabs in the agents' colors, a live conversation, and <CR> that follows the
   // The explorer's new split shows the list's buffer for a moment, and follow
   // mode stays.
   expect(await ui.exec_lua(`return require("anvim.follow").mode()`)).toBe("follow");
-  expect(ui.lines().at(-2)).toContain("FOLLOW");
+  expect(ui.lines().at(-1)).toContain("FOLLOW");
   await ui.resize(100, 30);
   await Bun.sleep(500);
   await ui.drain();

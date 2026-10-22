@@ -102,7 +102,7 @@ Follow mode is a mode of its own, next to Vim's normal, insert and visual mode. 
 
 File buffers are read-only. `:w` does nothing but say so, and format on save never runs. Claude makes every change, and buffers reload when files change on disk. Markdown and text files wrap, with no spell checking.
 
-A `:` command line opens in a window over the code, titled "Command line", so it never looks like the prompt. Search with `/` and `?` stays at the bottom of the screen.
+A `:` command line opens in a window over the code, titled "Command line", so it never looks like the prompt. Search with `/` and `?` opens there too, titled "Search". No row at the bottom of the screen is kept for them: messages show for a few seconds at the bottom right, and the statusline shows a macro recording.
 
 The cursor moves between the code window and the prompt in one step: `Ctrl-W l` or `Ctrl-L` from any row of the code window, and `Ctrl-W h` or `Ctrl-H` back. Moving into the prompt leaves you in normal mode. Only insert commands start typing: `i`, `a` and the others in the prompt. In a file buffer, `i`, `a`, `I`, `A`, `o` and `O` go to the prompt and type where you stopped. The transcript takes no focus. A window key that would land on it skips it, a click on it goes to the prompt, and the mouse wheel scrolls it from anywhere. New output keeps the transcript at its end, unless you scrolled up. Then it stays put until you scroll back down or send a prompt. To yank or search the transcript, enter read mode with `<leader>cr`, or drag across it with the mouse.
 

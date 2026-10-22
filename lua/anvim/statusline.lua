@@ -185,6 +185,12 @@ local function claude(win)
   return parts
 end
 
+-- With no row for the command line, the macro recording shows here.
+local function recording()
+  local reg = vim.fn.reg_recording()
+  return reg ~= "" and on_c("Constant") .. " recording @" .. esc(reg) .. " " or nil
+end
+
 local function place(win)
   local line, last = api.nvim_win_get_cursor(win)[1], api.nvim_buf_line_count(api.nvim_win_get_buf(win))
   local progress = line == 1 and "Top" or line == last and "Bot" or ("%2d%%%%"):format(math.floor(line / last * 100))
@@ -223,7 +229,8 @@ local function render()
         left[#left + 1] = on_c("Comment") .. " (writing) "
       end
     end
-    right = claude(win)
+    right = { recording() }
+    vim.list_extend(right, claude(win))
     right[#right + 1] = diff(buf)
   end
 
@@ -429,7 +436,7 @@ function M.setup()
     callback = M.refresh,
   })
   api.nvim_create_autocmd(
-    { "DiagnosticChanged", "BufWinEnter", "ModeChanged" },
+    { "DiagnosticChanged", "BufWinEnter", "ModeChanged", "RecordingEnter", "RecordingLeave" },
     { group = group, callback = M.refresh }
   )
 end

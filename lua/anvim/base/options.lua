@@ -83,8 +83,12 @@ vim.g.markdown_recommended_style = 0
 -- Neovim's new message UI. The old one stops on an error from a callback until
 -- Enter: no redraws while Claude streams, and the next typed key answers it.
 -- ui2 shows the error in one line, and :messages in a pager.
+-- No row for the command line: the command line opens over the code, and
+-- messages show in ui2's float, which closes after a few seconds. A message
+-- aimed at the command line would grow it and move the windows.
 local ok, ui2 = pcall(require, "vim._core.ui2")
 if ok then
-  ui2.enable({})
+  opt.cmdheight = 0
+  ui2.enable({ msg = { target = "msg" } })
   require("anvim.cmdline").setup(ui2)
 end

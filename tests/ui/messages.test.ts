@@ -61,9 +61,8 @@ test("no LSP progress shows while lua_ls loads a file that Claude reads", async 
   expect(frames.length).toBeGreaterThan(0);
   for (const frame of frames) {
     for (const title of titles) expect(frame.lines.filter((l) => l.includes(title))).toEqual([]);
-    // The command line, where Neovim shows progress messages.
-    const cmdline = frame.lines.at(-1)!.trim();
-    for (const message of messages) expect(cmdline).not.toContain(message);
+    // ui2's message float, where Neovim would show progress messages.
+    for (const message of messages) expect(frame.lines.filter((l) => l.includes(message))).toEqual([]);
   }
   const history = await ui.exec_lua<string>(`return vim.fn.execute("messages")`);
   for (const title of titles) expect(history).not.toContain(title);
@@ -118,23 +117,15 @@ test("anvim's notices and a multi-line vim.notify ask for no Enter", async () =>
   expect(await settled("the restart")).toBe("ok");
 });
 
-test("the command line shows a macro recording, and the statusline does not repeat it", async () => {
+test("the statusline shows a macro recording, as there is no command line row", async () => {
   anvim = await start();
   const { ui } = anvim;
   await anvim.toCode();
-  const last = await ui.exec_lua<number>(`return vim.o.lines - vim.o.cmdheight`);
-  const [cmdline, status] = [() => ui.lines()[last]!, () => ui.lines()[last - 1]!];
-  const mark = ui.mark();
+  const status = () => ui.lines().at(-1)!;
   await ui.input("qq");
-  await ui.drain();
-  await ui.waitFor(() => cmdline().includes("recording @q"), 250);
-  // A later redraw could still show it, so watch a while.
-  await Bun.sleep(500);
-  await ui.drain();
-  expect(ui.frames(mark).filter((f) => f.lines[last - 1]!.includes("recording")).length).toBe(0);
+  await ui.waitFor(() => status().includes("recording @q"), 250);
   await ui.input("q");
-  await ui.drain();
-  await ui.waitFor(() => !cmdline().includes("recording") && !status().includes("recording"), 250);
+  await ui.waitFor(() => !status().includes("recording"), 250);
 });
 
 test("an error from a callback during a Write preview stops no frames, and a Space typed after it stays in the prompt", async () => {

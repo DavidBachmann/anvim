@@ -1,5 +1,5 @@
-// The : command line opens in a window over the code, so that it never looks
-// like the prompt. Search stays at the bottom.
+// The command line and search open in a window over the code, so that they
+// never look like the prompt. No row at the bottom is kept for them.
 import { afterEach, expect, test } from "bun:test";
 import { type Anvim, type Box, cells, inBox, start } from "./helpers.ts";
 
@@ -9,11 +9,9 @@ afterEach(async () => {
   anvim = undefined;
 });
 
-const TITLE = " Command line ";
-
 // The popup's text row, inside its border, or null.
-const popup = (lines: string[]): Box | null => {
-  const top = lines.findIndex((line) => line.includes(TITLE));
+const popup = (lines: string[], title = " Command line "): Box | null => {
+  const top = lines.findIndex((line) => line.includes(title));
   if (top < 0) return null;
   const chars = [...lines[top]!];
   const left = chars.indexOf("╭");
@@ -21,7 +19,6 @@ const popup = (lines: string[]): Box | null => {
 };
 
 const text = (lines: string[], box: Box) => cells(lines[box.row]!, box.col, box.width).trimEnd();
-const bottom = (lines: string[]) => lines.at(-1)!.trim();
 
 // ui2's own float for the command line, as ui2 placed it.
 const ui2Float = () =>
@@ -43,7 +40,6 @@ test(": opens the command line over the code window in its first frame, and Esc 
   expect(inBox(ui.cursor, box)).toBe(true);
   expect(box.col - 1).toBeGreaterThanOrEqual(code.col);
   expect(box.col + box.width + 1).toBeLessThanOrEqual(code.col + code.width);
-  expect(bottom(ui.lines())).toBe("");
   // No frame shows the command line at the bottom first. 'showcmd' may show
   // the : at the right end of that row for a moment.
   expect(ui.frames(mark).filter((f) => f.lines.at(-1)!.startsWith(":")).length).toBe(0);
@@ -55,21 +51,23 @@ test(": opens the command line over the code window in its first frame, and Esc 
   await ui.input("x".repeat(120));
   await ui.waitFor(() => text(ui.lines(), box).endsWith("xxxx"));
   expect(popup(ui.lines())).toEqual(box);
-  expect(await ui.exec_lua<number>("return vim.o.cmdheight")).toBe(1);
+  expect(await ui.exec_lua<number>("return vim.o.cmdheight")).toBe(0);
   expect(await anvim.box("code")).toEqual(code);
 
   await ui.input("<Esc>");
   await ui.waitFor(() => popup(ui.lines()) === null);
   expect(await anvim.where()).toEqual({ win: "input", mode: "n" });
-  expect(bottom(ui.lines())).toBe("");
   expect(await ui2Float()).toEqual(before);
+  // No frame moved the windows to make room for a command line row.
+  const row = (f: { lines: string[] }) => f.lines.at(-1)!.trim();
+  expect(ui.frames(mark).filter((f) => row(f) === "" || row(f).startsWith(":")).length).toBe(0);
 });
 
-test("a command from the popup runs, and its output shows at the bottom", async () => {
+test("a command from the popup runs, and its output shows in the message float", async () => {
   anvim = await start();
   const { ui } = anvim;
   await ui.input(':echo "ran from the popup"<CR>');
-  await ui.waitFor(() => bottom(ui.lines()) === "ran from the popup");
+  await ui.waitFor(() => ui.lines().some((line) => line.includes("ran from the popup")));
   expect(popup(ui.lines())).toBeNull();
 });
 
@@ -79,7 +77,7 @@ test("the popup opens with its border while long messages show", async () => {
   anvim = await start();
   const { ui } = anvim;
   await ui.input(':echo "one\\ntwo\\nthree"<CR>');
-  await ui.waitFor(() => ui.lines().some((line) => line.trim() === "three"));
+  await ui.waitFor(() => ui.lines().some((line) => line.trimEnd().endsWith("three")));
   await ui.input(":");
   await ui.waitFor(() => popup(ui.lines()) !== null);
   const box = popup(ui.lines())!;
@@ -90,13 +88,18 @@ test("the popup opens with its border while long messages show", async () => {
   expect(await anvim.where()).toEqual({ win: "input", mode: "n" });
 });
 
-test("search stays at the bottom", async () => {
+test("search opens in the popup too", async () => {
   anvim = await start();
   const { ui } = anvim;
   await anvim.toCode();
+  const code = await anvim.box("code");
   await ui.input("/local");
-  await ui.waitFor(() => bottom(ui.lines()) === "/local");
-  expect(popup(ui.lines())).toBeNull();
+  await ui.waitFor(() => {
+    const box = popup(ui.lines(), " Search ");
+    return box !== null && text(ui.lines(), box) === "/local";
+  });
+  expect(await anvim.box("code")).toEqual(code);
   await ui.input("<Esc>");
   await anvim.waitWhere("code", "n");
+  expect(popup(ui.lines(), " Search ")).toBeNull();
 });
