@@ -374,7 +374,11 @@ describe("focus", function()
     end
     follow.set_focus("e5")
     assert.are.same({ "e5", "Comment", "◉ following Agent" }, { follow.focus, follow.group(), follow.status() })
-    for slot, desc in pairs({ [0] = "Focus the main agent", [1] = "Focus agent 1", [4] = "Focus agent 4" }) do
+    for slot, desc in pairs({
+      [0] = "Go to the prompt and follow Claude",
+      [1] = "Go to the prompt and follow agent 1",
+      [4] = "Go to the prompt and follow agent 4",
+    }) do
       assert.are.same(desc, vim.fn.maparg("<leader>c" .. slot, "n", false, true).desc)
     end
     assert.are.same("Open the Agent Overview", vim.fn.maparg("<leader>ca", "n", false, true).desc)

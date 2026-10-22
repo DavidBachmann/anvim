@@ -444,14 +444,25 @@ function M.empty_slot(slot)
   vim.notify(("No agent in slot %d"):format(slot), vim.log.levels.INFO, { title = "anvim", timeout = 1500 })
 end
 
--- Slot 0 is the main agent.
-function M.focus_slot(slot)
+-- Calls `fn` with the id of the agent in `slot`, or nil for slot 0, the main
+-- agent. An empty slot says so.
+local function with_slot(slot, fn)
   local agent = slot > 0 and agents.in_slot(slot)
   if slot > 0 and not agent then
     M.empty_slot(slot)
     return
   end
-  M.set_focus(agent and agent.id or nil)
+  fn(agent and agent.id or nil)
+end
+
+-- Changes the focus and leaves the cursor where it is.
+function M.focus_slot(slot)
+  with_slot(slot, M.set_focus)
+end
+
+-- Follows the agent in `slot` as the Agent Overview's <CR> does.
+function M.follow_slot(slot)
+  with_slot(slot, M.follow)
 end
 
 -- How an agent's end reads in a notice.
@@ -862,7 +873,7 @@ function M.attach(sidecar)
   keys.set("claude", "n", "<leader>cj", M.jump)
   for slot = 0, agents.slots do
     keys.set("claude", "n", "<leader>c" .. slot, function()
-      M.focus_slot(slot)
+      M.follow_slot(slot)
     end)
   end
 end

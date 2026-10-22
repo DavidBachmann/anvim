@@ -1,7 +1,7 @@
 // A focused subagent: the code window follows its reads only, and the
 // statusline, the footer and its Agent line show the focus in its color.
 import { afterEach, expect, test } from "bun:test";
-import { type Anvim, type Box, cells, start } from "./helpers.ts";
+import { type Anvim, type Box, cells, inBox, start } from "./helpers.ts";
 
 let anvim: Anvim | undefined;
 afterEach(async () => {
@@ -103,4 +103,61 @@ test("the code window follows the focused agent only, and no frame shows another
   expect(fg(focused.row, focused.col)).toBe(want);
   const dot = find("⏺◉");
   expect(fg(dot.row, dot.col + 1)).toBe(want);
+});
+
+test("<leader>c1 and <leader>c0 from the code window go to the prompt and show the agent's place in that frame", async () => {
+  anvim = await start({ files });
+  const { ui } = anvim;
+  await ui.exec_lua(`
+    local sidecar = require("anvim.sidecar")
+    sidecar.dispatch({ type = "turn_start" })
+    local input = { description = "Read a1", subagent_type = "Explore" }
+    sidecar.dispatch({ type = "tool_start", id = "tu_a1", name = "Agent" })
+    sidecar.dispatch({ type = "tool_use", id = "tu_a1", name = "Agent", input = input })
+    sidecar.dispatch({ type = "agent_start", agent_id = "a1", tool_use_id = "tu_a1", description = input.description,
+      subagent_type = "Explore", depth = 1, background = false })
+  `);
+  const box = await anvim.box("code");
+  const input = await anvim.box("input");
+  const state = () =>
+    ui.exec_lua<{ focus?: string; mode: string }>(
+      `return { focus = require("anvim.follow").focus, mode = require("anvim.follow").mode() }`,
+    );
+  // The files that the code window shows after delta, frame by frame, and what
+  // it shows in the first frame with the cursor in the prompt.
+  const seen = (mark: number) => {
+    const shows: string[] = [];
+    let first: string | undefined;
+    for (const f of ui.frames(mark)) {
+      const now = shown(f.lines, box).join(",");
+      if (now !== "" && now !== "delta" && now !== shows.at(-1)) shows.push(now);
+      if (first === undefined && inBox(f.cursor, input)) first = now;
+    }
+    return { shows, first };
+  };
+  // The live grid can show the new file before a frame moves the cursor, so
+  // wait for a frame with both.
+  const arrived = (mark: number, file: string) =>
+    ui.waitFor(() => ui.frames(mark).some((f) => inBox(f.cursor, input) && shown(f.lines, box).includes(file)));
+  await anvim.toCode("delta.js");
+  // In review mode, the moves only count behind.
+  await read(null, "gamma.js");
+  await read("a1", "alpha.js");
+  await ui.drain();
+  expect(shown(ui.lines(), box)).toEqual(["delta"]);
+
+  let mark = ui.mark();
+  await ui.input(" c1");
+  await anvim.waitWhere("input", "n");
+  await arrived(mark, "alpha");
+  expect(await state()).toEqual({ focus: "a1", mode: "follow" });
+  expect(seen(mark)).toEqual({ shows: ["alpha"], first: "alpha" });
+
+  await anvim.toCode("delta.js");
+  mark = ui.mark();
+  await ui.input(" c0");
+  await anvim.waitWhere("input", "n");
+  await arrived(mark, "gamma");
+  expect(await state()).toEqual({ mode: "follow" });
+  expect(seen(mark)).toEqual({ shows: ["gamma"], first: "gamma" });
 });

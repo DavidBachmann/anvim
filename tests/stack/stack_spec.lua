@@ -606,7 +606,7 @@ describe("stack", function()
     assert.are.same({}, errors)
   end)
 
-  it("focuses an agent with <leader>c1 and the Agent Overview, and the footer names it in its color", function()
+  it("follows an agent with <leader>c1 and the Agent Overview, and the footer names it in its color", function()
     start()
     -- A file of its own: a cursor that this case moves would make a later 2G scroll.
     local file = helpers.tmp .. "/focus_stack.lua"
@@ -638,8 +638,35 @@ describe("stack", function()
       ]],
         file
       )
+      -- In the code window, with a pinned selection, an empty slot only says so.
+      lua(
+        [[
+        vim.api.nvim_set_current_win(require("anvim.layout").wins.code)
+        vim.cmd.edit(...)
+        _G.said, _G.notify = {}, vim.notify
+        vim.notify = function(msg, ...)
+          table.insert(_G.said, msg)
+          return _G.notify(msg, ...)
+        end
+      ]],
+        file
+      )
+      keys("2GVj<Esc>")
+      wait(2000, [[return require("anvim.context").selection() ~= nil]], "Vj<Esc> pinned nothing")
+      keys("<leader>c3")
+      wait(3000, [[return vim.tbl_contains(_G.said, "No agent in slot 3")]], "<leader>c3 said nothing")
+      local probe = [[
+        local sel = require("anvim.context").selection()
+        local follow = require("anvim.follow")
+        return { focus = follow.focus or false, mode = follow.mode(), sel = sel and { sel.start_line, sel.end_line } or false }
+      ]]
+      assert.are.same({ win = "code", mode = "n" }, where(), "<leader>c3 moved the cursor")
+      assert.are.same({ focus = false, mode = "review", sel = { 2, 3 } }, lua(probe))
+      -- <leader>c1 goes to the prompt, unpins and follows the agent in slot 1.
       keys("<leader>c1")
+      wait_where({ win = "input", mode = "n" }, "<leader>c1 from the code window")
       wait(3000, [[return require("anvim.follow").focus == "s1"]], "<leader>c1 took no focus")
+      assert.are.same({ focus = "s1", mode = "follow", sel = false }, lua(probe))
       -- The focus redraws the footer, which colors the status with the agent's color.
       wait_footer({ "◉ ", "Agent 1" }, "the footer after the focus")
       local out = footer("Agent 1")
@@ -693,8 +720,17 @@ describe("stack", function()
       ]])
       assert.are.same({ name = file, line = 30 }, out)
       wait_footer({ "◉ ", "Explore 2" }, "the footer after the Overview")
+      -- <leader>c0 does the same for Claude, the main agent.
+      lua([[vim.api.nvim_set_current_win(require("anvim.layout").wins.code)]])
+      keys("5GVj<Esc>")
+      wait(2000, [[return require("anvim.context").selection() ~= nil]], "Vj<Esc> pinned nothing")
+      keys("<leader>c0")
+      wait_where({ win = "input", mode = "n" }, "<leader>c0 from the code window")
+      wait(3000, [[return require("anvim.follow").focus == nil]], "<leader>c0 kept the focus")
+      assert.are.same({ focus = false, mode = "follow", sel = false }, lua(probe))
     end)
     lua([[
+      vim.notify = _G.notify or vim.notify
       require("anvim.agents").clear()
       require("anvim.layout").focus_input({ insert = false })
     ]])
@@ -2298,11 +2334,11 @@ describe("stack", function()
       return { maps = maps, old = old, groups = groups }
     ]])
     assert.are.same({
-      ["n c0"] = "Focus the main agent",
-      ["n c1"] = "Focus agent 1",
-      ["n c2"] = "Focus agent 2",
-      ["n c3"] = "Focus agent 3",
-      ["n c4"] = "Focus agent 4",
+      ["n c0"] = "Go to the prompt and follow Claude",
+      ["n c1"] = "Go to the prompt and follow agent 1",
+      ["n c2"] = "Go to the prompt and follow agent 2",
+      ["n c3"] = "Go to the prompt and follow agent 3",
+      ["n c4"] = "Go to the prompt and follow agent 4",
       ["n ca"] = "Open the Agent Overview",
       ["n cj"] = "Jump to where Claude or the focused agent is",
       ["n cm"] = "Choose the model",
