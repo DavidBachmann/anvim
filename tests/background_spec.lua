@@ -437,6 +437,21 @@ describe("background agents", function()
     assert.are.same("AnvimToolError", bullet(head))
   end)
 
+  it("ends the main agent's tool line as interrupted when the sidecar exits", function()
+    fresh()
+    sidecar.dispatch({
+      type = "tool_use",
+      id = "m1",
+      name = "Bash",
+      input = { command = "make", description = "Build" },
+    })
+    sidecar.dispatch({ type = "exit", code = 0, restart = true })
+    state.process = "ready"
+    local head = "⏺ Bash(make)"
+    assert.are.same({ head, "  ⎿  Interrupted" }, item(head))
+    assert.are.same("AnvimToolError", bullet(head))
+  end)
+
   it("draws a resumed session's notification as the agent's end", function()
     helpers.start()
     local saved = { state.session_id, state.turns }

@@ -1131,7 +1131,9 @@ function M.attach(sidecar)
     if not (bufnr and api.nvim_buf_is_loaded(bufnr)) then
       return
     end
-    -- Background agents end with the sidecar.
+    -- The turn and the background agents end with the sidecar. A tool line
+    -- without a result would otherwise wait for the next turn's end.
+    M.turn_end()
     for id, tool in pairs(held) do
       if tool.live then
         held[id] = nil
