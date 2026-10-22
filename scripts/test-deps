@@ -13,7 +13,7 @@ if { cat lazy-lock.json; echo "$mason"; } | cmp -s - "$stamp" && [ -x "$dir/maso
 fi
 
 echo "Installing the test plugins into $dir"
-tmp=$(mktemp -d)
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/anvim.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$dir/site"
 # The sync brings the plugins to the lockfile's commits, and fails when one

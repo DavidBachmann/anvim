@@ -19,7 +19,7 @@ for name in "$@"; do
   names="$names'$name', "
 done
 
-tmp=$(mktemp -d)
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/anvim.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
 # lazy.nvim rewrites the lockfile after each of its steps, also when a step
 # fails.
