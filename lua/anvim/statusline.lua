@@ -170,17 +170,14 @@ local function diff(buf)
   return #parts > 0 and pad(table.concat(parts, " ")) or nil
 end
 
--- What Claude does, from any window.
+-- Where Claude needs the user, from any window. The activity line above the
+-- prompt shows what Claude does, and it is always on screen.
 local function claude(win)
   local input, permission = package.loaded["anvim.input"], package.loaded["anvim.permission"]
   local follow, layout = package.loaded["anvim.follow"], package.loaded["anvim.layout"]
   local parts = {}
-  if permission and permission.waiting() then
-    if not (layout and win == layout.wins.input) then
-      parts[#parts + 1] = on_c("AnvimClaude") .. " ⏺ Claude is waiting "
-    end
-  elseif input and input.working() ~= "" then
-    parts[#parts + 1] = on_c("AnvimClaude") .. " " .. input.working() .. " "
+  if permission and permission.waiting() and not (layout and win == layout.wins.input) then
+    parts[#parts + 1] = on_c("AnvimClaude") .. " ⏺ Claude is waiting "
   end
   if follow and input and not input.follows() and follow.status() ~= "" then
     parts[#parts + 1] = on_c(follow.group()) .. " " .. esc(follow.status(true)) .. " "

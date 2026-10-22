@@ -515,15 +515,6 @@ function M.activity()
   return text .. "%#AnvimRule#" .. ("─"):rep(math.max(0, win_width(vim.g.statusline_winid) - width))
 end
 
--- A short busy label for the statusline, so it shows from any window.
-function M.working()
-  if not (state.busy and state.turn_started) then
-    return ""
-  end
-  local verb, secs = working()
-  return ("✻ %s %ds"):format((verb:gsub("%.+$", ""):gsub("%%", "%%%%")), secs)
-end
-
 -- The mode's label, while the mode differs from the one the session started
 -- in, as Claude Code shows none for its default mode. Plan mode always shows,
 -- because it changes what Claude may do.
