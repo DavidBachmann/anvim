@@ -114,7 +114,8 @@ test("the command line shows a menu as a command is typed, with no item highligh
   await anvim.type("lua");
   await ui.waitFor(async () => (await menu(anvim!)).rows.length > 0);
   await ui.input("<Up>");
-  await ui.waitFor(() => ui.lines().at(-1)!.startsWith(":lua vim.g.anvim_probe = 1"));
+  // The command line is in its window over the code, inside the border.
+  await ui.waitFor(() => ui.lines().some((line) => line.includes("│:lua vim.g.anvim_probe = 1")));
   await ui.input("<Esc>");
 
   await ui.input("/");

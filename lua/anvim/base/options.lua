@@ -86,4 +86,5 @@ vim.g.markdown_recommended_style = 0
 local ok, ui2 = pcall(require, "vim._core.ui2")
 if ok then
   ui2.enable({})
+  require("anvim.cmdline").setup(ui2)
 end
