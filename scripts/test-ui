@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Runs tests/ui: each test embeds anvim with the plugins in .tests/anvim,
 # attaches as a UI and replays a fixture. File arguments run only those files.
+# The files run in ANVIM_UI_WORKERS processes side by side (default 6), the
+# slowest first by tests/ui/timings.json. To time the files again:
+#   bun test --timeout 60000 --parallel=6 --timings=tests/ui/timings.json --update-timings ./tests/ui
 
 cd "$(dirname "$0")/.." || exit 1
 scripts/test-deps || exit 1
@@ -10,4 +13,4 @@ for arg in "$@"; do
 done
 # Without a path, bun test would run every test file in the repository.
 [ $paths -eq 0 ] && set -- ./tests/ui "$@"
-exec bun test --timeout 60000 "$@"
+exec bun test --timeout 60000 --parallel="${ANVIM_UI_WORKERS:-6}" --timings=tests/ui/timings.json "$@"

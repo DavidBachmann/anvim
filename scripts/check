@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# Runs every gate side by side: the Lua format and lint checks, the type
+# checks, the sidecar's tests, the plugin specs, the stack specs and the UI
+# tests. It prints one line per gate, and for a gate that failed, the end of
+# its log. It exits non-zero when a gate fails.
+
+cd "$(dirname "$0")/.." || exit 1
+# Once, before the gates, so that two of them never install at the same time.
+scripts/test-deps || exit 1
+
+stylua=$(command -v stylua || echo "$HOME/.local/share/nvim/mason/bin/stylua")
+gates="stylua selene sidecar-tsc sidecar-test screen-tsc specs stack ui"
+logs=$(mktemp -d "${TMPDIR:-/tmp}/anvim-check.XXXXXX")
+trap 'rm -rf "$logs"; exit 130' INT TERM
+
+run() {
+  case $1 in
+  stylua) "$stylua" --check . ;;
+  selene) selene . ;;
+  sidecar-tsc) cd sidecar && bunx tsc --noEmit ;;
+  sidecar-test) cd sidecar && bun test ;;
+  screen-tsc) cd tools/screen && bunx tsc --noEmit ;;
+  specs) scripts/test ;;
+  stack) scripts/test-stack ;;
+  ui) scripts/test-ui ;;
+  esac
+}
+
+esc=$(printf '\033')
+# What the gate's runner counted, from its log.
+counts() {
+  local plain
+  plain=$(sed "s/$esc\[[0-9;]*m//g" "$logs/$1.log")
+  case $1 in
+  specs)
+    echo "$plain" | tail -1 | sed 's/, shard times.*//'
+    ;;
+  stack)
+    echo "$(echo "$plain" | sed -n 's/^Total number of cases: \([0-9]*\)$/\1/p') cases," \
+      "$(echo "$plain" | sed -n 's/^Fails (\([0-9]*\)).*/\1/p') fails"
+    ;;
+  sidecar-test | ui)
+    echo "$(echo "$plain" | sed -n 's/^ *\([0-9]*\) pass$/\1/p' | tail -1) pass," \
+      "$(echo "$plain" | sed -n 's/^ *\([0-9]*\) fail$/\1/p' | tail -1) fail"
+    ;;
+  selene)
+    echo "$(echo "$plain" | sed -n 's/^\([0-9]*\) errors$/\1/p') errors," \
+      "$(echo "$plain" | sed -n 's/^\([0-9]*\) warnings$/\1/p') warnings"
+    ;;
+  esac
+}
+
+start=$SECONDS
+pids=""
+for gate in $gates; do
+  (
+    begin=$SECONDS
+    run "$gate" >"$logs/$gate.log" 2>&1
+    echo "$? $((SECONDS - begin))" >"$logs/$gate.status"
+  ) &
+  pids="$pids $!"
+done
+for pid in $pids; do
+  wait "$pid"
+done
+
+failed=""
+for gate in $gates; do
+  read -r code secs <"$logs/$gate.status"
+  result=pass
+  if [ "$code" -ne 0 ]; then
+    result=FAIL
+    failed="$failed $gate"
+  fi
+  printf "%-13s %-4s %4ss  %s\n" "$gate" "$result" "$secs" "$(counts "$gate")"
+done
+for gate in $failed; do
+  echo
+  echo "--- $gate: $logs/$gate.log"
+  tail -n 30 "$logs/$gate.log"
+done
+echo
+if [ -n "$failed" ]; then
+  echo "failed:$failed, after $((SECONDS - start))s"
+  exit 1
+fi
+rm -rf "$logs"
+echo "all gates pass, in $((SECONDS - start))s"

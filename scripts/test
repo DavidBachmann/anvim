@@ -1,8 +1,79 @@
 #!/usr/bin/env bash
+# Runs the plugin specs. File arguments run only those files, in one Neovim.
+# Without arguments, every spec runs in ANVIM_TEST_SHARDS Neovims side by
+# side (default 4). Each shard runs its files in one Neovim, so a spec that
+# depends on another spec's state can still fail.
 
 cd "$(dirname "$0")/.." || exit 1
 scripts/test-deps || exit 1
 # In the sandbox, Neovim cannot write its log in ~/.local/state and writes
 # nvim.log into the repo instead.
 mkdir -p .tests
-NVIM_LOG_FILE=$PWD/.tests/nvim.log nvim -l tests/minit.lua --minitest "$@"
+export NVIM_LOG_FILE=$PWD/.tests/nvim.log
+if [ $# -gt 0 ]; then
+  exec nvim -l tests/minit.lua --minitest "$@"
+fi
+
+shards=${ANVIM_TEST_SHARDS:-4}
+# The slowest files, slowest first, from runs of each file alone. The rest
+# take under a second each. The files go to the shards in this order, back
+# and forth, so that each shard gets one of the slowest. When the times that
+# this script prints drift apart, time the files again and reorder the list.
+slow="install overview typed sessions bash_follow escape tools permission tools_lsp windows launcher follow"
+files=""
+for name in $slow; do
+  [ -f "tests/${name}_spec.lua" ] && files="$files tests/${name}_spec.lua"
+done
+for file in tests/*_spec.lua; do
+  case " $files " in
+  *" $file "*) ;;
+  *) files="$files $file" ;;
+  esac
+done
+
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/anvim-test.XXXXXX")
+trap 'rm -rf "$tmp"' EXIT
+# bash 3.2 runs no EXIT trap on an interrupt without this.
+trap 'exit 130' INT TERM
+i=0
+for file in $files; do
+  round=$((i / shards))
+  shard=$((i % shards))
+  [ $((round % 2)) -eq 1 ] && shard=$((shards - 1 - shard))
+  echo "$file" >>"$tmp/files$shard"
+  i=$((i + 1))
+done
+
+pids=""
+for list in "$tmp"/files*; do
+  (
+    start=$SECONDS
+    nvim -l tests/minit.lua --minitest $(cat "$list") >"$list.out" 2>&1
+    echo "$? $((SECONDS - start))" >"$list.status"
+  ) &
+  pids="$pids $!"
+done
+for pid in $pids; do
+  wait "$pid"
+done
+
+esc=$(printf '\033')
+status=0
+cases=0
+fails=0
+times=""
+for list in "$tmp"/files*[0-9]; do
+  cat "$list.out"
+  read -r code secs <"$list.status"
+  [ "$code" -eq 0 ] || status=1
+  plain=$(sed "s/$esc\[[0-9;]*m//g" "$list.out")
+  n=$(echo "$plain" | sed -n 's/^Total number of cases: \([0-9]*\)$/\1/p')
+  f=$(echo "$plain" | sed -n 's/^Fails (\([0-9]*\)).*/\1/p')
+  # A shard that died early lowers only the case count. Name it.
+  [ -n "$n" ] || echo "no summary from the shard of:" $(cat "$list")
+  cases=$((cases + ${n:-0}))
+  fails=$((fails + ${f:-0}))
+  times="$times ${secs}s"
+done
+echo "$cases cases, $fails fails, shard times:$times"
+exit $status

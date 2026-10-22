@@ -84,12 +84,17 @@ describe("trail", function()
     helpers.start()
     vim.cmd.stopinsert()
     local file = helpers.tmp .. "/matchparen.lua"
+    -- The flash of another spec's read of the file can still show.
+    local ns = api.nvim_create_namespace("anvim.follow")
+    local buf = vim.fn.bufnr(file)
+    if buf > 0 then
+      api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+    end
     trail.open({ file = file, pos = { 12, 0 }, end_pos = { 14, 3 } })
     local win = layout.wins.code
     assert.are.same(win, api.nvim_get_current_win())
     assert.are.same(file, api.nvim_buf_get_name(api.nvim_win_get_buf(win)))
     assert.are.same(12, api.nvim_win_get_cursor(win)[1])
-    local ns = api.nvim_get_namespaces()["anvim.follow"]
     local flashed = {}
     for _, mark in ipairs(api.nvim_buf_get_extmarks(api.nvim_win_get_buf(win), ns, 0, -1, { details = true })) do
       if mark[4].line_hl_group == "AnvimRead" then

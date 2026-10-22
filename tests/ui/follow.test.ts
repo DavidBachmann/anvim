@@ -3,7 +3,7 @@
 // them, and the switch shows in the frame of the cursor's move.
 import { afterEach, expect, test } from "bun:test";
 import type { Frame } from "../../tools/screen/ui.ts";
-import { type Anvim, type Box, cells, inBox, start } from "./helpers.ts";
+import { type Anvim, type Box, cells, inBox, quiet, start } from "./helpers.ts";
 
 let anvim: Anvim | undefined;
 afterEach(async () => {
@@ -154,15 +154,15 @@ test("the mode block and the line numbers change in the same frame, for each way
   const code = await anvim.box("code");
   // Each step ends in a window and a mode, and no frame on the way shows
   // FOLLOW with numbers, or another mode's block with bare code.
-  const step = async (name: string, keys: string[], win: string, mode: string, wait = 600) => {
+  const step = async (name: string, keys: string[], win: string, mode: string, wait = 150) => {
     const mark = ui.mark();
     for (const k of keys) {
       await ui.input(k);
       await Bun.sleep(40);
     }
     await anvim!.waitWhere(win, mode);
-    await Bun.sleep(wait);
     await ui.drain();
+    await quiet(ui, wait);
     const bad = ui.frames(mark).flatMap((f, i) => {
       const shown = block(f, statusline);
       const { numbered, bare } = gutter(f, code);
@@ -182,16 +182,16 @@ test("the mode block and the line numbers change in the same frame, for each way
   await step("compose window closes", ["<C-g>"], "input", "n");
   await step("key view", ["?"], "anvim_keys", "n");
   await step("key view closes", ["q"], "input", "n");
-  await step("picker", [" ", " "], "snacks_picker_input", "i", 900);
-  await step("picker confirms into the code window", ["matchparen", "<CR>"], "code", "n", 800);
+  await step("picker", [" ", " "], "snacks_picker_input", "i", 400);
+  await step("picker confirms into the code window", ["matchparen", "<CR>"], "code", "n", 400);
   await step("to the prompt again", ["<C-w>l"], "input", "n");
   // The mode changes in the explorer's list, a float, which the global
   // statusline then belongs to.
-  await step("explorer", [" ", "e"], "snacks_picker_list", "n", 900);
+  await step("explorer", [" ", "e"], "snacks_picker_list", "n", 400);
   await step("click into the code window", [click("Mouse"), click("Release")], "code", "n");
   await step("to the prompt from the code window", ["<C-w>l"], "input", "n");
-  await step("explorer again", [" ", "e"], "snacks_picker_list", "n", 900);
-  await step("open a file from the explorer", ["G", "<CR>"], "code", "n", 800);
+  await step("explorer again", [" ", "e"], "snacks_picker_list", "n", 400);
+  await step("open a file from the explorer", ["G", "<CR>"], "code", "n", 400);
   expect(await ui.exec_lua(`return vim.fn.expand("%:t")`)).toBe("other.lua");
 });
 
@@ -224,8 +224,8 @@ test("the code window's text stays in place when the cursor goes between the pro
     for (const [keys, win] of steps) {
       for (const k of keys) await ui.input(k);
       await anvim.waitWhere(win, "n");
-      await Bun.sleep(300);
       await ui.drain();
+      await quiet(ui);
     }
     const cols = ui.frames(mark).flatMap((f) => column(f, code, needle) ?? []);
     expect(cols.length, file).toBeGreaterThan(steps.length);

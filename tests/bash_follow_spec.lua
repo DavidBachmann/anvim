@@ -89,6 +89,11 @@ local function flashed(path)
   return lines
 end
 
+-- Longer than a step, so that a step that was going to come has come.
+local function past_step()
+  vim.wait(follow.step_ms * 1.5)
+end
+
 -- The prompt in normal mode, where follow mode follows.
 local function prompt()
   layout.focus_input({ insert = false })
@@ -196,7 +201,8 @@ describe("bash reads", function()
         "the second file did not show"
       )
       local ms = (vim.uv.hrtime() - t) / 1e6
-      assert(ms > 600 and ms < 1600, ("the second file came after %d ms"):format(ms))
+      local step = follow.step_ms
+      assert(ms > step * 0.75 and ms < step * 3, ("the second file came after %d ms, not %d"):format(ms, step))
       assert.are.same({ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }, flashed(b))
       -- Claude's next call: the rest of the reads count at once.
       bash("ls")
@@ -206,7 +212,7 @@ describe("bash reads", function()
         end),
         "no catch-up to the last read"
       )
-      vim.wait(1000)
+      past_step()
     end)
     assert.are.same({ "bash_s1.lua", "bash_s2.lua", "bash_s4.lua" }, list)
     assert.are.same(d, follow.place().path)
@@ -230,20 +236,24 @@ describe("bash reads", function()
   end)
 
   it("queue the reads and hits of calls that Claude sends in one batch", function()
-    local a, b, g = file("bash_b1.lua"), file("bash_b2.lua"), file("bash_b3.lua", 40)
     -- As haiku sent them: both calls, then both results. And as in the
-    -- fixtures: the first result comes while the second call streams.
+    -- fixtures: the first result comes while the second call streams. Each
+    -- order has its own files, because the flash of a read outlasts a step.
     for _, early in ipairs({ false, true }) do
+      local names = vim.tbl_map(function(n)
+        return ("bash_b%d_%s.lua"):format(n, early)
+      end, { 1, 2, 3 })
+      local a, b, g = file(names[1]), file(names[2]), file(names[3], 40)
       fresh()
       prompt()
       local list = shown_files(function()
-        local first = bash("cat bash_b1.lua bash_b2.lua")
+        local first = bash(("cat %s %s"):format(names[1], names[2]))
         local second = "bash_batch_" .. tostring(early)
         sidecar.dispatch({ type = "tool_start", id = second, name = "Bash" })
         if early then
           result(first, "local x1 = 1")
         end
-        bash("grep -n x bash_b3.lua", nil, nil, second)
+        bash("grep -n x " .. names[3], nil, nil, second)
         result(second, "30:local x30 = 30\n33:local x33 = 33")
         if not early then
           result(first, "local x1 = 1")
@@ -264,7 +274,7 @@ describe("bash reads", function()
         assert.are.same(30, code_line())
         assert.are.same({ 30, 33 }, flashed(g))
       end)
-      assert.are.same({ "bash_b1.lua", "bash_b2.lua", "bash_b3.lua" }, list)
+      assert.are.same(names, list)
     end
   end)
 
@@ -295,7 +305,7 @@ describe("bash reads", function()
     bash(("cat %s; cat %s; tail -n 5 %s"):format(a, b, c))
     assert.are.same(a, code_file())
     elsewhere()
-    vim.wait(1200)
+    past_step()
     assert.are.same(a, code_file(), "the steps stopped")
     assert.are.same("⏺ Claude at bash_l3.lua:26 +1", follow.status())
   end)
@@ -317,7 +327,7 @@ describe("bash reads", function()
     bash(("cat %s %s %s"):format(a, b, c))
     assert.are.same(a, code_file())
     follow.track(shown, 2)
-    vim.wait(1200)
+    past_step()
     assert.are.same({ shown, 2 }, { code_file(), code_line() }, "the steps fought a newer move")
   end)
 
@@ -347,7 +357,7 @@ describe("bash reads", function()
     list = shown_files(function()
       result(bash(("cat %s %s %s"):format(f1, f2, f3), "fg"), "local x1 = 1", "fg")
       turn_end()
-      vim.wait(1200)
+      past_step()
     end)
     assert.are.same({ "bash_fg1.lua" }, list, "the steps went on")
   end)
@@ -360,7 +370,7 @@ describe("bash reads", function()
     bash(("cat %s %s %s"):format(a, b, c))
     assert.are.same(a, code_file())
     assert.is_nil(helpers.ask("show_user", { path = shown, start_line = 2, end_line = 3 }).error)
-    vim.wait(1200)
+    past_step()
     assert.are.same({ shown, 2 }, { code_file(), code_line() }, "the steps went on over show_user")
     require("anvim.tools").clear()
 
@@ -378,7 +388,7 @@ describe("bash reads", function()
       input = { file_path = edited, old_string = "local x2 = 2", new_string = "local x2 = 20" },
     })
     assert.is_true(require("anvim.stream").typed("bash_typed_edit"))
-    vim.wait(1200)
+    past_step()
     assert.are.same(edited, code_file(), "the steps went on over a typed preview")
     sidecar.dispatch({
       type = "tool_result",

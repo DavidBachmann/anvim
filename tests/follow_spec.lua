@@ -14,6 +14,12 @@ local function shows(path)
 end
 
 describe("follow", function()
+  -- The Reads get no result, so the turn ends as after an interrupt. Their
+  -- tool lines must not wait for a turn_end in another spec.
+  after_each(function()
+    sidecar.dispatch({ type = "turn_end", subtype = "success", is_error = false, duration_ms = 1, cost_usd = 0 })
+  end)
+
   it("points the statusline at Claude when not following, and focus catches up", function()
     helpers.start()
     local file = helpers.tmp .. "/follow.lua"

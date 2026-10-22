@@ -15,11 +15,11 @@ local api = vim.api
 local ns = api.nvim_create_namespace("anvim.follow")
 
 -- A Bash call can read several files. While following, the code window shows
--- them one by one. Each file stays STEP_MS, twice the time of a Read's flash,
+-- them one by one. Each file stays step_ms, twice the time of a Read's flash,
 -- so the eye finds the file and its range before the next one comes. Four
 -- files take 2.4 s, and a call that reads more shows its first three and its
--- last.
-local STEP_MS = 800
+-- last. The specs shorten it.
+M.step_ms = 800
 local MAX_STEPS = 4
 
 ---@class anvim.Place
@@ -684,8 +684,8 @@ local function on_reads(reads, id)
   s = { reads = vim.list_slice(reads, 2), timer = assert(vim.uv.new_timer()) }
   steps[id or ""] = s
   s.timer:start(
-    STEP_MS,
-    STEP_MS,
+    M.step_ms,
+    M.step_ms,
     vim.schedule_wrap(function()
       -- A tick that waited in the queue may belong to steps that ended.
       if steps[id or ""] == s then

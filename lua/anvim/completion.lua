@@ -11,7 +11,7 @@ local MAX_ITEMS = 200
 -- Entries, files and directories, that a walk of a project outside git visits.
 local MAX_WALK = 20000
 -- A list stays this long, even after files may have changed.
-local FRESH_MS = 5000
+M.fresh_ms = 5000
 
 ---@class anvim.SlashCommand
 ---@field name string without the slash
@@ -87,9 +87,9 @@ local function file_list(paths)
 end
 
 -- Calls back with the project's files. The list is made again when files
--- may have changed, and not within FRESH_MS.
+-- may have changed, and not within fresh_ms.
 local function with_files(cb)
-  if files and not (stale and vim.uv.now() - files.at > FRESH_MS) then
+  if files and not (stale and vim.uv.now() - files.at > M.fresh_ms) then
     return cb(files)
   end
   waiting[#waiting + 1] = cb

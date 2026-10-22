@@ -11,7 +11,7 @@ local function complete(line, row, manual)
   local start, items
   vim.wait(3000, function()
     start, items = select(2, completion.items((row or 1) - 1, line, manual))
-    return #items > 0 or not line:find("@")
+    return #items > 0 or completion.context((row or 1) - 1, line) ~= "file"
   end)
   return start, items
 end
@@ -30,6 +30,11 @@ describe("completion", function()
     vim.fn.mkdir(helpers.tmp .. "/comp/sub", "p")
     vim.fn.writefile({ "return 1" }, helpers.tmp .. "/comp/a.lua")
     vim.fn.writefile({ "return 2" }, helpers.tmp .. "/comp/sub/b.lua")
+    -- As after Claude made the files: the turn ends, and a list that the
+    -- prompt made earlier is old enough to be made again.
+    local fresh = completion.fresh_ms
+    completion.fresh_ms = 0
+    sidecar.dispatch({ type = "turn_end", subtype = "success", is_error = false, duration_ms = 1, cost_usd = 0 })
 
     local start, list = complete("look at @comp/")
     local items = by_abbr(list)
@@ -62,6 +67,7 @@ describe("completion", function()
     for _, item in ipairs(list) do
       assert(not item.word:find("^@"), item.word)
     end
+    completion.fresh_ms = fresh
   end)
 
   it("offers slash commands with their descriptions at the start of the prompt only", function()

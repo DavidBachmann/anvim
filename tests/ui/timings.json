@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "files": {
+    "tests/ui/follow.test.ts": 13742,
+    "tests/ui/overview.test.ts": 13343,
+    "tests/ui/permission.test.ts": 12080,
+    "tests/ui/messages.test.ts": 10171,
+    "tests/ui/completion.test.ts": 6486,
+    "tests/ui/transcript.test.ts": 6121,
+    "tests/ui/escape.test.ts": 5578,
+    "tests/ui/mouse.test.ts": 5326,
+    "tests/ui/sessions.test.ts": 5156,
+    "tests/ui/tree.test.ts": 5129,
+    "tests/ui/jump.test.ts": 4036,
+    "tests/ui/windows.test.ts": 3803,
+    "tests/ui/statusline.test.ts": 2867,
+    "tests/ui/context.test.ts": 1673,
+    "tests/ui/winbar.test.ts": 1376,
+    "tests/ui/cmdline.test.ts": 1098,
+    "tests/ui/focus.test.ts": 930,
+    "tests/ui/layout.test.ts": 823,
+    "tests/ui/wrap.test.ts": 654,
+    "tests/ui/client.test.ts": 607,
+    "tests/ui/typed.test.ts": 531,
+    "tests/ui/keys.test.ts": 457
+  }
+}

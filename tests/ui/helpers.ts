@@ -31,6 +31,17 @@ export async function settle<T>(get: () => Promise<T>, ok: (value: T) => boolean
   return value;
 }
 
+// Waits until no frame has come for ms, so that the late frames of a step,
+// such as a picker's list, are in the log.
+export async function quiet(ui: Ui, ms = 150, timeout = 5000) {
+  const deadline = performance.now() + timeout;
+  while (performance.now() < deadline) {
+    const last = ui.frames(Math.max(ui.mark() - 1, 0))[0]?.t ?? 0;
+    if (performance.now() - last >= ms) return;
+    await Bun.sleep(20);
+  }
+}
+
 const WHERE = `
   local win = vim.api.nvim_get_current_win()
   local mode = vim.api.nvim_get_mode().mode

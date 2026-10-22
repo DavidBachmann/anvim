@@ -19,14 +19,16 @@ for i, frame in ipairs(frames) do
 end
 vim.fn.writefile(frames, recording)
 
----@type integer?
-local start_win
+---@type string? The layout role of the window that had focus after start.
+local start_role
 
--- Starts anvim in the temp project with the replay sidecar, once.
----@return integer win The window that had focus after start.
+-- Starts anvim in the temp project with the replay sidecar, once. A spec can
+-- close a window that anvim then opens again, so the role stays true and a
+-- window id may not.
+---@return string role The layout role of the window that had focus after start, such as "input".
 function M.start()
-  if start_win then
-    return start_win
+  if start_role then
+    return start_role
   end
   vim.cmd.cd(M.tmp)
   -- As in anvim's options. Without a UI, the mode message would go to the test output.
@@ -35,6 +37,8 @@ function M.start()
   require("anvim.history").dir = M.tmp .. "/history"
   -- The choices of <leader>u start from none, and no spec keeps them for the next run.
   require("anvim.prefs").path = vim.fn.tempname() .. "/prefs.json"
+  -- The steps through a Bash call's files go faster than a user's eye needs.
+  require("anvim.follow").step_ms = 100
   local anvim = require("anvim")
   anvim.setup({
     permission_mode = "bypassPermissions",
@@ -48,14 +52,20 @@ function M.start()
     picker:close()
   end
   vim.wait(100)
-  start_win = vim.api.nvim_get_current_win()
+  local win = vim.api.nvim_get_current_win()
+  start_role = "other"
+  for role, w in pairs(require("anvim.layout").wins) do
+    if w == win then
+      start_role = role
+    end
+  end
   assert(
     vim.wait(5000, function()
       return require("anvim.state").process == "ready"
     end),
     "sidecar not ready"
   )
-  return start_win
+  return start_role
 end
 
 -- The events of a fixture, with the paths in the temp project. The events

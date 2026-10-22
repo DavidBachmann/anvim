@@ -32,4 +32,8 @@ require("lazy.minit").setup({
       },
     },
   },
+  -- The spec shards of scripts/test share .tests. With lazy's cache, they
+  -- rewrite the same compiled module files at once after an edit, and a
+  -- shard can load an empty module.
+  performance = { cache = { enabled = false } },
 })
