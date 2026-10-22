@@ -54,6 +54,17 @@ local function command()
   return { opts.bun, M.dir .. "/src/main.ts" }
 end
 
+-- The sidecar's env, and so the env of Claude's shell, without the variables
+-- that tie a process to this Neovim. With them, an nvim that Claude starts
+-- uses anvim's dirs, and NVIM names anvim's own socket.
+function M.env()
+  local env = vim.fn.environ()
+  for _, name in ipairs({ "NVIM", "NVIM_APPNAME", "NVIM_LISTEN_ADDRESS", "NVIM_LOG_FILE", "VIMRUNTIME", "MYVIMRC" }) do
+    env[name] = nil
+  end
+  return env
+end
+
 -- Splits stdout into lines and decodes them in the read callback. Dispatch is
 -- scheduled, so handlers may call any API. A line can be megabytes long, as
 -- a resumed session's history, so its chunks wait in a list until it ends.
@@ -103,6 +114,8 @@ function M.start(start)
   proc = vim.system(command(), {
     stdin = true,
     cwd = start.cwd,
+    env = M.env(),
+    clear_env = true,
     stdout = M.line_reader(),
     stderr = function(_, data)
       if data then
