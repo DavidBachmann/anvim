@@ -76,7 +76,7 @@ export function editorTools(bridge: EditorBridge) {
     ),
     tool(
       "diagnostics",
-      "List the errors and warnings that the editor's language servers and linters report, for one file or for every open file.",
+      "List the errors and warnings that the editor's language servers and linters report, errors first. Without a path, it lists every file in the working directory that they checked.",
       { path: path.optional() },
       call("diagnostics"),
       readOnly,

@@ -367,8 +367,9 @@ local function symbol_kind(kind)
   return vim.lsp.protocol.SymbolKind[kind] or "Symbol"
 end
 
--- An outline, not every local: the children of functions are left out.
-local leaf_kinds = { Function = true, Method = true, Constructor = true }
+-- An outline, not every local: the children of functions and the items of
+-- arrays are left out.
+local leaf_kinds = { Function = true, Method = true, Constructor = true, Array = true }
 
 local function outline(symbols, depth, out)
   for _, s in ipairs(symbols) do
@@ -635,7 +636,11 @@ local function diagnostics_text(diags, path)
       items[#items + 1] = { path = relpath(name), d = d }
     end
   end
+  -- Errors first, so that the cap never hides one behind warnings.
   table.sort(items, function(a, b)
+    if a.d.severity ~= b.d.severity then
+      return a.d.severity < b.d.severity
+    end
     if a.path ~= b.path then
       return a.path < b.path
     end
@@ -643,7 +648,7 @@ local function diagnostics_text(diags, path)
   end)
   if #items == 0 then
     return path and ("No diagnostics in %s."):format(relpath(path))
-      or "No diagnostics in the open files of the working directory."
+      or "No diagnostics in the files of the working directory that the servers checked."
   end
   -- One line for each message in a file. Its repeats only add their lines.
   local counts, groups, order = {}, {}, {}

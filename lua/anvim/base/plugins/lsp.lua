@@ -42,6 +42,11 @@ return {
               workspace = {
                 checkThirdParty = false,
               },
+              -- Lets an `integer?` pass where `integer` is expected. Plugin
+              -- code does that all the time, and the warnings bury real ones.
+              type = {
+                weakNilCheck = true,
+              },
             },
           },
         },

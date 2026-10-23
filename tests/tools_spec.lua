@@ -67,20 +67,22 @@ describe("show_user", function()
 end)
 
 describe("editor requests", function()
-  it("group the repeats of a diagnostic into one line", function()
+  it("group the repeats of a diagnostic into one line, errors first", function()
     helpers.start()
     local file = helpers.tmp .. "/repeats.lua"
-    vim.fn.writefile({ "a", "b", "c", "d" }, file)
+    vim.fn.writefile({ "a", "b", "c", "d", "e" }, file)
     local buf = follow.load(file)
     local ns = api.nvim_create_namespace("anvim.test.repeats")
     local function warn(lnum, message)
       return { lnum = lnum, col = 0, severity = vim.diagnostic.severity.WARN, message = message, source = "test" }
     end
-    vim.diagnostic.set(ns, buf, { warn(0, "Same."), warn(1, "Other."), warn(2, "Same."), warn(3, "Same.") })
+    local broken = { lnum = 4, col = 0, severity = vim.diagnostic.severity.ERROR, message = "Broken.", source = "test" }
+    vim.diagnostic.set(ns, buf, { warn(0, "Same."), warn(1, "Other."), warn(2, "Same."), warn(3, "Same."), broken })
     local reply = helpers.ask("diagnostics", { path = "repeats.lua" })
     vim.diagnostic.reset(ns, buf)
     assert.are.same({
-      "4 diagnostics: 4 warnings",
+      "5 diagnostics: 1 error, 4 warnings",
+      "repeats.lua:5:1 error: Broken. [test]",
       "repeats.lua:1:1 warning: Same. [test] (and 2 more, at lines 3, 4)",
       "repeats.lua:2:1 warning: Other. [test]",
     }, vim.split(reply.result or reply.error, "\n"))
