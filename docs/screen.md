@@ -52,7 +52,7 @@ A split, a picker's split action or `:diffsplit` opens the file in the code wind
 
 ## Images
 
-In terminals with the kitty graphics protocol, such as Ghostty, cmux and kitty, the code window shows PNG images, and markdown files show their PNG images inline. Other image formats show as text.
+In terminals with the kitty graphics protocol, such as Ghostty, cmux and kitty, the code window shows PNG images, and markdown files show their PNG images inline. Other image formats show as text. An image that changes on disk, such as a PNG that Claude writes again, shows its new picture, like any other buffer.
 
 ## Editor tools for Claude
 

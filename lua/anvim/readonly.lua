@@ -63,15 +63,48 @@ function M.reload()
   vim.cmd("silent! checktime")
 end
 
+-- snacks sends an image file to the terminal once, and keeps its id and size
+-- by path. A file that changed on disk, such as a PNG that Claude wrote
+-- again, would reload with the old picture. So the reload forgets the image:
+-- the terminal frees the old data, and the file goes again as a new image.
+-- snacks forgets only all images at once, so the others go again when they
+-- show next.
+local function resend_images(group)
+  local mtimes = {}
+  api.nvim_create_autocmd("BufReadCmd", {
+    group = group,
+    pattern = "*." .. table.concat(Snacks.config.image.formats, ",*."),
+    callback = function(ev)
+      local file = api.nvim_buf_get_name(ev.buf)
+      local stat = vim.uv.fs_stat(file)
+      if not stat or not Snacks.config.image.enabled or not Snacks.image.supports(file) then
+        return
+      end
+      local mtime = stat.mtime.sec .. "." .. stat.mtime.nsec
+      local changed = mtimes[file] ~= nil and mtimes[file] ~= mtime
+      mtimes[file] = mtime
+      if changed then
+        local img = Snacks.image.image.new(file)
+        img:del()
+        Snacks.image.terminal.request({ a = "d", d = "I", i = img.id })
+        Snacks.image.image.clear()
+        Snacks.image.buf.attach(ev.buf)
+      end
+    end,
+  })
+end
+
 function M.setup()
   vim.o.autoread = true
   vim.o.swapfile = false
+  local group = api.nvim_create_augroup("anvim.readonly", {})
   api.nvim_create_autocmd({ "BufReadPost", "BufNewFile", "BufWinEnter", "BufEnter" }, {
-    group = api.nvim_create_augroup("anvim.readonly", {}),
+    group = group,
     callback = function(ev)
       M.lock(ev.buf)
     end,
   })
+  resend_images(group)
   for _, buf in ipairs(api.nvim_list_bufs()) do
     M.lock(buf)
   end
