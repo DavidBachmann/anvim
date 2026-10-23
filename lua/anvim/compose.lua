@@ -168,6 +168,8 @@ function M.open()
   local buf = api.nvim_create_buf(false, false)
   -- Set before anything can lock it as a file buffer.
   vim.bo[buf].buftype = "acwrite"
+  -- snacks.image would show the images of markdown links inline.
+  vim.b[buf].snacks_image_attached = true
   api.nvim_buf_set_name(buf, NAME)
   api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modified = false

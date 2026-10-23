@@ -114,6 +114,8 @@ Paste an image in the prompt, or drop an image file on the terminal, and the pro
 
 Only one window shows files, so anvim always knows which file you are looking at. The bar at the top of the code window names the file, relative to the working directory, and says `(writing)` while Claude writes a new file. A split, a picker's split action or `:diffsplit` opens the file in the code window instead. Help, quickfix, terminal and plugin windows open as usual. If you close the code window, the tool pane, the transcript or the prompt, anvim opens it again. `:q` in any of them quits anvim, also when other tabs are open.
 
+In terminals with the kitty graphics protocol, such as Ghostty, cmux and kitty, the code window shows PNG images, and markdown files show their PNG images inline. Other image formats show as text.
+
 Claude can also use your editor. It points at code with `show_user`, which marks a range and puts a short note above it until your next prompt. It asks the language servers that run in anvim for diagnostics, definitions, references, hover text and symbols, so it greps less. These tools work in every permission mode, so they read only files inside the directory that anvim opened. `show_user` can point at any file, because its answer holds no file text.
 
 ## Keys

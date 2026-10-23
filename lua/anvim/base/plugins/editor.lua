@@ -6,6 +6,9 @@ return {
     opts = {
       bigfile = { enabled = true },
       explorer = { enabled = true },
+      -- Other formats need ImageMagick, which anvim does not install. They
+      -- load as text.
+      image = { enabled = true, formats = { "png", "icns" } },
       indent = { enabled = true },
       input = { enabled = true },
       notifier = { enabled = true },
@@ -16,6 +19,23 @@ return {
       statuscolumn = { enabled = true },
       words = { enabled = true },
     },
+    config = function(_, opts)
+      require("snacks").setup(opts)
+      -- snacks asks ImageMagick's identify for the size of each image, and
+      -- shows an error without it. Without that step, snacks reads the size
+      -- from the PNG itself.
+      if opts.image.enabled and vim.fn.executable("magick") == 0 and vim.fn.executable("identify") == 0 then
+        local convert = require("snacks.image.convert")
+        local new = convert.convert
+        convert.convert = function(o)
+          local ret = new(o)
+          ret.steps = vim.tbl_filter(function(step)
+            return step.name ~= "identify"
+          end, ret.steps)
+          return ret
+        end
+      end
+    end,
   },
 
   {

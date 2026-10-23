@@ -239,6 +239,11 @@ function M.apply(win)
     end
   end
   apply_wrap(win)
+  -- snacks sets these local values only when it places the image, and a
+  -- later gutter would shift the image and cut its right edge.
+  if vim.bo[api.nvim_win_get_buf(win)].filetype == "image" then
+    Snacks.util.wo(win, Snacks.image.config.wo or {})
+  end
 end
 
 -- A float that opened on top, such as a picker, the key view or
@@ -562,8 +567,17 @@ local function end_main()
   end
 end
 
+-- snacks.image shows the file, so its rows are not the file's lines. The
+-- name decides, because the image may not have loaded yet.
+local function image(buf)
+  return Snacks.config.image.enabled and Snacks.image.supports_file(api.nvim_buf_get_name(buf))
+end
+
 ---@param rows integer[] 0-based rows
 function M.flash(buf, rows, group, ms)
+  if image(buf) then
+    return
+  end
   local marks = {}
   for _, row in ipairs(rows) do
     if row < api.nvim_buf_line_count(buf) then

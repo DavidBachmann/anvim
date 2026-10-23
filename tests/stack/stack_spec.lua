@@ -120,6 +120,8 @@ local function spawn(dir, personal, errors)
   env.ANVIM_REPLAY = helpers.recording
   env.ANVIM_REPLAY_SPEED = "50"
   env.ANVIM_MODEL = "haiku"
+  -- snacks.image places images as in Ghostty. Without a UI, the escapes go nowhere.
+  env.SNACKS_GHOSTTY = "1"
   -- RPC over stdio, not a socket, which Claude's sandbox does not allow.
   local id = vim.fn.jobstart({
     vim.v.progpath,
@@ -549,6 +551,46 @@ describe("stack", function()
       file
     )
     assert.are.same({ ft = "markdown", wrap = true, code = false, input = false, transcript = false }, out)
+  end)
+
+  it("shows a PNG that Claude reads as an image, also without ImageMagick, and keeps it read-only", function()
+    start()
+    local file = helpers.tmp .. "/pixel.png"
+    local png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    local f = assert(io.open(file, "wb"))
+    f:write(vim.base64.decode(png))
+    f:close()
+    local out = lua(
+      [[
+      local file = ...
+      local api = vim.api
+      local layout = require("anvim.layout")
+      local code = layout.code_win()
+      local before = api.nvim_win_get_buf(code)
+      layout.focus_input({ insert = false })
+      local sidecar = require("anvim.sidecar")
+      sidecar.dispatch({ type = "tool_use", id = "png1", name = "Read", input = { file_path = file } })
+      local buf = vim.fn.bufnr(file)
+      -- snacks places the image with an extmark, or writes its error into the buffer.
+      local ns = api.nvim_create_namespace("snacks.image")
+      vim.wait(3000, function()
+        return #api.nvim_buf_get_extmarks(buf, ns, 0, -1, {}) > 0 or api.nvim_buf_get_lines(buf, 0, 1, false)[1] ~= ""
+      end, 20)
+      local out = {
+        ft = vim.bo[buf].filetype,
+        shown = api.nvim_win_get_buf(code) == buf,
+        lines = api.nvim_buf_get_lines(buf, 0, -1, false),
+        modifiable = vim.bo[buf].modifiable,
+      }
+      sidecar.dispatch({ type = "turn_end", subtype = "success", is_error = false, duration_ms = 1, cost_usd = 0 })
+      -- The next cases expect the file that the code window showed.
+      api.nvim_win_set_buf(code, before)
+      api.nvim_buf_delete(buf, { force = true })
+      return out
+    ]],
+      file
+    )
+    assert.are.same({ ft = "image", shown = true, lines = { "" }, modifiable = false }, out)
   end)
 
   it("toggles the explorer with <leader>e, and the explorer changes no files", function()

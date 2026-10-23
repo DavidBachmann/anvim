@@ -67,6 +67,8 @@ function M.buf()
   bufnr = api.nvim_create_buf(false, true)
   vim.b[bufnr].anvim_input = true
   api.nvim_buf_set_name(bufnr, "anvim://input")
+  -- snacks.image would show the images of markdown links inline.
+  vim.b[bufnr].snacks_image_attached = true
   vim.treesitter.language.register("markdown", "anvim_input")
   vim.bo[bufnr].filetype = "anvim_input"
   pcall(vim.treesitter.start, bufnr, "markdown")

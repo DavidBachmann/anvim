@@ -119,6 +119,8 @@ function M.buf()
   vim.b[bufnr].anvim_transcript = true
   require("anvim.windows").stop_at_end(bufnr)
   api.nvim_buf_set_name(bufnr, "anvim://transcript")
+  -- snacks.image would show the images of markdown links inline.
+  vim.b[bufnr].snacks_image_attached = true
   vim.treesitter.language.register("markdown", "anvim_transcript")
   vim.bo[bufnr].filetype = "anvim_transcript"
   pcall(vim.treesitter.start, bufnr, "markdown")
