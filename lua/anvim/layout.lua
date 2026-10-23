@@ -149,12 +149,12 @@ end
 
 -- The pane's own options. A new window copies the current window's, and a
 -- buffer brings the ones of the window that showed it last, such as the
--- Agent Overview's. The pane has the code window's background and bar, so it
--- reads as part of the code column, not the chat. 'winfixwidth' would keep
--- the code column's width when the tree hides.
+-- Agent Overview's. The pane and its bar have the terminal's background.
+-- 'winfixwidth' would keep the code column's width when the tree hides.
 local pane_options = {
   winbar = "%!v:lua.require'anvim.layout'.pane_winbar()",
-  winhighlight = "WinBar:AnvimWinBar,WinBarNC:AnvimWinBar",
+  winhighlight = "Normal:AnvimPane,NormalNC:AnvimPane,EndOfBuffer:AnvimPane,"
+    .. "WinBar:AnvimPaneWinBar,WinBarNC:AnvimPaneWinBar",
   number = false,
   relativenumber = false,
   signcolumn = "no",

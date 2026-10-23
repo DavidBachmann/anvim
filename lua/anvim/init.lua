@@ -68,6 +68,30 @@ local function set_derived(name, spec)
   end
 end
 
+-- The terminal's background, from its answer to anvim's OSC 11 query.
+---@type integer?
+local term_bg
+
+-- An OSC 11 answer, such as "\27]11;rgb:1919/1717/2424", as a color. A
+-- channel has 1 to 4 hex digits, which scale to 8 bits as Neovim scales them.
+local function parse_osc11(seq)
+  local r, g, b = seq:match("^\27%]11;rgba?:(%x+)/(%x+)/(%x+)")
+  if not (r and #r <= 4 and #g <= 4 and #b <= 4) then
+    return
+  end
+  local color = 0
+  for _, c in ipairs({ r, g, b }) do
+    color = color * 256 + math.floor(tonumber(c, 16) / (16 ^ #c - 1) * 255 + 0.5)
+  end
+  return color
+end
+
+-- Takes tokyonight moon's #222436 near Rose Pine's #191724.
+local function darken(color)
+  local r, g, b = bit.rshift(color, 16), bit.band(bit.rshift(color, 8), 255), bit.band(color, 255)
+  return math.floor(r * 0.7 + 0.5) * 65536 + math.floor(g * 0.7 + 0.5) * 256 + math.floor(b * 0.7 + 0.5)
+end
+
 local function set_highlights()
   for name, spec in pairs(highlights) do
     api.nvim_set_hl(0, name, vim.tbl_extend("force", spec, { default = true }))
@@ -85,17 +109,25 @@ local function set_highlights()
   -- these links, which are snacks' own, resolve AnvimNormal.
   api.nvim_set_hl(0, "SnacksPickerList", { link = "SnacksPicker", default = true })
   api.nvim_set_hl(0, "SnacksPicker", { link = "NormalFloat", default = true })
-  -- The blank row under the transcript takes the transcript's background. With
-  -- a default, it would keep the previous colorscheme's colors. nvim_get_hl()
-  -- goes through the current window's 'winhighlight', and the Claude column
-  -- maps WinSeparator to AnvimSeparator, so read it in the code window.
-  local function get_sep()
-    return api.nvim_get_hl(0, { name = "WinSeparator", link = false })
-  end
+  -- nvim_get_hl() goes through the current window's 'winhighlight'. The
+  -- Claude column maps Normal and WinSeparator, so read them in the code window.
   local code = layout.wins.code
-  local sep = code and api.nvim_win_is_valid(code) and api.nvim_win_call(code, get_sep) or get_sep()
+  local function get(name)
+    local function hl()
+      return api.nvim_get_hl(0, { name = name, link = false })
+    end
+    return code and api.nvim_win_is_valid(code) and api.nvim_win_call(code, hl) or hl()
+  end
+  -- The blank row under the transcript takes the transcript's background. With
+  -- a default, it would keep the previous colorscheme's colors.
   local column = api.nvim_get_hl(0, { name = "AnvimNormal", link = false })
-  api.nvim_set_hl(0, "AnvimSeparator", { fg = sep.fg, bg = column.bg })
+  api.nvim_set_hl(0, "AnvimSeparator", { fg = get("WinSeparator").fg, bg = column.bg })
+  -- The tool pane has the terminal's background, so it matches chrome such as
+  -- cmux's sidebar. Until the terminal answers, it darkens the code's.
+  local normal = get("Normal")
+  local bg = term_bg or (normal.bg and darken(normal.bg))
+  set_derived("AnvimPane", { fg = normal.fg, bg = bg })
+  set_derived("AnvimPaneWinBar", vim.tbl_extend("force", get("AnvimWinBar"), { bg = bg }))
   require("anvim.statusline").highlights()
 end
 
@@ -161,10 +193,21 @@ function M.setup(opts)
   -- Wrap transcript lines at spaces and punctuation, not inside paths.
   vim.o.breakat = " \t;:,!?"
   set_highlights()
-  api.nvim_create_autocmd("ColorScheme", {
-    group = api.nvim_create_augroup("anvim.highlights", {}),
-    callback = set_highlights,
+  local group = api.nvim_create_augroup("anvim.highlights", {})
+  api.nvim_create_autocmd("ColorScheme", { group = group, callback = set_highlights })
+  -- Neovim asks for the background before anvim runs and keeps only
+  -- 'background', so ask again. Only a terminal UI gets the query.
+  api.nvim_create_autocmd("TermResponse", {
+    group = group,
+    callback = function(ev)
+      local bg = parse_osc11(ev.data.sequence)
+      if bg then
+        term_bg = bg
+        set_highlights()
+      end
+    end,
   })
+  api.nvim_ui_send("\27]11;?\7")
   require("anvim.statusline").setup()
   readonly.setup()
   layout.setup()
