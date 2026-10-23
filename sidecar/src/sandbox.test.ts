@@ -404,7 +404,7 @@ describe("the edit guard", () => {
     expect(await write(g, `${outside}/back/../x`)).toBe(REASONS.outside(join(outside, "x")));
   });
 
-  test("trusts the sandbox's temp dir, the config dir's projects and plans, and allowWrite", async () => {
+  test("trusts the sandbox's temp dir, the config dir's projects, plans and agent memory, and allowWrite", async () => {
     const g = guard({
       effective: {
         sandbox: {
@@ -415,6 +415,7 @@ describe("the edit guard", () => {
     expect(await write(g, join(root, "sbtmp", "scratch.txt"))).toBeUndefined();
     expect(await write(g, join(home, ".claude", "projects", "p", "memory", "m.md"))).toBeUndefined();
     expect(await write(g, join(home, ".claude", "plans", "plan.md"))).toBeUndefined();
+    expect(await write(g, join(home, ".claude", "agent-memory", "a", "m.md"))).toBeUndefined();
     expect(await write(g, join(home, ".claude", "settings.json"))).toBe(
       "outside the trusted dirs: ~/.claude/settings.json",
     );

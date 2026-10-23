@@ -579,6 +579,8 @@ export class SandboxGuard {
       this.tmpDir,
       join(this.configDir, "projects"),
       join(this.configDir, "plans"),
+      // Subagents keep their user-scope memory here.
+      join(this.configDir, "agent-memory"),
     ].map((dir) => realPath(this.absolute(dir)));
   }
 }
