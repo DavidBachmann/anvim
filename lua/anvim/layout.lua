@@ -149,7 +149,9 @@ end
 
 -- The pane's own options. A new window copies the current window's, and a
 -- buffer brings the ones of the window that showed it last, such as the
--- Agent Overview's. The pane and its bar have the terminal's background.
+-- Agent Overview's. The pane has the terminal's background. Its bar has the
+-- code's, as the code window's tab bar. The status column is a margin, as
+-- the space after the times on the right.
 -- 'winfixwidth' would keep the code column's width when the tree hides.
 local pane_options = {
   winbar = "%!v:lua.require'anvim.layout'.pane_winbar()",
@@ -159,7 +161,7 @@ local pane_options = {
   relativenumber = false,
   signcolumn = "no",
   foldcolumn = "0",
-  statuscolumn = "",
+  statuscolumn = " ",
   foldenable = false,
   wrap = true,
   linebreak = true,
@@ -186,15 +188,18 @@ local function setup_pane_win(win)
   end
 end
 
--- The pane's winbar names a subagent whose calls it shows, in its color.
+-- The pane's winbar is a tab, as the code window's current tab. It names a
+-- subagent whose calls the pane shows, in its color.
 function M.pane_winbar()
   local agents = require("anvim.agents")
   local id = vim.b[api.nvim_win_get_buf(vim.g.statusline_winid)].anvim_agentlog
   local agent = id and agents.get(id)
   if not agent then
-    return " Tool calls"
+    return "%#AnvimTabCurrent# Tool calls %*"
   end
-  return (" Tool calls · %%#%s#%s"):format(agents.group(agent.slot), (agents.name(agent):gsub("%%", "%%%%")))
+  local group = require("anvim.tabs").on_current(agents.group(agent.slot))
+  local name = agents.name(agent):gsub("%%", "%%%%")
+  return ("%%#AnvimTabCurrent# Tool calls · %%#%s#%s%%#AnvimTabCurrent# %%*"):format(group, name)
 end
 
 -- Shows `buf` in the pane, at its end.

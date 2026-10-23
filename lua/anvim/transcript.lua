@@ -398,8 +398,11 @@ api.nvim_set_decoration_provider(ns_time, {
       return
     end
     local times = stamps[buf] or {}
+    -- The tool pane has a margin on both sides, against its own background.
+    local margin = win == require("anvim.layout").wins.pane and " " or ""
     for _, mark in ipairs(api.nvim_buf_get_extmarks(buf, ns_time, { from_row, 0 }, { to_row - 1, 0 }, {})) do
       local row, time = mark[2], times[mark[1]]
+      time = time and time .. margin
       if time and fits(win, buf, row, api.nvim_strwidth(time)) then
         api.nvim_buf_set_extmark(buf, ns_time, row, row == from_row and from_col or 0, {
           ephemeral = true,

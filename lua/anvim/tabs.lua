@@ -47,6 +47,8 @@ end
 -- combine with WinBar only, so the tab's background must be in each group.
 -- Made on first use, because mini.icons sets its groups again after
 -- anvim's ColorScheme handler.
+---@param group string?
+---@return string
 local function current(group)
   if not group then
     return "AnvimTabCurrent"
@@ -61,6 +63,7 @@ local function current(group)
   end
   return name
 end
+M.on_current = current
 
 -- The key of the agent that follow mode follows, and its edit mark's group.
 local function agent()

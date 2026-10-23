@@ -125,11 +125,12 @@ local function set_highlights()
   local column = api.nvim_get_hl(0, { name = "AnvimNormal", link = false })
   api.nvim_set_hl(0, "AnvimSeparator", { fg = get("WinSeparator").fg, bg = column.bg })
   -- The tool pane has the terminal's background, so it matches chrome such as
-  -- cmux's sidebar. Until the terminal answers, it darkens the code's.
+  -- cmux's sidebar. Until the terminal answers, it darkens the code's. Its
+  -- bar has the code's, so the bar's tab stands apart from the calls.
   local normal = get("Normal")
   local bg = term_bg or (normal.bg and darken(normal.bg))
   set_derived("AnvimPane", { fg = normal.fg, bg = bg })
-  set_derived("AnvimPaneWinBar", vim.tbl_extend("force", get("AnvimWinBar"), { bg = bg }))
+  set_derived("AnvimPaneWinBar", vim.tbl_extend("force", get("AnvimWinBar"), { bg = normal.bg }))
   -- The tab bar's current tab, which stands out from the dim tabs.
   set_derived("AnvimTabCurrent", { fg = normal.fg, bg = get("CursorLine").bg, bold = true })
   require("anvim.statusline").highlights()

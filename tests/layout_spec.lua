@@ -140,9 +140,9 @@ describe("the tool pane", function()
     local wo = vim.wo[pane]
     -- The prompt had the cursor, and a new window copies its options.
     local got = { wo.number, wo.statuscolumn, wo.conceallevel, wo.winfixwidth, wo.winfixheight, wo.winfixbuf }
-    assert.are.same({ false, "", 0, false, true, true }, got)
+    assert.are.same({ false, " ", 0, false, true, true }, got)
     local bar = api.nvim_eval_statusline(wo.winbar, { winid = pane, use_winbar = true })
-    assert.are.same(" Tool calls", bar.str)
+    assert.are.same(" Tool calls ", bar.str)
 
     layout.set_pane(false)
     assert.is_nil(layout.wins.pane)
