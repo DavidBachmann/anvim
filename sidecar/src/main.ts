@@ -240,6 +240,8 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
   inheriting = !cmd.effort;
   session = query({ prompt: inbox, options });
   sessionReady(session);
+  // A resumed session shows how full it is before its first turn.
+  void reportContext();
   session
     .supportedCommands()
     .then((commands) => emit(commandsEvent(commands)))

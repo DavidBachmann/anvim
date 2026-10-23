@@ -211,7 +211,7 @@ export type Event =
   | { type: "reset" }
   // Claude Code summarized the conversation to free context.
   | { type: "compact"; trigger?: string; pre_tokens?: number; post_tokens?: number }
-  // How full the context window is, after each turn.
+  // How full the context window is, at start and after each turn.
   | { type: "context"; percent: number; tokens: number; max: number }
   // The effort level that the session uses, after start, after each model or
   // effort change, and after each turn. null for a model without effort.
