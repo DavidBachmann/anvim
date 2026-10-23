@@ -20,7 +20,7 @@ local M = {}
 ---@class anvim.KeyPlace
 ---@field id string
 ---@field name string
----@field ctx "global"|"file"|"prompt"|"transcript"|"compose"|"explorer"|"overview"|"agentlog"|"view"|"other" Where its maps live.
+---@field ctx "global"|"file"|"prompt"|"transcript"|"compose"|"explorer"|"files"|"overview"|"agentlog"|"view"|"other" Where its maps live.
 ---@field keys anvim.Key[]
 
 ---@type anvim.KeyPlace[]
@@ -260,11 +260,22 @@ M.places = {
       },
       { "<leader>ca", "Open the Agent Overview" },
       { "<leader>ct", "Pick a place from Claude's trail" },
+      { "<leader>cf", "Pick one of the last files of Claude or the focused agent" },
       { "<leader>cr", "Read the transcript" },
       { "<leader>cy", "Yank Claude's last reply" },
       { "<leader>cs", "Resume a session" },
       { "<leader>cm", "Choose the model" },
       { "<leader>cR", "Restart Claude" },
+    },
+  },
+  -- The list of a snacks picker, which keeps snacks' own keys.
+  {
+    id = "files",
+    name = "Claude's files",
+    ctx = "files",
+    keys = {
+      { "@", "Point Claude at the file" },
+      { "<CR>", "Open the file in the code window", static = true },
     },
   },
   -- The tabs are the list of a snacks picker, which keeps snacks' own keys.

@@ -745,6 +745,30 @@ describe("stack", function()
       require("anvim.agents").clear()
     ]])
     wait_where({ win = "input", mode = "n" }, "closing the Overview")
+    -- The list of Claude's files.
+    lua(
+      [[
+      local sidecar = require("anvim.sidecar")
+      sidecar.dispatch({ type = "tool_use", id = "keys_read", name = "Read", input = { file_path = ... } })
+      sidecar.dispatch({ type = "tool_result", id = "keys_read", is_error = false, text = "" })
+      require("anvim.files").pick()
+    ]],
+      repo .. "/notes.txt"
+    )
+    wait(
+      3000,
+      [[local p = Snacks.picker.get({ source = "anvim_files" })[1] return p ~= nil and p.list.win:win_valid()]],
+      "Claude's files did not open"
+    )
+    snap("files", "files", [[Snacks.picker.get({ source = "anvim_files" })[1].list.win.buf]])
+    lua([[
+      Snacks.picker.get({ source = "anvim_files" })[1]:close()
+      require("anvim.files").clear()
+      vim.schedule(function()
+        require("anvim.layout").focus_input({ insert = false })
+      end)
+    ]])
+    wait_where({ win = "input", mode = "n" }, "closing Claude's files")
     local problems = lua(
       [[
       local clean = ...
@@ -817,6 +841,11 @@ describe("stack", function()
         ours[vim.keycode(lhs)] = true
       end
       local overview_keys = require("anvim.overview").keys
+      local files_keys = require("anvim.files").keys
+      local ours_files = {}
+      for lhs in pairs(files_keys) do
+        ours_files[vim.keycode(lhs)] = true
+      end
       local ours_overview = {}
       for lhs in pairs(overview_keys) do
         ours_overview[vim.keycode(lhs)] = true
@@ -854,6 +883,9 @@ describe("stack", function()
           return true
         elseif ctx == "overview" and not ours_overview[vim.keycode(m.lhs)] then
           -- snacks' own picker keys, which its ? lists.
+          return true
+        elseif ctx == "files" and not ours_files[vim.keycode(m.lhs)] then
+          -- snacks' own picker keys.
           return true
         elseif shared(ctx, m) then
           return true
@@ -893,6 +925,12 @@ describe("stack", function()
         local key = spec and keys.find("overview", spec.mode or "n", lhs)
         if spec and not (key and key[2] == spec.desc) then
           problems[#problems + 1] = ("the Overview's %s is not in the view"):format(lhs)
+        end
+      end
+      for lhs, spec in pairs(files_keys) do
+        local key = spec and keys.find("files", spec.mode or "n", lhs)
+        if spec and not (key and key[2] == spec.desc) then
+          problems[#problems + 1] = ("the file list's %s is not in the view"):format(lhs)
         end
       end
       return problems

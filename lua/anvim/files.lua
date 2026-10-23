@@ -1,9 +1,10 @@
 -- Each agent's files: the files under the cwd that it read, edited, wrote or
 -- showed, with the last time it touched them. The main agent has the key "".
 -- The code window's tab bar shows the slots of the agent that follow mode
--- follows.
+-- follows, and <leader>cf picks from its last files.
 local agents = require("anvim.agents")
 local bashread = require("anvim.bashread")
+local keys = require("anvim.keys")
 local state = require("anvim.state")
 
 local M = {}
@@ -14,6 +15,8 @@ local api = vim.api
 M.slots = 5
 -- The files that each agent keeps, newest first.
 local MAX = 100
+-- The files that the picker lists.
+local PICK = 25
 
 ---@class anvim.File
 ---@field path string The real path.
@@ -255,6 +258,92 @@ function M.list(key, max)
   return ret
 end
 
+-- How long ago, such as now, 2m, 3h or 2d.
+---@param time integer
+local function age(time)
+  local s = math.max(require("anvim.transcript").clock() - time, 0)
+  if s < 60 then
+    return "now"
+  elseif s < 3600 then
+    return ("%dm"):format(s / 60)
+  elseif s < 86400 then
+    return ("%dh"):format(s / 3600)
+  end
+  return ("%dd"):format(s / 86400)
+end
+
+-- The picker's items: the last files of the agent that follow mode follows,
+-- newest first.
+function M.items()
+  local focused = require("anvim.follow").focused()
+  local cwd = M.real(state.cwd)
+  local items = {}
+  for _, file in ipairs(M.list(focused and focused.id or "", PICK)) do
+    local rel = vim.fs.relpath(cwd, file.path) or file.path
+    items[#items + 1] = {
+      text = rel,
+      file = file.path,
+      -- References use the cwd as anvim knows it, which can be a symlink.
+      ref = vim.fs.joinpath(state.cwd, rel),
+      edited = file.edited,
+      age = file.time and age(file.time),
+    }
+  end
+  return items
+end
+
+-- The picker's list keys, on top of snacks' own.
+M.keys = {
+  ["@"] = { "anvim_reference", mode = "n", desc = keys.desc("files", "n", "@") },
+}
+
+function M.pick()
+  local focused = require("anvim.follow").focused()
+  local name = focused and agents.name(focused) or "Claude"
+  local items = M.items()
+  if #items == 0 then
+    vim.notify(("anvim: %s has not read or edited a file yet"):format(name), vim.log.levels.INFO)
+    return
+  end
+  Snacks.picker.pick({
+    source = "anvim_files",
+    title = name .. "'s files",
+    items = items,
+    cwd = M.real(state.cwd),
+    format = function(item, picker)
+      local ret = { { item.edited and "Edit " or "Read ", item.edited and "AnvimToolOk" or "AnvimToolPending" } }
+      vim.list_extend(ret, Snacks.picker.format.filename(item, picker))
+      if item.age then
+        ret[#ret + 1] = { "  " .. item.age, "Comment" }
+      end
+      return ret
+    end,
+    preview = "file",
+    -- Without a query, the newest file stays on top.
+    sort = { fields = { "score:desc", "idx" } },
+    -- In the list, @ points Claude at the file. / or i goes to the search.
+    focus = "list",
+    confirm = function(picker, item)
+      picker:close()
+      if item then
+        vim.schedule(function()
+          require("anvim.tabs").open(item.file)
+        end)
+      end
+    end,
+    actions = {
+      anvim_reference = function(picker)
+        local paths = vim.tbl_map(function(item)
+          return { path = item.ref }
+        end, picker:selected({ fallback = true }))
+        picker:close()
+        require("anvim.refs").files(paths)
+      end,
+    },
+    win = { list = { keys = M.keys } },
+  })
+end
+
 -- A resumed session replays its past into empty lists.
 function M.clear()
   lists, edits, reals = {}, {}, {}
@@ -268,6 +357,7 @@ function M.attach(sidecar)
   sidecar.on("tool_result", M.tool_result)
   sidecar.on("tool_field", tool_field)
   sidecar.on("await_preview", await_preview)
+  keys.set("claude", "n", "<leader>cf", M.pick)
   -- The next sidecar knows none of these calls.
   sidecar.on("exit", function()
     edits = {}
