@@ -1,5 +1,6 @@
--- The prompt box under the transcript. Its winbar is the activity line, and
--- the footer, a virtual line under the last prompt line, shows the running agents.
+-- The prompt box under the transcript. Its winbar is the activity line. Under
+-- the last prompt line, a rule closes the box, and the footer under the rule
+-- shows the running agents.
 local config = require("anvim.config")
 local sidecar = require("anvim.sidecar")
 local state = require("anvim.state")
@@ -576,7 +577,7 @@ function M.render()
   local last = api.nvim_buf_line_count(bufnr) - 1
   footer_mark = api.nvim_buf_set_extmark(bufnr, ns, last, 0, {
     id = footer_mark,
-    virt_lines = { M.footer() },
+    virt_lines = { { { ("─"):rep(win_width(win)), "AnvimRule" } }, M.footer() },
     virt_lines_leftcol = true,
   })
   if win then

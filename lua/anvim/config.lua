@@ -25,8 +25,9 @@ M.defaults = {
     claude_width = 0.36,
     ---@type number The tool pane's rows, or a fraction of the code column's height.
     pane_height = 0.25,
-    -- Rows for the prompt and its footer. The window grows with the prompt.
-    input_height = { min = 2, max = 12 },
+    -- Rows for the prompt, the rule under it and its footer. The window grows
+    -- with the prompt.
+    input_height = { min = 3, max = 12 },
     -- The explorer's columns. With focus, its list widens over the code
     -- window to fit its rows, up to max_width (columns, or a fraction of the
     -- screen width). With auto-minimize off (<leader>ue), the split itself

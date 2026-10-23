@@ -240,7 +240,7 @@ local function assert_layout(what)
   assert.are.same(out.code.row, out.transcript.row, what .. ": the Claude column starts at the top")
   assert.are.same(out.transcript.col, out.input.col, what .. ": the prompt is under the transcript")
   assert.are.same(math.floor(200 * 0.36), out.transcript.width, what .. ": the Claude column keeps its width")
-  assert.are.same(3, out.input.height, what .. ": the prompt fits its text")
+  assert.are.same(4, out.input.height, what .. ": the prompt fits its text")
   assert.are.same(out.bottom, out.input.row + out.input.height - 1, what .. ": the prompt ends above the statusline")
   local left = 0
   if out.tree then

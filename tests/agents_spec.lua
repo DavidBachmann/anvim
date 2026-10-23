@@ -39,7 +39,7 @@ end
 local function footer()
   local ns = api.nvim_get_namespaces()["anvim.input"]
   local mark = api.nvim_buf_get_extmarks(input.buf(), ns, 0, -1, { details = true })[1]
-  local chunks = mark[4].virt_lines[1]
+  local chunks = mark[4].virt_lines[#mark[4].virt_lines]
   local dots, text = {}, {}
   for _, chunk in ipairs(chunks) do
     if chunk[1] == "⏺" then

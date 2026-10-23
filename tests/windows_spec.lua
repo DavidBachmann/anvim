@@ -132,7 +132,7 @@ describe("windows", function()
       assert.are.same(tr[2], prompt[2], what .. ": the prompt is under the transcript")
       assert(tr[1] < prompt[1], what .. ": the prompt is under the transcript")
       assert.are.same(1, code[1], what .. ": the code window has the full height")
-      assert.are.same(3, api.nvim_win_get_height(layout.wins.input), what .. ": the prompt fits its text")
+      assert.are.same(4, api.nvim_win_get_height(layout.wins.input), what .. ": the prompt fits its text")
       assert.are.same(file, api.nvim_buf_get_name(api.nvim_win_get_buf(layout.wins.code)), what)
     end
     in_code()

@@ -60,7 +60,9 @@ describe("statusline", function()
       local mark = api.nvim_buf_get_extmarks(input.buf(), -1, 0, -1, { details = true, type = "virt_lines" })[1]
       local footer = table.concat(vim.tbl_map(function(chunk)
         return chunk[1]
-      end, mark[4].virt_lines[1]))
+      end, mark[4].virt_lines[#mark[4].virt_lines]))
+      local rule = mark[4].virt_lines[1][1][1]
+      assert(rule ~= "" and rule:gsub("─", "") == "", "a rule closes the prompt")
       assert(not footer:find("Opus", 1, true), footer)
     end)
     state.branch, state.model, state.effort, state.permission_mode, vim.o.columns = unpack(saved, 1, 5)
