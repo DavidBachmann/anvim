@@ -15,7 +15,7 @@ This is a personal productivity tool, and it is niche. There are no releases and
 You need Neovim 0.12 or newer, git, [Bun](https://bun.sh) and Claude Code, logged in. [docs/install.md](docs/install.md) has the full list.
 
 ```sh
-git clone https://github.com/davidbachmann/anvim.git
+git clone https://github.com/DavidBachmann/anvim.git
 cd anvim
 scripts/install
 mkdir -p ~/.local/bin

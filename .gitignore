@@ -5,3 +5,4 @@ tools/screen/node_modules/
 /.claude/worktrees/
 # A sandboxed Neovim writes its log into the cwd.
 /nvim.log
+.DS_Store
