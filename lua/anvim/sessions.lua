@@ -147,6 +147,7 @@ end
 
 function M.history(ev)
   replay_files(ev.events or {})
+  require("anvim.tabs").show_first()
   transcript.clear()
   transcript.batch(function()
     for _, e in ipairs(ev.events or {}) do

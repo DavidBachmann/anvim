@@ -104,6 +104,25 @@ describe("tabs", function()
     assert(not text:find("Explore"), text)
   end)
 
+  it("shows the first tab after a resume when the code window has no file, and the cursor stays", function()
+    helpers.start()
+    local a, b = file("tabs_first_a.lua"), file("tabs_first_b.lua")
+    api.nvim_win_set_buf(layout.wins.code, api.nvim_create_buf(false, true))
+    api.nvim_set_current_win(layout.wins.input)
+    sidecar.dispatch({
+      type = "history",
+      session_id = "tabs-first",
+      events = {
+        { type = "tool_use", id = "f1", name = "Read", input = { file_path = a }, time = 100 },
+        { type = "tool_result", id = "f1", is_error = false, text = "" },
+        { type = "tool_use", id = "f2", name = "Read", input = { file_path = b }, time = 101 },
+        { type = "tool_result", id = "f2", is_error = false, text = "" },
+      },
+    })
+    assert.are.same(a, code_file())
+    assert.are.same(layout.wins.input, api.nvim_get_current_win())
+  end)
+
   it("<leader>cf picks from the followed agent's files, and Enter opens one", function()
     helpers.start()
     files.clear()

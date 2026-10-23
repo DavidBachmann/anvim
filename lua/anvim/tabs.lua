@@ -207,17 +207,15 @@ function M.render(win)
   return table.concat(head)
 end
 
--- Opens a tab's file in the code window, where the code window showed it
--- last, and puts the cursor there. A file that it never showed opens at the
--- newest place in it from Claude's trail, else at the top.
+-- Shows a tab's file in the code window, where the code window showed it
+-- last. A file that it never showed opens at the newest place in it from
+-- Claude's trail, else at the top.
 ---@param path string
-function M.open(path)
+local function show(path)
   local follow = require("anvim.follow")
-  local layout = require("anvim.layout")
-  local win = layout.code_win()
+  local win = require("anvim.layout").code_win()
   -- A Write preview's file does not exist yet.
   if shown(api.nvim_win_get_buf(win)) == path or not vim.uv.fs_stat(path) then
-    api.nvim_set_current_win(win)
     return
   end
   local buf = follow.load(path)
@@ -229,7 +227,22 @@ function M.open(path)
     line = place and place.first or 1
   end
   follow.show(buf, line)
-  api.nvim_set_current_win(win)
+end
+
+---@param path string
+function M.open(path)
+  show(path)
+  api.nvim_set_current_win(require("anvim.layout").code_win())
+end
+
+-- A resumed session's tabs come back, and a code window without a file
+-- shows the first one. The cursor stays where it is.
+function M.show_first()
+  local win = require("anvim.layout").code_win()
+  local first = files.bar((agent()))[1]
+  if first and not shown(api.nvim_win_get_buf(win)) then
+    show(first.path)
+  end
 end
 
 -- A left click on a tab opens its file.
