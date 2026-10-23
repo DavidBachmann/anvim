@@ -1,5 +1,6 @@
 -- The window rules of the anvim tab. The transcript takes no focus, except in
--- read mode. Only the code window shows files. Closed windows come back.
+-- read mode, and the tool pane takes none. Only the code window shows files.
+-- Closed windows come back.
 local config = require("anvim.config")
 local input = require("anvim.input")
 local layout = require("anvim.layout")
@@ -12,9 +13,17 @@ local wins = layout.wins
 local ns = api.nvim_create_namespace("anvim.windows")
 local left_mouse = vim.keycode("<LeftMouse>")
 local left_drag = vim.keycode("<LeftDrag>")
+local left_release = vim.keycode("<LeftRelease>")
 
 ---@type integer? The window that the cursor left last.
 local left
+---@type integer? The window that the cursor left before that one.
+local left_before
+---@type { win: integer, view: vim.fn.winsaveview.ret }? The window that a click on the pane went back to, and its view.
+local unclick
+-- A press on the pane went back to another window, and its drag must not
+-- select there.
+local pane_press = false
 ---@type integer? The window the cursor was in before the prompt, for <C-w>p.
 local before_prompt
 ---@type string? The last key, to tell mouse clicks from window commands.
@@ -75,19 +84,90 @@ function M.read()
   end
 end
 
--- The window before `win` in <C-w>W order, leaving out the Claude column.
-local function window_before(win)
-  local list = vim.tbl_filter(function(w)
+local function splits()
+  return vim.tbl_filter(function(w)
     return api.nvim_win_get_config(w).relative == ""
   end, api.nvim_tabpage_list_wins(0))
+end
+
+-- The window before `win` in <C-w>W order, leaving out the Claude column and
+-- the pane.
+local function window_before(win)
+  local list = splits()
   local at = vim.fn.index(list, win) + 1
   for i = 1, #list - 1 do
     local w = list[(at - i - 1) % #list + 1]
-    if w ~= wins.input and w ~= wins.transcript then
+    if w ~= wins.input and w ~= wins.transcript and w ~= wins.pane then
       return w
     end
   end
   return wins.input
+end
+
+-- The window after `win` in <C-w>w order.
+local function window_after(win)
+  local list = splits()
+  return list[(vim.fn.index(list, win) + 1) % #list + 1]
+end
+
+local mouse_keys = {}
+for _, key in ipairs({ "<LeftMouse>", "<2-LeftMouse>", "<3-LeftMouse>", "<RightMouse>", "<MiddleMouse>" }) do
+  mouse_keys[vim.keycode(key)] = true
+end
+
+-- Moves the cursor out of the pane. A click goes back to the window that the
+-- cursor left, <C-w>w and <C-w>W go on past the pane, and other moves go to
+-- the code window. The cursor hops back first, so that <C-w>p still goes
+-- where it went before.
+local function leave_pane()
+  local tab = api.nvim_get_current_tabpage()
+  local function here(win)
+    return valid(win) and win ~= wins.pane and api.nvim_win_get_tabpage(win) == tab
+  end
+  local code = valid(wins.code) and wins.code or nil
+  local from = here(left) and left or code
+  if not from then
+    -- The code window closed, and the pane took its rows. No window can
+    -- split while it closes, so fix() opens it again and moves on.
+    return
+  end
+  if here(left_before) and left_before ~= from then
+    hop(left_before)
+    -- Hops fire no WinLeave, and the window before `from` is the one left last again.
+    left = left_before
+  end
+  hop(from)
+  if from == wins.transcript then
+    -- The cursor is there only in read mode, which WinLeave ended.
+    vim.w[from].anvim_read = true
+  end
+  if mouse_keys[last_key] then
+    -- After WinEnter, Neovim puts the cursor of the current window where
+    -- the click was.
+    unclick = { win = from, view = api.nvim_win_call(from, vim.fn.winsaveview) }
+    pane_press = true
+    return
+  end
+  local to = code or from
+  if last_key == "W" then
+    to = window_before(wins.pane)
+  elseif last_key == "w" or last_key == "\23" then
+    to = window_after(wins.pane)
+  end
+  if to ~= from then
+    api.nvim_set_current_win(to)
+  end
+end
+
+-- Puts back the cursor that a click on the pane moved.
+local function undo_click()
+  local u = unclick
+  unclick = nil
+  if u and valid(u.win) then
+    api.nvim_win_call(u.win, function()
+      vim.fn.winrestview(u.view)
+    end)
+  end
 end
 
 -- Moves the cursor from the transcript on to the prompt. Neovim has already
@@ -267,7 +347,7 @@ local function fold(win)
   end
 end
 
----@return 'code'|'copy'|nil kind A second window that shows code, or a copy of the prompt, the compose window or the transcript.
+---@return 'code'|'copy'|nil kind A second window that shows code, or a copy of the prompt, the compose window, the transcript or the pane.
 local function extra(win)
   if win == wins.code or api.nvim_win_get_config(win).relative ~= "" or vim.w[win].snacks_win then
     return
@@ -277,6 +357,8 @@ local function extra(win)
     return win ~= wins.input and "copy" or nil
   elseif buf == transcript.buf() then
     return win ~= wins.transcript and "copy" or nil
+  elseif vim.b[buf].anvim_tool_log or vim.b[buf].anvim_agentlog then
+    return win ~= wins.pane and "copy" or nil
   elseif layout.is_code(buf) then
     return "code"
   end
@@ -300,9 +382,12 @@ local function fix()
     api.nvim_set_current_win(wins.code)
   end
   refocus_code = false
+  undo_click()
   local current = api.nvim_get_current_win()
   if current == wins.transcript and not reading(current) then
     leave_transcript()
+  elseif current == wins.pane then
+    leave_pane()
   end
 end
 
@@ -411,7 +496,7 @@ function M.setup()
   api.nvim_create_autocmd("WinLeave", {
     group = group,
     callback = function()
-      left = api.nvim_get_current_win()
+      left_before, left = left, api.nvim_get_current_win()
       if left == wins.transcript then
         vim.w[left].anvim_read = nil
       end
@@ -427,12 +512,16 @@ function M.setup()
       local win = api.nvim_get_current_win()
       if in_tab() and win == wins.transcript and not reading(win) then
         leave_transcript()
+      elseif in_tab() and win == wins.pane then
+        leave_pane()
       elseif in_tab() and win == wins.input then
         enter_input()
       end
       stop_insert()
     end,
   })
+  -- Before the other handlers see the cursor that a click on the pane moved.
+  api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, { group = group, callback = undo_click })
   -- Like <Esc>, the end of insert mode moves the cursor one left, after this.
   api.nvim_create_autocmd("InsertLeavePre", {
     group = group,
@@ -452,13 +541,14 @@ function M.setup()
       end
     end,
   })
-  -- :q in the code window, the prompt or the transcript quits anvim. Closing
-  -- the other tabs and windows first makes :q close the last one.
+  -- :q in the code window, the prompt, the transcript or the pane quits anvim.
+  -- Closing the other tabs and windows first makes :q close the last one.
   api.nvim_create_autocmd("QuitPre", {
     group = group,
     callback = function()
       local current = api.nvim_get_current_win()
-      if not (in_tab() and (current == wins.code or current == wins.input or current == wins.transcript)) then
+      local own = current == wins.code or current == wins.input or current == wins.transcript or current == wins.pane
+      if not (in_tab() and own) then
         return
       end
       quitting = true
@@ -483,9 +573,15 @@ function M.setup()
         last_key = nil
       end
     end)
+    -- A drag or a release in another place would select from the cursor of
+    -- the window that a press on the pane went back to.
+    if pane_press and (key == left_drag or key == left_release) then
+      pane_press = key == left_drag
+      return ""
+    end
     -- Keys from :normal, such as the steps of a scroll animation, are not typed.
     if typed ~= "" and key ~= left_drag then
-      press = nil
+      press, pane_press, unclick = nil, false, nil
     end
   end, ns)
   require("anvim.keys").set("claude", "n", "<leader>cr", M.read)

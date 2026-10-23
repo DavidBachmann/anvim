@@ -77,11 +77,13 @@ function M.setup(ui2)
     end
     popup(ui2.wins.cmd, firstc)
     -- ui2 gives the command line a row at the bottom, which would move the
-    -- windows. The popup needs none.
+    -- windows. The popup needs none. The rows go back to the bottom windows,
+    -- such as the tool pane, and not to the windows that gave them.
     if vim.o.cmdheight ~= ui2.cmdheight then
       vim._with({ noautocmd = true, o = { splitkeep = "screen" } }, function()
         vim.o.cmdheight = ui2.cmdheight
       end)
+      require("anvim.layout").refit_pane()
     end
   end
   cmd.cmdline_hide = function(...)

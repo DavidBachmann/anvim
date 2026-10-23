@@ -133,6 +133,15 @@ Snacks.toggle({
   end,
 }):map("<leader>uH", { desc = keys.desc("global", "n", "<leader>uH") })
 Snacks.toggle({
+  name = "Tool pane",
+  get = function()
+    return require("anvim.layout").pane_shown()
+  end,
+  set = function(state)
+    require("anvim.layout").set_pane(state)
+  end,
+}):map("<leader>us", { desc = keys.desc("global", "n", "<leader>us") })
+Snacks.toggle({
   name = "Explorer auto-minimize",
   get = function()
     return require("anvim.tree").minimizes()

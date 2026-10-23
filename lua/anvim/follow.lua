@@ -270,9 +270,10 @@ M.on_top = on_top
 -- the explorer's new split does for a moment on a resize from the Agent
 -- Overview.
 -- The layout's own windows never count, because a picker's preview can show
--- the code window's file.
+-- the code window's file, and the Overview the pane's log.
 local function float_copy(win)
-  if win == layout.wins.code or win == layout.wins.input or win == layout.wins.transcript then
+  local wins = layout.wins
+  if win == wins.code or win == wins.input or win == wins.transcript or win == wins.pane then
     return false
   end
   for _, other in ipairs(vim.fn.win_findbuf(api.nvim_win_get_buf(win))) do

@@ -406,6 +406,94 @@ describe("windows", function()
   end)
 end)
 
+describe("the tool pane", function()
+  before_each(function()
+    in_code()
+    layout.set_pane(true)
+  end)
+
+  after_each(function()
+    layout.set_pane(false)
+    layout.focus_input({ insert = false })
+  end)
+
+  it("takes no focus: window keys skip it, and <C-w>p still goes back", function()
+    local code, prompt, pane = layout.wins.code, layout.wins.input, layout.wins.pane
+    vim.cmd("normal! L")
+    keys("<C-w>j")
+    assert.are.same(code, current(), "<C-w>j from the code window stays there")
+    keys("<C-w>l")
+    assert.are.same(prompt, current())
+    vim.cmd.stopinsert()
+    keys("<C-w>h")
+    assert.are.same(code, current(), "<C-w>h from the prompt, whose rows are the pane's")
+    keys("<C-w>p")
+    assert.are.same(prompt, current(), "<C-w>p goes back to the prompt")
+    vim.cmd.stopinsert()
+    keys("<C-w>p")
+    assert.are.same(code, current())
+    keys("<C-w>w")
+    assert.are.same(prompt, current(), "<C-w>w skips the pane and the transcript")
+    vim.cmd.stopinsert()
+    keys("<C-w>W")
+    assert.are.same(code, current(), "<C-w>W skips them too")
+    api.nvim_set_current_win(pane)
+    assert.are.same(code, current(), "the API cannot enter it either")
+    keys("<C-w>p")
+    assert.are.same(prompt, current(), "and <C-w>p after it goes where it went before")
+    vim.cmd.stopinsert()
+  end)
+
+  it("keeps <C-w>p after many trips to it", function()
+    local code, prompt, pane = layout.wins.code, layout.wins.input, layout.wins.pane
+    layout.focus_input({ insert = false })
+    keys("<C-w>h")
+    for i = 1, 3 do
+      keys("<C-w>j")
+      assert.are.same(code, current(), "trip " .. i)
+    end
+    keys("<C-w>p")
+    assert.are.same(prompt, current(), "<C-w>p after <C-w>j three times")
+    vim.cmd.stopinsert()
+    keys("<C-w>h")
+    for _ = 1, 3 do
+      api.nvim_set_current_win(pane)
+    end
+    keys("<C-w>p")
+    assert.are.same(prompt, current(), "<C-w>p after three API moves")
+    vim.cmd.stopinsert()
+  end)
+
+  it("closes a copy of its window, and a split of a log", function()
+    local pane = layout.wins.pane
+    local log = transcript.log_buf()
+    vim.cmd("sbuffer " .. log)
+    local copy = current()
+    assert(
+      vim.wait(500, function()
+        return not api.nvim_win_is_valid(copy)
+      end, 10),
+      "the copy stayed"
+    )
+    assert.are.same(pane, layout.wins.pane)
+    assert(api.nvim_win_is_valid(pane), "the pane closed")
+    assert.are.same(1, showing(log))
+  end)
+
+  it("keeps its height when a split of the code window folds back", function()
+    local pane = layout.wins.pane
+    local height, code = api.nvim_win_get_height(pane), api.nvim_win_get_height(layout.wins.code)
+    keys("<C-w>s")
+    assert(
+      vim.wait(500, function()
+        return #code_wins() == 1
+      end, 10),
+      "the split stayed"
+    )
+    assert.are.same({ height, code }, { api.nvim_win_get_height(pane), api.nvim_win_get_height(layout.wins.code) })
+  end)
+end)
+
 describe("the transcript's view", function()
   -- WinScrolled does not fire under nvim -l, so the spec caps the view after
   -- each scroll, as the handler does.

@@ -104,6 +104,12 @@ local function spawn(dir, personal, errors)
   for _, name in ipairs({ "config", "data", "state", "cache" }) do
     env[("XDG_%s_HOME"):format(name:upper())] = dir .. "/" .. name
   end
+  -- The tool pane starts off, so the tool calls show in the chat.
+  local prefs = dir .. "/state/anvim/prefs.json"
+  if vim.fn.filereadable(prefs) == 0 then
+    vim.fn.mkdir(vim.fs.dirname(prefs), "p")
+    vim.fn.writefile({ vim.json.encode({ tool_pane = false }) }, prefs)
+  end
   if personal then
     local plugins = dir .. "/config/anvim/lua/plugins"
     vim.fn.mkdir(plugins, "p")
@@ -1032,6 +1038,37 @@ describe("stack", function()
       end, 20)
       assert.are.same({ wrap = on, saved = on }, got)
       assert.are.same({ win = "input", mode = "n" }, where(), "<leader>uw moved the cursor")
+    end
+  end)
+
+  it("toggles the tool pane with <leader>us from the prompt, and remembers the choice", function()
+    start()
+    lua([[require("anvim.layout").focus_input({ insert = false })]])
+    wait_where({ win = "input", mode = "n" }, "the prompt has the cursor")
+    local function state()
+      return lua([[
+        local layout = require("anvim.layout")
+        local f = io.open(require("anvim.prefs").path)
+        local saved = f and vim.json.decode(f:read("*a")).tool_pane
+        if f then
+          f:close()
+        end
+        local pane = layout.wins.pane
+        local shown = pane ~= nil and vim.api.nvim_win_is_valid(pane)
+        local under = shown and vim.fn.win_screenpos(pane)[2] == vim.fn.win_screenpos(layout.wins.code)[2]
+        return { shown = shown, under = under, apart = require("anvim.transcript").tools_apart, saved = saved }
+      ]])
+    end
+    assert.are.same({ shown = false, under = false, apart = false, saved = false }, state())
+    for _, on in ipairs({ true, false }) do
+      keys("<leader>us")
+      local got
+      vim.wait(3000, function()
+        got = state()
+        return got.saved == on
+      end, 20)
+      assert.are.same({ shown = on, under = on, apart = on, saved = on }, got)
+      assert.are.same({ win = "input", mode = "n" }, where(), "<leader>us moved the cursor")
     end
   end)
 

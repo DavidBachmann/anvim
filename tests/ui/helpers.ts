@@ -69,8 +69,8 @@ const BOX = `
     return vim.NIL
   end
   local pos = vim.fn.win_screenpos(win)
-  -- The code window's rows of code, under its winbar.
-  local bar = role == "code" and vim.fn.getwininfo(win)[1].winbar or 0
+  -- The rows of text of the code window and the pane, under their winbars.
+  local bar = (role == "code" or role == "pane") and vim.fn.getwininfo(win)[1].winbar or 0
   local height = vim.api.nvim_win_get_height(win) - bar
   return { row = pos[1] - 1 + bar, col = pos[2] - 1, width = vim.api.nvim_win_get_width(win), height = height }
 `;
@@ -99,7 +99,7 @@ export class Anvim {
     }
   }
 
-  async box(role: "code" | "transcript" | "input" | "tree"): Promise<Box> {
+  async box(role: "code" | "pane" | "transcript" | "input" | "tree"): Promise<Box> {
     const box = await this.ui.exec_lua<Box | null>(BOX, role);
     if (!box) throw new Error(`no ${role} window`);
     return box;
@@ -204,7 +204,8 @@ export type StartOptions = {
   env?: Record<string, string>;
   // More files in the project dir, by path.
   files?: Record<string, string>;
-  // The choices in anvim's prefs.json, as if made at an earlier start.
+  // The choices in anvim's prefs.json, as if made at an earlier start. The
+  // tool pane is off, so the tool calls show in the chat, unless they say so.
   prefs?: Record<string, unknown>;
   cols?: number;
   rows?: number;
@@ -226,10 +227,8 @@ export async function start(opts: StartOptions = {}): Promise<Anvim> {
   if (opts.frames) frames = opts.frames(frames);
   const recording = join(tmp, "session.jsonl");
   writeFileSync(recording, frames.join("\n") + "\n");
-  if (opts.prefs) {
-    mkdirSync(join(tmp, "xdg/state/anvim"), { recursive: true });
-    writeFileSync(join(tmp, "xdg/state/anvim/prefs.json"), JSON.stringify(opts.prefs));
-  }
+  mkdirSync(join(tmp, "xdg/state/anvim"), { recursive: true });
+  writeFileSync(join(tmp, "xdg/state/anvim/prefs.json"), JSON.stringify({ tool_pane: false, ...opts.prefs }));
   let started: Ui | undefined;
   try {
     const ui = (started = await Ui.start({

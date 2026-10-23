@@ -21,6 +21,8 @@ M.defaults = {
   layout = {
     ---@type number Columns, or a fraction of the screen width.
     claude_width = 0.36,
+    ---@type number The tool pane's rows, or a fraction of the code column's height.
+    pane_height = 0.25,
     -- Rows for the prompt and its footer. The window grows with the prompt.
     input_height = { min = 2, max = 12 },
     -- The explorer's columns. With focus, its list widens over the code

@@ -1,5 +1,5 @@
--- The three columns: tree | code | claude (transcript above input), or
--- mirrored, with Claude on the left.
+-- The three columns: tree | code (above the tool pane) | claude (transcript
+-- above input), or mirrored, with Claude on the left.
 local config = require("anvim.config")
 local input = require("anvim.input")
 local prefs = require("anvim.prefs")
@@ -9,7 +9,7 @@ local M = {}
 
 local api = vim.api
 
----@type { code: integer?, transcript: integer?, input: integer? }
+---@type { code: integer?, transcript: integer?, input: integer?, pane: integer? }
 M.wins = {}
 ---@type integer? The tab page that holds the layout.
 M.tab = nil
@@ -20,6 +20,10 @@ local tree_width
 
 local function valid(win)
   return win and api.nvim_win_is_valid(win)
+end
+
+local function in_tab()
+  return M.tab ~= nil and api.nvim_get_current_tabpage() == M.tab
 end
 
 -- A global statusline puts a separator row under the transcript. Blank it,
@@ -74,12 +78,206 @@ function M.is_code(buf)
 end
 
 local function is_special(win)
-  return win == M.wins.transcript or win == M.wins.input or vim.bo[api.nvim_win_get_buf(win)].buftype ~= ""
+  return win == M.wins.transcript
+    or win == M.wins.input
+    or win == M.wins.pane
+    or vim.bo[api.nvim_win_get_buf(win)].buftype ~= ""
 end
 
 local function claude_width()
   local width = config.options.layout.claude_width
   return width < 1 and math.floor(vim.o.columns * width) or width
+end
+
+-- The user's choice of the tool pane. It is read once, because another
+-- anvim can save another choice, and the pane and the tool calls must agree.
+local pane_on = true
+
+-- Whether the tool pane shows under the code window, as the user chose.
+function M.pane_shown()
+  return pane_on
+end
+
+-- The rows of the code column: the code window, the row under it, which is
+-- its separator or status line, and the pane.
+local function column_rows()
+  local code, pane = valid(M.wins.code), valid(M.wins.pane)
+  local rows = code and api.nvim_win_get_height(M.wins.code) or 0
+  if pane then
+    rows = rows + (code and 1 or 0) + api.nvim_win_get_height(M.wins.pane)
+  end
+  return rows
+end
+
+-- A window with a winbar and a row of text.
+local function min_rows()
+  return math.max(vim.o.winminheight, 1) + 1
+end
+
+-- The rows between the tabline and the last status line, which a column of
+-- windows can span.
+local function screen_rows()
+  local tabline = vim.o.showtabline == 2 or (vim.o.showtabline == 1 and #api.nvim_list_tabpages() > 1)
+  return vim.o.lines - vim.o.cmdheight - (tabline and 1 or 0) - 1
+end
+
+-- Whether `rows` hold the code window and the pane, and the row between
+-- them. A split with 'cmdheight' 0 needs one more.
+local function room(rows)
+  return rows >= 2 * min_rows() + 1 + (vim.o.cmdheight == 0 and 1 or 0)
+end
+
+-- The pane's share of the code column, since the user resized it in this
+-- session.
+---@type number?
+local share
+
+-- The pane's rows in a code column of `rows`.
+local function pane_height(rows)
+  local height = share or config.options.layout.pane_height
+  -- A share that a resize set gives that resize's rows back.
+  height = height < 1 and math.floor(rows * height + 1e-6) or height
+  return math.max(min_rows(), math.min(height, rows - 1 - min_rows()))
+end
+
+-- The tool calls of the agent that follow mode follows: a subagent's log,
+-- or the main log.
+function M.pane_buf()
+  local agent = require("anvim.follow").focused()
+  return agent and require("anvim.agentlog").buf(agent.id) or transcript.log_buf()
+end
+
+-- The pane's own options. A new window copies the current window's, and a
+-- buffer brings the ones of the window that showed it last, such as the
+-- Agent Overview's. 'winfixwidth' would keep the code column's width when
+-- the tree hides.
+local pane_options = {
+  winbar = "%!v:lua.require'anvim.layout'.pane_winbar()",
+  winhighlight = "Normal:AnvimNormal,NormalNC:AnvimNormal,WinBar:AnvimNormal,WinBarNC:AnvimNormal,"
+    .. "WinSeparator:AnvimSeparator",
+  number = false,
+  relativenumber = false,
+  signcolumn = "no",
+  foldcolumn = "0",
+  statuscolumn = "",
+  foldenable = false,
+  wrap = true,
+  linebreak = true,
+  breakindent = true,
+  breakindentopt = "list:-1",
+  showbreak = "NONE",
+  cursorline = false,
+  colorcolumn = "",
+  conceallevel = 0,
+  list = false,
+  spell = false,
+  scrolloff = 0,
+  smoothscroll = false,
+  winfixwidth = false,
+  winfixheight = true,
+  winfixbuf = true,
+}
+
+local function setup_pane_win(win)
+  for name, value in pairs(pane_options) do
+    if vim.wo[win][name] ~= value then
+      vim.wo[win][name] = value
+    end
+  end
+end
+
+-- The pane's winbar names the agent whose calls it shows, in its color.
+function M.pane_winbar()
+  local agents = require("anvim.agents")
+  local id = vim.b[api.nvim_win_get_buf(vim.g.statusline_winid)].anvim_agentlog
+  local agent = id and agents.get(id)
+  local name = agent and agents.name(agent) or "Claude"
+  return ("%%#%s# %s"):format(agents.group(agent and agent.slot or 0), (name:gsub("%%", "%%%%")))
+end
+
+-- Shows `buf` in the pane, at its end.
+local function show_in_pane(buf)
+  local win = M.wins.pane
+  vim.wo[win].winfixbuf = false
+  local ok, err = pcall(api.nvim_win_set_buf, win, buf)
+  setup_pane_win(win)
+  if not ok then
+    error(err, 0)
+  end
+  api.nvim_win_set_cursor(win, { api.nvim_buf_line_count(buf), 0 })
+end
+
+-- The pane follows the agent that follow mode follows.
+function M.sync_pane_buf()
+  local win = M.wins.pane
+  if valid(win) then
+    local buf = M.pane_buf()
+    if api.nvim_win_get_buf(win) ~= buf then
+      show_in_pane(buf)
+    end
+  end
+end
+
+-- Whether the pane is as the user chose. A pane that shows stays, also
+-- while a window such as help takes rows from the column. A missing one
+-- waits for room.
+local function pane_ok()
+  if not pane_on then
+    return not valid(M.wins.pane)
+  end
+  return valid(M.wins.pane) or not room(column_rows())
+end
+
+-- While the code window and the pane fill the column alone, a resize, such
+-- as a drag or :resize, sets the pane's share of the column.
+---@param again boolean? Neovim moved rows of the column on its own, so the share puts them back.
+local function fit_pane(again)
+  local pane = M.wins.pane
+  if not (valid(pane) and valid(M.wins.code)) then
+    return
+  end
+  local rows = column_rows()
+  local height, want = api.nvim_win_get_height(pane), pane_height(rows)
+  if rows ~= screen_rows() or height == want then
+    return
+  elseif again then
+    api.nvim_win_set_height(pane, want)
+  else
+    share = height / rows
+  end
+end
+
+-- Puts the pane's share back after Neovim moved rows of the column on its
+-- own, as for the command line.
+function M.refit_pane()
+  fit_pane(true)
+end
+
+-- Opens the pane under the code window, or closes it, as the user chose.
+local function sync_pane()
+  local win = M.wins.pane
+  if not pane_on then
+    if valid(win) then
+      api.nvim_win_close(win, true)
+    end
+    M.wins.pane = nil
+    return
+  elseif pane_ok() then
+    return
+  end
+  local buf = M.pane_buf()
+  local opts = { split = "below", win = M.wins.code, height = pane_height(column_rows()) }
+  -- The pane must never stop the start or a repair.
+  local ok, new = pcall(api.nvim_open_win, buf, false, opts)
+  if not ok then
+    return
+  end
+  win = new
+  M.wins.pane = win
+  setup_pane_win(win)
+  -- As for the transcript, a guard in windows.lua moves the cursor on.
+  api.nvim_win_set_config(win, { focusable = false })
+  api.nvim_win_set_cursor(win, { api.nvim_buf_line_count(buf), 0 })
 end
 
 -- The side of the Claude column, as the user last chose it.
@@ -103,11 +301,32 @@ local function tree_win()
   end
 end
 
--- A full-height window between the tree and the Claude column. Splitting the
--- transcript would only span the transcript's rows.
+-- Above the pane, which took the closed code window's rows. Without room for
+-- both, the pane goes, and it comes back with the room.
+---@return integer? win
+local function open_above_pane(buf)
+  local pane = M.wins.pane
+  local rows = api.nvim_win_get_height(pane)
+  local ok, win = false, nil
+  if room(rows) then
+    ok, win = pcall(api.nvim_open_win, buf, false, { split = "above", win = pane })
+  end
+  if ok then
+    api.nvim_win_set_height(pane, pane_height(rows))
+    return win
+  end
+  api.nvim_win_close(pane, true)
+  M.wins.pane = nil
+end
+
+-- A full-height window between the tree and the Claude column, or above the
+-- pane. Splitting the transcript would only span the transcript's rows.
 local function open_code_win(buf)
-  local tree, win = tree_win(), nil
-  if tree then
+  local win = valid(M.wins.pane) and open_above_pane(buf) or nil
+  local tree = tree_win()
+  if win then
+    tree_width = nil
+  elseif tree then
     local width = tree_width or api.nvim_win_get_width(tree)
     tree_width = nil
     -- The side of the tree that faces Claude.
@@ -187,7 +406,8 @@ function M.code_win()
 end
 
 -- Runs before the code window closes. Neovim then gives its columns to the
--- tree, if it shows, because the Claude column has 'winfixwidth'.
+-- tree, if it shows, because the Claude column has 'winfixwidth'. With the
+-- pane, the pane takes its rows instead, until it closes for lack of room.
 function M.code_closing(buf)
   M.last_code_buf = buf
   local tree = tree_win()
@@ -240,7 +460,7 @@ function M.repair()
       pcall(api.nvim_win_close, win, true)
     end
   end
-  if valid(M.wins.code) and valid(M.wins.transcript) and valid(M.wins.input) then
+  if valid(M.wins.code) and valid(M.wins.transcript) and valid(M.wins.input) and pane_ok() then
     return
   end
   if not valid(M.wins.transcript) then
@@ -261,8 +481,22 @@ function M.repair()
     column_separator(M.wins.input)
   end
   M.code_win()
+  sync_pane()
   api.nvim_win_set_width(M.wins.transcript, claude_width())
   input.render()
+end
+
+-- Shows the pane or closes it, and keeps the choice. With the pane, the
+-- main agent's next tool calls go to its log instead of the chat.
+---@param on boolean
+function M.set_pane(on)
+  pane_on = on
+  prefs.set("tool_pane", on)
+  transcript.tools_apart = on
+  -- Another tab page gets the pane when the cursor comes back.
+  if in_tab() and valid(M.wins.code) then
+    sync_pane()
+  end
 end
 
 -- Moves the Claude column to a side, and the tree to the other side. The
@@ -307,17 +541,38 @@ function M.open()
 end
 
 function M.setup()
+  pane_on = prefs.get("tool_pane") ~= false
+  transcript.tools_apart = pane_on
   local group = api.nvim_create_augroup("anvim.layout", {})
-  -- The Claude column keeps its share of the screen. 'winfixwidth' alone would
-  -- keep it at the narrowest width it was ever squeezed to.
+  -- The Claude column and the pane keep their share of the screen.
+  -- 'winfixwidth' and 'winfixheight' alone would keep them at the smallest
+  -- size they were ever squeezed to.
   api.nvim_create_autocmd("VimResized", {
     group = group,
     callback = function()
       if valid(M.wins.transcript) then
         api.nvim_win_set_width(M.wins.transcript, claude_width())
       end
+      if valid(M.wins.pane) and not room(screen_rows()) then
+        -- The terminal is too short for both windows.
+        api.nvim_win_close(M.wins.pane, true)
+        M.wins.pane = nil
+      elseif in_tab() and valid(M.wins.code) then
+        sync_pane()
+      end
+      if valid(M.wins.pane) then
+        api.nvim_win_set_height(M.wins.pane, pane_height(column_rows()))
+      end
     end,
   })
+  -- As the prompt does, before the redraw.
+  api.nvim_create_autocmd("WinResized", {
+    group = group,
+    callback = function()
+      fit_pane()
+    end,
+  })
+  api.nvim_create_autocmd("User", { group = group, pattern = "AnvimAgents", callback = M.sync_pane_buf })
   -- A split of the code window copies its winbar, and so does a window that
   -- shows a buffer which the code window showed last.
   api.nvim_create_autocmd({ "WinNew", "BufWinEnter" }, {
