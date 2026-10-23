@@ -40,6 +40,21 @@ export type McpServer = {
 };
 // The Status tab's lines that Claude Code knows. mcp counts the servers by status.
 export type SessionInfo = { version?: string; login?: string; organization?: string; email?: string; mcp: string };
+// The Chrome tab: Claude Code's /chrome dialog. status is that of the
+// claude-in-chrome server, and absent means that this session runs without
+// it. skips_checks: the session started in bypass mode, so Claude Code tells
+// the extension to act on sites without its permission checks.
+export type ChromeState = {
+  allowed: boolean;
+  subscriber: boolean;
+  wsl: boolean;
+  installed: boolean;
+  status: "connected" | "connecting" | "failed" | "disabled" | "absent";
+  browser?: string;
+  enabled_by_default: boolean;
+  skips_checks: boolean;
+  urls: { install: string; reconnect: string; permissions: string };
+};
 
 export type Command =
   | {
@@ -62,6 +77,9 @@ export type Command =
       append_system_prompt?: string;
       // anvim runs with --debug: the editor tools include screenshot and reload.
       debug?: boolean;
+      // Claude in Chrome: true is Claude Code's --chrome, false its
+      // --no-chrome. Without it, Claude Code's "Enabled by default" decides.
+      chrome?: boolean;
     }
   // Absolute paths of the images that the prompt's [Image #N] chips stand for.
   // id is a UUID, which Claude Code's prompt_state events name.
@@ -83,6 +101,13 @@ export type Command =
   // Both are answered with an mcp_servers event.
   | { type: "mcp_servers" }
   | { type: "mcp_action"; action: "reconnect" | "enable" | "disable"; server: string }
+  // All but chrome_browsers are answered with a chrome event. chrome_default
+  // sets "Enabled by default", which holds for the next sessions.
+  | { type: "chrome" }
+  | { type: "chrome_reconnect" }
+  | { type: "chrome_default"; enabled: boolean }
+  | { type: "chrome_browsers" }
+  | { type: "chrome_select"; device_id: string }
   | { type: "preview_done"; req: number }
   // The answer to an editor_request: plain text for Claude, or an error.
   | { type: "editor_response"; req: number; result?: string; error?: string }
@@ -274,6 +299,15 @@ export type Event =
   | { type: "context_usage"; context?: ContextView; error?: string }
   // The answer to session_info, for the Status tab.
   | { type: "session_info"; info?: SessionInfo; error?: string }
+  // The Chrome tab's state. message says what the last action did, in the
+  // words of Claude Code's /chrome dialog.
+  | { type: "chrome"; chrome?: ChromeState; message?: { text: string; level: "info" | "error" }; error?: string }
+  // The browsers that the extension connected. current is the one in use.
+  | {
+      type: "chrome_browsers";
+      browsers?: { device_id: string; name: string; os?: string; current: boolean }[];
+      error?: string;
+    }
   // A resumed session's past, sent before it starts. Its events draw the
   // transcript as live ones do. A "user" event is a past prompt. An event
   // that starts an item has the time that Claude Code saved, in seconds since

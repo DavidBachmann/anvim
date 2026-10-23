@@ -57,6 +57,18 @@ local function chosen()
 end
 
 ---@param opts? table Fields to add, such as resume and history.
+-- Claude in Chrome once the Chrome tab turned it on, over the start's flag.
+---@type boolean?
+M.chrome = nil
+
+---@return boolean?
+function M.chrome_flag()
+  if M.chrome ~= nil then
+    return M.chrome
+  end
+  return config.options.chrome
+end
+
 function M.start_command(opts)
   if config.end_fallback() then
     state.permission_mode = config.options.permission_mode
@@ -71,6 +83,7 @@ function M.start_command(opts)
     sandbox = config.options.sandbox ~= false,
     append_system_prompt = config.options.append_system_prompt,
     debug = config.options.debug,
+    chrome = M.chrome_flag(),
   }, opts or {})
 end
 
@@ -170,11 +183,12 @@ end
 
 -- Starts the sidecar again, as after it exited or hung. A session that has
 -- saved a turn goes on where it was.
-function M.restart()
+---@param what? string The notice, "Restarting Claude" by default.
+function M.restart(what)
   local id = (state.turns or 0) > 0 and state.session_id or nil
   -- Tool calls that the old sidecar runs end with it.
   transcript.turn_end()
-  transcript.notice("info", id and "Restarting Claude in this session" or "Restarting Claude")
+  transcript.notice("info", (what or "Restarting Claude") .. (id and " in this session" or ""))
   state.process = "starting"
   sidecar.restart(M.start_command({ resume = id }))
   redraw()
@@ -484,6 +498,9 @@ function M.command(text)
   elseif name == "/mcp" and arg == "" then
     require("anvim.settings").open("mcp")
     return true
+  elseif name == "/chrome" then
+    require("anvim.settings").open("chrome")
+    return true
   end
   local reason = name and require("anvim.completion").unusable(name:sub(2), arg)
   if reason then
@@ -526,6 +543,7 @@ local own_commands = {
     description = "Show the MCP servers, and reconnect them or turn them on or off",
     argument_hint = "[reconnect|enable|disable [<server>|all]]",
   },
+  { name = "chrome", description = "Open Claude in Chrome settings" },
 }
 
 local function add_commands()

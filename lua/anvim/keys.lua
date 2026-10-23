@@ -337,7 +337,7 @@ M.places = {
     keys = {
       { "<Tab>", "Next tab", label = "<Tab> <S-Tab>", row = "Next and previous tab" },
       { "<S-Tab>", "Previous tab", label = "<Tab> <S-Tab>", row = "Next and previous tab" },
-      { "<CR>", "Show or hide the MCP server's tools" },
+      { "<CR>", "Show or hide the MCP server's tools, or run the Chrome option" },
       { "r", "Reconnect the MCP server" },
       { "t", "Turn the MCP server on or off" },
       { { "q", "<Esc>" }, "Close the window" },

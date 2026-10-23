@@ -9,7 +9,7 @@ describe("settings", function()
     helpers.start()
   end)
 
-  it("/status shows the login, <Tab> goes through the usage, the context and MCP, and q closes the window", function()
+  it("/status shows the login, and <Tab> goes through the usage, the context, MCP and Chrome", function()
     local layout = require("anvim.layout")
     vim.api.nvim_set_current_win(layout.wins.input)
     local buf
@@ -76,6 +76,51 @@ describe("settings", function()
       assert(helpers.contains(helpers.buf_lines(buf), "^ Turning on notion%.%.%.$"))
     end)
 
+    local chrome = {
+      allowed = true,
+      subscriber = true,
+      wsl = false,
+      installed = true,
+      status = "connected",
+      browser = "Browser 1",
+      enabled_by_default = false,
+      skips_checks = true,
+      urls = { install = "i", reconnect = "r", permissions = "p" },
+    }
+    helpers.capture_sends(function(sent)
+      vim.api.nvim_feedkeys(vim.keycode("<Tab>"), "mx", false)
+      assert.are.same({ type = "chrome" }, sent[#sent])
+      sidecar.dispatch({ type = "chrome", chrome = chrome })
+      assert(helpers.contains(helpers.buf_lines(buf), "^ Browser: Browser 1$"))
+      assert.are.same(" Select browser...", vim.api.nvim_get_current_line())
+      vim.api.nvim_feedkeys("3j" .. vim.keycode("<CR>"), "mx", false)
+      assert.are.same({ type = "chrome_default", enabled = true }, sent[#sent])
+    end)
+
+    -- Without Chrome in this session, Reconnect restarts Claude with it.
+    local sessions = require("anvim.sessions")
+    local restart = sessions.restart
+    local restarted
+    sessions.restart = function()
+      restarted = sessions.chrome_flag()
+    end
+    sidecar.dispatch({ type = "chrome", chrome = vim.tbl_extend("force", chrome, { status = "absent" }) })
+    local ok, err = pcall(function()
+      vim.api.nvim_feedkeys("k", "mx", false)
+      assert.are.same(" Reconnect extension", vim.api.nvim_get_current_line())
+      vim.api.nvim_feedkeys(vim.keycode("<CR>"), "mx", false)
+    end)
+    sessions.restart, sessions.chrome = restart, nil
+    assert(ok, err)
+    assert.is_true(restarted)
+    assert.are.same(-1, vim.fn.bufwinid(buf))
+  end)
+
+  it("q closes the window", function()
+    local layout = require("anvim.layout")
+    vim.api.nvim_set_current_win(layout.wins.input)
+    require("anvim.settings").open("status")
+    local buf = vim.api.nvim_get_current_buf()
     vim.api.nvim_feedkeys("q", "mx", false)
     assert.are.same(-1, vim.fn.bufwinid(buf))
     assert.are.same(layout.wins.input, vim.api.nvim_get_current_win())

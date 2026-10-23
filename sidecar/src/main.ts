@@ -8,6 +8,15 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { appendFileSync } from "node:fs";
 import { createInterface } from "node:readline";
+import {
+  browsersEvent,
+  CHROME_SERVER,
+  chromeArgs,
+  chromeCalls,
+  chromeEvent,
+  type ChromeMessage,
+  setEnabledByDefault,
+} from "./chrome";
 import { type ImageBlock, imageBlocks } from "./images";
 import { PermissionBridge } from "./permissions";
 import { PreviewBridge } from "./preview";
@@ -117,6 +126,23 @@ export type SettingsAnswer = {
   applied?: { model?: string; effort?: EffortLevel | null };
 };
 
+// Claude Code starts the Chrome server with the mode that the session starts
+// in, and in bypass mode, the extension skips its site checks.
+let chromeSkipsChecks = false;
+
+async function emitChrome(q: Query, message?: ChromeMessage): Promise<void> {
+  try {
+    const [dialog, servers] = await Promise.all([chromeCalls(q).getChromeDialog(), q.mcpServerStatus()]);
+    emit(chromeEvent(dialog, servers, chromeSkipsChecks, message));
+  } catch (err) {
+    emit({ type: "chrome", error: errorText(err) });
+  }
+}
+
+function errorText(err: unknown): string {
+  return String((err as Error)?.message ?? err);
+}
+
 function getSettings(q: Query): Promise<SettingsAnswer> {
   return (q as unknown as { getSettings(): Promise<SettingsAnswer> }).getSettings();
 }
@@ -204,6 +230,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
   const mode = start.mode;
   permissions.cwd = cmd.cwd;
   permissions.bypass = mode === "bypassPermissions";
+  chromeSkipsChecks = mode === "bypassPermissions";
   if (start.fallback) fallBack();
   // With the sandbox off, its guards are off too. One switch has one meaning.
   const guard = sandboxOn
@@ -234,6 +261,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
       PreToolUse: preToolUse(previews.hook, guard),
     },
     systemPrompt: { type: "preset", preset: "claude_code", append: cmd.append_system_prompt },
+    extraArgs: chromeArgs(cmd.chrome),
     mcpServers: { [SERVER]: editorServer(editor, { debug: cmd.debug === true }) },
     canUseTool: permissions.canUseTool,
     stderr: (data) => {
@@ -377,6 +405,59 @@ export async function handle(cmd: Command): Promise<void> {
         } catch (err) {
           emit({ type: "session_info", error: String((err as Error)?.message ?? err) });
         }
+      });
+      return;
+    case "chrome":
+      await control((q) => emitChrome(q));
+      return;
+    case "chrome_reconnect":
+      await control(async (q) => {
+        let message: ChromeMessage;
+        try {
+          await q.reconnectMcpServer(CHROME_SERVER);
+          message = {
+            text: "Reconnected to Claude in Chrome. Its browser tools are back in this session. If a browser action still doesn't work, check that Chrome is open and the extension is signed in.",
+            level: "info",
+          };
+        } catch (err) {
+          message = {
+            text: `Could not reconnect Claude in Chrome: ${errorText(err)} Select "Reconnect extension" to try again, or open /mcp and select claude-in-chrome for details.`,
+            level: "error",
+          };
+        }
+        await emitChrome(q, message);
+      });
+      return;
+    case "chrome_default":
+      await control(async (q) => {
+        let message: ChromeMessage | undefined;
+        try {
+          await setEnabledByDefault(cmd.enabled);
+        } catch (err) {
+          message = { text: `The setting was not saved: ${errorText(err)}`, level: "error" };
+        }
+        await emitChrome(q, message);
+      });
+      return;
+    case "chrome_browsers":
+      await control(async (q) => {
+        try {
+          emit(browsersEvent((await chromeCalls(q).getChromeBrowsers()).browsers));
+        } catch (err) {
+          emit({ type: "chrome_browsers", error: errorText(err) });
+        }
+      });
+      return;
+    case "chrome_select":
+      await control(async (q) => {
+        let message: ChromeMessage | undefined;
+        try {
+          const { name } = await chromeCalls(q).selectChromeBrowser(cmd.device_id);
+          if (name) message = { text: `Now using browser "${name}" for Chrome actions.`, level: "info" };
+        } catch (err) {
+          message = { text: `Couldn't switch browser: ${errorText(err)}`, level: "error" };
+        }
+        await emitChrome(q, message);
       });
       return;
     case "preview_done":

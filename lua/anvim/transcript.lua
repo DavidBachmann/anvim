@@ -517,6 +517,8 @@ local function tool_label(name, input)
   local mcp_server, mcp_tool = name:match("^mcp__(.-)__(.+)$")
   if mcp_server == "anvim" then
     return require("anvim.tools").label(mcp_tool, input)
+  elseif mcp_server == "claude-in-chrome" then
+    return require("anvim.chrome").label(mcp_tool, input)
   elseif mcp_server then
     name = ("%s:%s"):format(mcp_server, mcp_tool)
   end

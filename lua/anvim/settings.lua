@@ -1,7 +1,7 @@
--- Claude Code's Settings dialog in a float, with Status, Usage, Context and
--- MCP tabs. /status, /usage, /context and /mcp open it. Claude Code's /usage,
--- /context and /mcp in the SDK print text, which would go into Claude's
--- context, and its /status does not run there.
+-- Claude Code's Settings dialog in a float, with Status, Usage, Context, MCP
+-- and Chrome tabs. /status, /usage, /context, /mcp and /chrome open it.
+-- Claude Code's /usage, /context and /mcp in the SDK print text, which would
+-- go into Claude's context, and its /status and /chrome do not run there.
 local keys = require("anvim.keys")
 local sidecar = require("anvim.sidecar")
 local state = require("anvim.state")
@@ -13,10 +13,11 @@ local ns = api.nvim_create_namespace("anvim.settings")
 -- Room for the context grid and its legend side by side.
 local WIDTH = 88
 local BAR = 50
-local TABS = { "status", "usage", "context", "mcp" }
-local NAMES = { status = "Status", usage = "Usage", context = "Context", mcp = "MCP" }
+local TABS = { "status", "usage", "context", "mcp", "chrome" }
+local NAMES = { status = "Status", usage = "Usage", context = "Context", mcp = "MCP", chrome = "Chrome" }
 -- The request that answers each tab.
-local REQUESTS = { status = "session_info", usage = "usage", context = "context_usage", mcp = "mcp_servers" }
+local REQUESTS =
+  { status = "session_info", usage = "usage", context = "context_usage", mcp = "mcp_servers", chrome = "chrome" }
 local STATUS = {
   connected = { "✔", "DiagnosticOk", "connected" },
   failed = { "✗", "DiagnosticError", "failed" },
@@ -37,18 +38,24 @@ local COLORS = {
 
 ---@type snacks.win?
 local win
----@type "status"|"usage"|"context"|"mcp"
+-- The window that the float opened over, which gets the cursor back.
+local origin ---@type integer?
+---@type "status"|"usage"|"context"|"mcp"|"chrome"
 local tab = "status"
 -- The tab that the window showed last.
 local drawn
 -- The answers since the window opened, by tab: the event, or nil while it loads.
 ---@type table<string, table>
 local answers = {}
--- The MCP servers that show their tools, the server of each line (0-based),
--- and what the tab says over its list.
+-- The MCP servers that show their tools, the server or the Chrome option of
+-- each line (0-based), and what the MCP tab says over its list.
 local expanded = {} ---@type table<string, true>
-local server_rows = {} ---@type table<integer, string>
+local row_keys = {} ---@type table<integer, string>
 local note ---@type [string, string]?
+-- What the Chrome tab says under its options, and whether an action waits
+-- for its answer.
+local chrome_note ---@type [string, string]?
+local chrome_waits = false
 
 local function valid()
   return win ~= nil and win:valid()
@@ -61,7 +68,7 @@ local Text = {}
 Text.__index = Text
 
 function Text.new()
-  return setmetatable({ lines = {}, marks = {}, servers = {}, heads = {} }, Text)
+  return setmetatable({ lines = {}, marks = {}, keys = {}, heads = {} }, Text)
 end
 
 ---@param chunks string|{[1]: string, [2]: string?}[]
@@ -183,7 +190,7 @@ local function render_mcp(t, ev)
       words = ("%s · %d tool%s"):format(words, #s.tools, #s.tools == 1 and "" or "s")
     end
     t.heads[s.name] = #t.lines
-    t.servers[#t.lines] = s.name
+    t.keys[#t.lines] = s.name
     t:add({
       { st[1], st[2] },
       { " " .. s.name .. (" "):rep(math.max(wide - api.nvim_strwidth(s.name), 0) + 2) },
@@ -192,7 +199,7 @@ local function render_mcp(t, ev)
     })
     if expanded[s.name] then
       local function more(text, group)
-        t.servers[#t.lines] = s.name
+        t.keys[#t.lines] = s.name
         t:add({ { "    " .. text, group or "AnvimResult" } })
       end
       if s.own then
@@ -212,6 +219,81 @@ local function render_mcp(t, ev)
       end
     end
   end
+end
+
+local CHROME_STATUS = {
+  connected = { "Enabled", "DiagnosticOk" },
+  connecting = { "Connecting...", "DiagnosticWarn" },
+  failed = { "Not connected", "DiagnosticWarn" },
+  disabled = { "Turned off in /mcp", "Comment" },
+  absent = { "Not enabled in this session", "Comment" },
+}
+
+-- Claude Code's /chrome dialog: the state, then its options, which <CR> runs.
+local function render_chrome(t, c)
+  t:add(
+    "Claude in Chrome works with the Chrome extension to let you control your browser directly from anvim. "
+      .. "Navigate websites, fill forms, capture screenshots, record GIFs, and debug with console logs and network requests."
+  )
+  t:add("")
+  if not c.allowed then
+    t:add({ { "Your organization does not allow Claude in Chrome.", "DiagnosticError" } })
+  end
+  if c.wsl then
+    t:add({ { "Claude in Chrome is not supported in WSL at this time.", "DiagnosticError" } })
+  end
+  if not c.subscriber then
+    t:add({ { "Claude in Chrome requires a claude.ai subscription.", "DiagnosticError" } })
+  end
+  if c.subscriber and not c.wsl then
+    local status = CHROME_STATUS[c.status] or { c.status, "Comment" }
+    t:add({ { "Status: " }, status })
+    t:add({ { "Extension: " }, c.installed and { "Installed", "DiagnosticOk" } or { "Not detected", "DiagnosticWarn" } })
+    if c.browser then
+      t:add({ { "Browser: " }, { c.browser, "DiagnosticOk" } })
+    end
+  end
+  t:add("")
+  local needs = c.installed and "" or " (requires extension)"
+  local options = {}
+  if not c.installed then
+    options[#options + 1] = { "install", "Install Chrome extension" }
+  end
+  if c.status == "connected" then
+    options[#options + 1] = { "select", "Select browser..." }
+  end
+  vim.list_extend(options, {
+    { "permissions", "Manage permissions", needs },
+    { "reconnect", "Reconnect extension", needs },
+    { "default", "Enabled by default: " .. (c.enabled_by_default and "Yes" or "No") },
+  })
+  for _, o in ipairs(options) do
+    t.heads[o[1]] = #t.lines
+    t.keys[#t.lines] = o[1]
+    t:add({ { o[2] }, { o[3] or "", "Comment" } })
+  end
+  t:add("")
+  if chrome_note then
+    t:add({ chrome_note })
+    t:add("")
+  end
+  t:add({ { "Usage: ", "Comment" }, { "anvim --chrome" }, { " or ", "Comment" }, { "anvim --no-chrome" } })
+  if c.skips_checks then
+    t:add({
+      {
+        "This session started in bypass mode, so the extension acts on sites without its permission checks.",
+        "DiagnosticWarn",
+      },
+    })
+  end
+  t:add({
+    {
+      "Site-level permissions are inherited from the Chrome extension. Manage permissions in the Chrome extension "
+        .. "settings to control which sites Claude can browse, click, and type on.",
+      "Comment",
+    },
+  })
+  t:add({ { "https://code.claude.com/docs/en/chrome", "Comment" } })
 end
 
 -- Claude Code's answer may lack a row, such as the organization of an API
@@ -241,7 +323,7 @@ end
 local function render()
   local t = Text.new()
   local ev = answers[tab]
-  if ev and ev.error and not ev.servers then
+  if ev and ev.error and not (ev.servers or ev.chrome) then
     t:add({ { "Claude Code did not answer: " .. ev.error, "DiagnosticError" } })
   elseif tab == "status" then
     render_status(t, ev and ev.info)
@@ -249,6 +331,8 @@ local function render()
     render_usage(t, ev.usage)
   elseif ev and tab == "context" then
     render_context(t, ev.context)
+  elseif ev and tab == "chrome" then
+    render_chrome(t, ev.chrome)
   elseif ev then
     render_mcp(t, ev)
   else
@@ -268,13 +352,17 @@ local function title()
   return chunks
 end
 
--- The server of the line under the cursor, in the MCP tab.
-local function server_at_cursor()
-  if tab ~= "mcp" or not valid() or drawn ~= "mcp" then
-    return
+-- The MCP server or the Chrome option of the line under the cursor.
+---@return string?
+local function key_at_cursor()
+  if valid() and drawn == tab then
+    return row_keys[api.nvim_win_get_cursor(win.win)[1] - 1]
   end
-  local name = server_rows[api.nvim_win_get_cursor(win.win)[1] - 1]
-  for _, s in ipairs(answers.mcp and answers.mcp.servers or {}) do
+end
+
+local function server_at_cursor()
+  local name = tab == "mcp" and key_at_cursor()
+  for _, s in ipairs(name and answers.mcp and answers.mcp.servers or {}) do
     if s.name == name then
       return s
     end
@@ -286,10 +374,10 @@ local function draw()
     return
   end
   local buf = win.buf
-  -- The cursor stays on its server when the list changes.
-  local keep = server_at_cursor()
+  -- The cursor stays on its server or option when the lines change.
+  local keep = key_at_cursor()
   local t = render()
-  server_rows = t.servers
+  row_keys = t.keys
   -- A margin of one cell on each side, as in Claude Code's dialogs.
   for i, line in ipairs(t.lines) do
     t.lines[i] = line == "" and line or " " .. line
@@ -302,13 +390,13 @@ local function draw()
     api.nvim_buf_set_extmark(buf, ns, m[1], m[2] + 1, { end_col = m[3] + 1, hl_group = m[4] })
   end
   win.opts.title = title()
-  local keys_hint = tab == "mcp" and "<CR> tools · r reconnect · t on or off · " or ""
+  local keys_hint = ({ mcp = "<CR> tools · r reconnect · t on or off · ", chrome = "<CR> choose · " })[tab] or ""
   win.opts.footer = { { " " .. keys_hint .. "<Tab> next tab · q close ", "FloatFooter" } }
-  win.opts.wo.cursorline = tab == "mcp"
+  win.opts.wo.cursorline = tab == "mcp" or tab == "chrome"
   local height = api.nvim_win_text_height(win.win, {}).all
   win.opts.height = math.max(math.min(height, vim.o.lines - 4), 1)
   win:update()
-  local row = keep and t.heads[keep.name]
+  local row = keep and t.heads[keep]
   if not row and drawn == tab then
     row = math.min(api.nvim_win_get_cursor(win.win)[1], #t.lines) - 1
   end
@@ -319,7 +407,8 @@ local function draw()
     end
   end
   api.nvim_win_set_cursor(win.win, { row + 1, 0 })
-  drawn = tab
+  -- Until the answer comes, the cursor has no line to keep.
+  drawn = answers[tab] and tab or nil
 end
 
 local function request()
@@ -333,6 +422,98 @@ function M.tools()
   if s then
     expanded[s.name] = not expanded[s.name] or nil
     draw()
+  end
+end
+
+---@param text string
+---@param group? string
+local function say(text, group)
+  chrome_note = { text, group or "DiagnosticWarn" }
+  draw()
+end
+
+local function chrome_request(msg, waiting_text)
+  chrome_waits = true
+  chrome_note = waiting_text and { waiting_text, "AnvimResult" } or nil
+  sidecar.send(msg)
+  draw()
+end
+
+-- Claude Code asks the user to start it again with --chrome. anvim restarts
+-- Claude in this session, as :AnvimRestart does.
+local function start_chrome()
+  if state.busy then
+    say("Claude is working. Select Reconnect extension again once the turn ends.")
+    return
+  end
+  local sessions = require("anvim.sessions")
+  sessions.chrome = true
+  M.close()
+  sessions.restart("Restarting Claude with Claude in Chrome")
+end
+
+local function pick_browser(ev)
+  if ev.error then
+    say("Couldn't list connected browsers: " .. ev.error, "DiagnosticError")
+    return
+  elseif #ev.browsers == 0 then
+    say(
+      "No browsers are connected. Open Chrome with the Claude extension and make sure you're signed in to the same claude.ai account."
+    )
+    return
+  end
+  vim.ui.select(ev.browsers, {
+    prompt = #ev.browsers == 1 and "One browser is connected" or "Choose which browser to use",
+    format_item = function(b)
+      return ("%s%s  %s"):format(b.current and "⏺ " or "  ", b.name, b.os or "unknown OS")
+    end,
+  }, function(choice)
+    -- The picker closed the window, which opens again over its own window.
+    if origin and api.nvim_win_is_valid(origin) then
+      api.nvim_set_current_win(origin)
+    end
+    M.open("chrome")
+    if choice then
+      chrome_request({ type = "chrome_select", device_id = choice.device_id })
+    end
+  end)
+end
+
+-- <CR> in the Chrome tab runs the option, as Claude Code's dialog does.
+function M.choose()
+  local c = answers.chrome and answers.chrome.chrome
+  local option = tab == "chrome" and c and key_at_cursor()
+  if not option then
+    return
+  end
+  if option == "install" then
+    require("anvim.chrome").open(c.urls.install)
+    say('Once installed, select "Reconnect extension" to connect.')
+  elseif option == "select" then
+    sidecar.send({ type = "chrome_browsers" })
+  elseif option == "permissions" then
+    require("anvim.chrome").open(c.urls.permissions)
+  elseif option == "default" then
+    chrome_request({ type = "chrome_default", enabled = not c.enabled_by_default })
+  elseif c.status == "connected" or c.status == "connecting" then
+    chrome_note = nil
+    require("anvim.chrome").open(c.urls.reconnect)
+    draw()
+  elseif c.status == "disabled" then
+    say("Claude in Chrome is turned off in /mcp. In the MCP tab, select claude-in-chrome and press t to turn it on.")
+  elseif c.status == "absent" then
+    start_chrome()
+  else
+    chrome_request({ type = "chrome_reconnect" }, "Reconnecting...")
+  end
+end
+
+-- <CR> runs what the tab's line offers.
+function M.enter()
+  if tab == "chrome" then
+    M.choose()
+  else
+    M.tools()
   end
 end
 
@@ -378,14 +559,15 @@ function M.close()
   end
 end
 
----@param name "status"|"usage"|"context"|"mcp"
+---@param name "status"|"usage"|"context"|"mcp"|"chrome"
 function M.open(name)
   if not sidecar.running() then
     vim.notify("anvim: Claude is not running. :AnvimRestart starts it", vim.log.levels.WARN)
     return
   end
-  tab, answers, drawn, note = name, {}, nil, nil
+  tab, answers, drawn, note, chrome_note, chrome_waits = name, {}, nil, nil, nil, false
   if not valid() then
+    origin = api.nvim_get_current_win()
     win = Snacks.win({
       position = "float",
       border = "rounded",
@@ -414,7 +596,7 @@ function M.open(name)
     keys.set("settings", "n", "<S-Tab>", function()
       M.switch(-1)
     end, { buffer = win.buf, nowait = true })
-    keys.set("settings", "n", "<CR>", M.tools, { buffer = win.buf, nowait = true })
+    keys.set("settings", "n", "<CR>", M.enter, { buffer = win.buf, nowait = true })
     keys.set("settings", "n", "r", M.reconnect, { buffer = win.buf, nowait = true })
     keys.set("settings", "n", "t", M.toggle, { buffer = win.buf, nowait = true })
     -- A click or a window key elsewhere closes it, as it closes the key view.
@@ -434,6 +616,11 @@ function M.open(name)
 end
 
 function M.attach()
+  sidecar.on("chrome_browsers", function(ev)
+    if tab == "chrome" and valid() then
+      pick_browser(ev)
+    end
+  end)
   sidecar.on("account", function(ev)
     state.email = ev.email
     require("anvim.statusline").refresh()
@@ -443,6 +630,9 @@ function M.attach()
       answers[name] = ev
       if name == "mcp" then
         note = nil
+      elseif name == "chrome" and (ev.message or chrome_waits) then
+        chrome_note = ev.message and { ev.message.text, ev.message.level == "error" and "DiagnosticError" or nil }
+        chrome_waits = false
       end
       if name == tab then
         draw()

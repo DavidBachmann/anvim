@@ -14,7 +14,8 @@ local api = vim.api
 M.root = vim.fs.dirname(sidecar.dir)
 -- What a reload sets for the new anvim. It removes them, so that Claude's
 -- shell does not get them.
-M.vars = { "ANVIM_RELOADED", "ANVIM_RESUME", "ANVIM_CONTINUE", "ANVIM_MODEL", "ANVIM_EFFORT", "ANVIM_MODE" }
+M.vars =
+  { "ANVIM_RELOADED", "ANVIM_RESUME", "ANVIM_CONTINUE", "ANVIM_MODEL", "ANVIM_EFFORT", "ANVIM_MODE", "ANVIM_CHROME" }
 -- A background agent's end starts a main turn, whose init comes a moment
 -- later. Without an init in this time, its end came inside a turn.
 M.notify_ms = 3000
@@ -69,6 +70,7 @@ local function new_env()
     ANVIM_MODEL = sessions.model or config.options.model,
     ANVIM_EFFORT = sessions.effort(),
     ANVIM_MODE = config.mode_chosen and start or nil,
+    ANVIM_CHROME = ({ [true] = "1", [false] = "0" })[sessions.chrome_flag()],
     ANVIM_RELOADED = vim.json.encode({
       session_id = state.session_id,
       mode = state.permission_mode ~= start and state.permission_mode or nil,

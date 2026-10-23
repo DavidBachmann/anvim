@@ -82,10 +82,10 @@ describe("completion", function()
     })
     local start, list = complete("/")
     local items = by_abbr(list)
-    -- anvim runs /model, /resume, /effort, /status, /usage, /context and /mcp itself, and adds them.
+    -- anvim runs /model, /resume, /effort, /status, /usage, /context, /mcp and /chrome itself, and adds them.
     assert.are.same(0, start)
     assert.are.same(
-      { "/compact", "/context", "/effort", "/mcp", "/model", "/resume", "/review", "/status", "/usage" },
+      { "/chrome", "/compact", "/context", "/effort", "/mcp", "/model", "/resume", "/review", "/status", "/usage" },
       vim.fn.sort(vim.tbl_keys(items))
     )
     assert.are.same("/review ", items["/review"].word)
@@ -94,8 +94,8 @@ describe("completion", function()
     assert.are.same({ anvim = "command", send = false }, items["/review"].user_data)
     assert.is_nil(items["/compact"].menu)
     assert.is_true(items["/compact"].user_data.send)
-    -- The typed name filters the list.
-    assert.are.same({ "/resume", "/review" }, vim.fn.sort(vim.tbl_keys(by_abbr(select(2, complete("/re"))))))
+    -- The typed name filters the list, fuzzily.
+    assert.are.same({ "/chrome", "/resume", "/review" }, vim.fn.sort(vim.tbl_keys(by_abbr(select(2, complete("/re"))))))
     for _, case in ipairs({ { "say /re" }, { "/re", 2 } }) do
       for _, item in ipairs(select(2, complete(case[1], case[2], true))) do
         assert(not item.word:find("^/"), item.word)

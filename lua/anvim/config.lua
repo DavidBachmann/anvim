@@ -15,6 +15,8 @@ M.defaults = {
   -- Run Claude's Bash commands in Claude Code's sandbox: they can write only in the project, a temp dir and
   -- the npm, bun and go build caches.
   sandbox = true,
+  ---@type boolean? Claude in Chrome, as Claude Code's --chrome and --no-chrome. Nil follows its "Enabled by default".
+  chrome = nil,
   -- For anvim's own development: Claude gets the mcp__anvim__screenshot and mcp__anvim__reload tools.
   debug = false,
   bun = "bun",
