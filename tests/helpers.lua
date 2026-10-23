@@ -72,7 +72,7 @@ function M.start()
 end
 
 -- The events of a fixture, with the paths in the temp project. The events
--- that need a real sidecar or change the footer of other specs stay out.
+-- that need a real sidecar or change the statusline of other specs stay out.
 ---@param name string The fixture's name, such as agents-session.
 function M.events(name)
   local skip = { commands = true, init = true, status = true, context = true, await_preview = true, effort = true }

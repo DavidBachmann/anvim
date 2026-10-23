@@ -203,9 +203,7 @@ local function show_user(params, done)
   elseif follow.focus then
     done(("Marked %s. The user follows a subagent, so their view did not move."):format(where))
   else
-    done(
-      ("Marked %s. The user is reading elsewhere, and the footer or the statusline points them to it."):format(where)
-    )
+    done(("Marked %s. The user is reading elsewhere, and the statusline points them to it."):format(where))
   end
 end
 

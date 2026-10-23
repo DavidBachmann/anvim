@@ -19,12 +19,10 @@ describe("transcript", function()
     input.send("Add a comment")
     assert(state.busy, "busy right after send")
     assert(input.activity():find("Working"), "activity line shows the spinner")
-    local footer = vim.tbl_map(function(chunk)
-      return chunk[1]
-    end, input.footer(80))
-    -- The session started in bypass mode, so the footer shows no mode label.
-    assert(not table.concat(footer):find("bypass", 1, true), table.concat(footer))
-    assert(table.concat(footer):find("◉ following", 1, true), table.concat(footer))
+    local status = require("anvim.statusline").render()
+    -- The session started in bypass mode, so the statusline shows no mode label.
+    assert(not status:find("bypass", 1, true), status)
+    assert(status:find("◉ following", 1, true), status)
     assert(
       vim.wait(10000, function()
         return not state.busy

@@ -92,7 +92,7 @@ local function fresh()
   helpers.start()
   sidecar.dispatch({ type = "reset" })
   transcript.clear()
-  -- The main agent's place stays for the footer after a turn, and a spec
+  -- The main agent's place stays for the statusline after a turn, and a spec
   -- before this one may have left one.
   turn_end()
   turn_start()

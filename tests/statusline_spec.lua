@@ -3,6 +3,7 @@
 local helpers = require("helpers")
 local input = require("anvim.input")
 local layout = require("anvim.layout")
+local state = require("anvim.state")
 local statusline = require("anvim.statusline")
 
 local api = vim.api
@@ -28,16 +29,42 @@ describe("statusline", function()
     vim.cmd.edit(vim.fn.fnameescape(file))
     api.nvim_win_set_cursor(0, { 2, 6 })
     local code = text(0)
-    assert(code:find("^ NORMAL "), code)
+    assert(code:find("^ anvim %S+ NORMAL "), code)
     assert(code:find(" 100%.lua ", 1, true), code)
     assert(code:find(" 66%%   2:7  $"), code)
     assert(not code:find("FOLLOW", 1, true), code)
     layout.focus_input({ insert = false })
     local prompt = text(layout.wins.input)
-    assert(prompt:find("^ FOLLOW "), prompt)
+    assert(prompt:find("^ anvim %S+ FOLLOW "), prompt)
     assert(not prompt:find("100%", 1, true), prompt)
     assert(not prompt:find(":%d"), prompt)
     assert.is_nil(statusline.error)
+  end)
+
+  it("shows anvim, the mode, the branch, the model, the effort and where Claude is", function()
+    helpers.start()
+    layout.focus_input({ insert = false })
+    local saved = { state.branch, state.model, state.effort, state.permission_mode, vim.o.columns }
+    local ok, err = pcall(function()
+      state.branch, state.model, state.effort, vim.o.columns = "main", "claude-opus-5-5", "xhigh", 200
+      local line = text(layout.wins.input)
+      local brand, block, branch = line:find("^ anvim "), line:find(" FOLLOW ", 1, true), line:find(" main ", 1, true)
+      assert(brand and block and branch and brand < block and block < branch, line)
+      assert(line:find(" Opus 5.5 · xhigh ", 1, true), line)
+      assert(line:find(" ◉ following ", 1, true), line)
+      assert(not line:find("mode on", 1, true), "the start mode shows no label: " .. line)
+      state.permission_mode = "plan"
+      line = text(layout.wins.input)
+      local plan = line:find(" ⏸ plan mode on ", 1, true)
+      assert(plan and block < plan and plan < line:find(" main ", 1, true), line)
+      local mark = api.nvim_buf_get_extmarks(input.buf(), -1, 0, -1, { details = true, type = "virt_lines" })[1]
+      local footer = table.concat(vim.tbl_map(function(chunk)
+        return chunk[1]
+      end, mark[4].virt_lines[1]))
+      assert(not footer:find("Opus", 1, true), footer)
+    end)
+    state.branch, state.model, state.effort, state.permission_mode, vim.o.columns = unpack(saved, 1, 5)
+    assert(ok, err)
   end)
 
   it("leaves the busy label to the activity line, and shows a Write preview's real path with (writing)", function()

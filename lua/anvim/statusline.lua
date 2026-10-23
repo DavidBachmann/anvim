@@ -1,7 +1,7 @@
--- The global statusline. On the left: Vim's mode, or FOLLOW in follow mode,
--- the git branch, and the file with its diagnostics. On the right: whether
--- Claude works or waits, where Claude is when the footer has no room for it,
--- the git diff counts and the cursor's place. 'statusline' is
+-- The global statusline. On the left: anvim's name, Vim's mode, or FOLLOW in
+-- follow mode, the permission mode's label, the git branch, and the file with
+-- its diagnostics. On the right: whether Claude waits, the git diff counts,
+-- the model and its effort, where Claude is, and the cursor's place. 'statusline' is
 -- "%!v:lua.require'anvim.statusline'.render()", so Neovim runs render() each
 -- time it draws the statusline.
 local M = {}
@@ -86,6 +86,38 @@ local function on_c(group)
   return "%#" .. name .. "#"
 end
 
+-- A group's foreground on the branch section's background of a mode's kind.
+local function on_b(group, kind)
+  local key = kind .. "B" .. group
+  local name = cache[key]
+  if not name then
+    name = "AnvimStatusB" .. kind .. group
+    local hl = api.nvim_get_hl(0, { name = group, link = false })
+    local bg = api.nvim_get_hl(0, { name = "AnvimStatus" .. kind .. "B", link = false }).bg
+    api.nvim_set_hl(0, name, { fg = hl.fg or hl.sp, bg = bg, nocombine = true })
+    cache[key] = name
+  end
+  return "%#" .. name .. "#"
+end
+
+-- The columns that statusline text takes, without its items. An escaped %
+-- becomes one column first, so that it starts no item.
+local function width(text)
+  return api.nvim_strwidth((text:gsub("%%%%", "x"):gsub("%%#[^#]*#", ""):gsub("%%[<=]", "")))
+end
+
+-- The text, cut to `max` columns with an ellipsis.
+local function truncate(text, max)
+  if api.nvim_strwidth(text) <= max then
+    return text
+  end
+  local n = vim.fn.strchars(text)
+  while n > 0 and api.nvim_strwidth(vim.fn.strcharpart(text, 0, n)) > max - 1 do
+    n = n - 1
+  end
+  return max > 0 and vim.fn.strcharpart(text, 0, n) .. "…" or ""
+end
+
 -- The first group of the list that has a foreground.
 local function first(list)
   for _, group in ipairs(list) do
@@ -98,7 +130,8 @@ end
 
 -- apple/orange/kiwi.lua -> a/o/kiwi.lua, until it fits, as lualine shortens.
 local function shorten(path, max)
-  local len = #path
+  local w = api.nvim_strwidth
+  local len = w(path)
   if len <= max then
     return path
   end
@@ -107,8 +140,8 @@ local function shorten(path, max)
     if len <= max then
       break
     end
-    local short = parts[i]:sub(1, vim.startswith(parts[i], ".") and 2 or 1)
-    len = len - (#parts[i] - #short)
+    local short = vim.fn.strcharpart(parts[i], 0, vim.startswith(parts[i], ".") and 2 or 1)
+    len = len - (w(parts[i]) - w(short))
     parts[i] = short
   end
   return table.concat(parts, "/")
@@ -126,6 +159,9 @@ local function file_icon(buf, name)
   return icon or "\238\152\146", group
 end
 
+-- The file's part, as a function of the columns to spare. With none, the
+-- path is as short as shorten() makes it.
+---@return fun(spare: integer): string
 local function file(buf)
   local name = api.nvim_buf_get_name(buf)
   local preview = vim.b[buf].anvim_preview
@@ -134,12 +170,16 @@ local function file(buf)
   if path == "" then
     path = "[No Name]"
   end
-  local text = " " .. esc(shorten(path, vim.o.columns - 40)) .. (vim.bo[buf].modified and " [+] " or " ")
-  if vim.bo[buf].filetype == "" then
-    return text
+  local head = ""
+  if vim.bo[buf].filetype ~= "" then
+    local icon, group = file_icon(buf, preview or name)
+    head = (group and on_c(group) or "") .. " " .. icon .. " %#AnvimStatusC#"
   end
-  local icon, group = file_icon(buf, preview or name)
-  return (group and on_c(group) or "") .. " " .. icon .. " %#AnvimStatusC#" .. text
+  local tail = vim.bo[buf].modified and " [+] " or " "
+  local least = api.nvim_strwidth(shorten(path, 0))
+  return function(spare)
+    return head .. " " .. esc(shorten(path, least + spare)) .. tail
+  end
 end
 
 local function diagnostics(buf)
@@ -170,20 +210,45 @@ local function diff(buf)
   return #parts > 0 and pad(table.concat(parts, " ")) or nil
 end
 
--- Where Claude needs the user, from any window. The activity line above the
--- prompt shows what Claude does, and it is always on screen.
-local function claude(win)
-  local input, permission = package.loaded["anvim.input"], package.loaded["anvim.permission"]
-  local follow, layout = package.loaded["anvim.follow"], package.loaded["anvim.layout"]
-  local parts = {}
+-- Where Claude needs the user, from any window but the prompt. The activity
+-- line above the prompt shows what Claude does, and it is always on screen.
+local function waiting(win)
+  local permission, layout = package.loaded["anvim.permission"], package.loaded["anvim.layout"]
   if permission and permission.waiting() and not (layout and win == layout.wins.input) then
-    parts[#parts + 1] = on_c("AnvimClaude") .. " ⏺ Claude is waiting "
+    return on_c("AnvimClaude") .. " ⏺ Claude is waiting "
   end
-  if follow and input and not input.follows() and follow.status() ~= "" then
-    parts[#parts + 1] = on_c(follow.group()) .. " " .. esc(follow.status(true)) .. " "
-  end
-  return parts
 end
+
+---@class anvim.StatusSession
+---@field model string
+---@field effort string
+---@field status string Where Claude is.
+---@field short string The status without its words.
+---@field group string The focused agent's color.
+---@field jump string
+
+---@return anvim.StatusSession?
+local function session()
+  local input, follow = package.loaded["anvim.input"], package.loaded["anvim.follow"]
+  if not (input and follow) then
+    return nil
+  end
+  local state = require("anvim.state")
+  return {
+    model = input.model_label(state.model or require("anvim.config").options.model),
+    effort = state.effort and (" · " .. state.effort) or "",
+    status = follow.status(false, follow.mode()),
+    short = follow.status(true, follow.mode()),
+    group = follow.group(),
+    jump = follow.place() and follow.mode() ~= "follow" and " (<leader>j)" or "",
+  }
+end
+
+-- What a narrow screen drops first, in order. The file goes before the
+-- branch, because the code window's tab bar names it too. The branch is cut
+-- to the columns that are left, and only then do the cursor's place and
+-- anvim's name go.
+local drops = { "jump", "effort", "model", "short", "file", "branch", "place", "brand" }
 
 -- With no row for the command line, the macro recording shows here.
 local function recording()
@@ -209,53 +274,93 @@ local function render()
   if follow and follow.mode() == "follow" then
     block, group = "FOLLOW", "AnvimStatusFollow"
   end
-  local branch, left, right
+  local follows = group == "AnvimStatusFollow"
+  local brand = ("%%#AnvimStatusBrand# anvim %%#AnvimStatusBrand%s#%s"):format(follows and "Follow" or kind, sep.left)
+  local label, branch, left, right, s, file_at = nil, nil, {}, {}, nil, nil
   if ft == "lazy" then
     local stats = require("lazy").stats()
-    block, branch = "lazy 💤", ("loaded: %d/%d"):format(stats.loaded, stats.count)
-    left, right = {}, {}
+    block, label = "lazy 💤", ("%%#AnvimStatus%sB# loaded: %d/%d "):format(kind, stats.loaded, stats.count)
   else
+    local input = package.loaded["anvim.input"]
+    local mode_label = input and input.mode_label()
+    label = mode_label and on_b(mode_label[2], kind) .. " " .. mode_label[1] .. " "
     branch = vim.b[buf].gitsigns_head
     if type(branch) ~= "string" or branch == "" then
       local state = package.loaded["anvim.state"]
       branch = state and state.branch ~= "" and state.branch or nil
     end
-    branch = branch and "\238\130\160 " .. esc(branch)
-    left = {}
     if not no_file[ft] then
       left[1] = diagnostics(buf)
-      left[#left + 1] = file(buf)
-      if vim.b[buf].anvim_preview then
-        left[#left + 1] = on_c("Comment") .. " (writing) "
-      end
+      file_at = file(buf)
     end
-    right = { recording() }
-    vim.list_extend(right, claude(win))
+    right[1] = recording()
+    right[#right + 1] = waiting(win)
     right[#right + 1] = diff(buf)
+    s = session()
   end
 
-  local follows = group == "AnvimStatusFollow"
-  local out = { "%#", group, "# ", esc(block), " " }
-  if branch then
-    out[#out + 1] = ("%%#%s#%s%%#AnvimStatus%sB# %s %%#AnvimStatus%sBC#%s"):format(
-      follows and "AnvimStatusFollow" .. kind .. "B" or group .. "AB",
-      sep.left,
-      kind,
-      branch,
-      kind,
-      sep.left
-    )
-  else
-    out[#out + 1] = "%#" .. (follows and "AnvimStatusFollowC" or group .. "AC") .. "#" .. sep.left
+  -- What a narrow screen gives up: the parts that drop, the columns that the
+  -- file's path may take beyond its shortest form, and the branch's text.
+  ---@type { cut: table<string, true>, spare: integer, branch: string? }
+  local fit = { cut = {}, spare = 0, branch = branch }
+  local function build()
+    local cut = fit.cut
+    local out = { cut.brand and "" or brand, "%#", group, "# ", esc(block), " " }
+    local b = { label }
+    local has_branch = fit.branch ~= nil and fit.branch ~= ""
+    if has_branch then
+      -- A statusline that is still too wide loses the start of the branch.
+      b[#b + 1] = ("%%#AnvimStatus%sB# \238\130\160 %%<%s "):format(kind, esc(fit.branch))
+    end
+    if #b > 0 then
+      out[#out + 1] = "%#" .. (follows and "AnvimStatusFollow" .. kind .. "B" or group .. "AB") .. "#" .. sep.left
+      out[#out + 1] = table.concat(b, "%#AnvimStatus" .. kind .. "B#" .. thin.left)
+      out[#out + 1] = "%#AnvimStatus" .. kind .. "BC#" .. sep.left
+    else
+      out[#out + 1] = "%#" .. (follows and "AnvimStatusFollowC" or group .. "AC") .. "#" .. sep.left
+    end
+    out[#out + 1] = "%#AnvimStatusC#" .. (has_branch and "" or "%<")
+    if file_at and not cut.file then
+      local l = vim.list_extend({}, left)
+      l[#l + 1] = file_at(fit.spare)
+      if vim.b[buf].anvim_preview then
+        l[#l + 1] = on_c("Comment") .. " (writing) "
+      end
+      out[#out + 1] = table.concat(l, "%#AnvimStatusC#" .. thin.left)
+    end
+    out[#out + 1] = "%#AnvimStatusC#%="
+    local r = vim.list_extend({}, right)
+    if s then
+      local model = (cut.model and "" or s.model) .. (cut.effort and "" or s.effort)
+      if model ~= "" then
+        r[#r + 1] = " " .. esc(model) .. " "
+      end
+      local status = cut.short and s.short or s.status
+      if status ~= "" then
+        local jump = not cut.jump and s.jump ~= "" and on_c("Comment") .. s.jump or ""
+        r[#r + 1] = on_c(s.group) .. " " .. esc(status) .. jump .. " "
+      end
+    end
+    out[#out + 1] = table.concat(r, "%#AnvimStatusC#" .. thin.right)
+    if not no_file[ft] and ft ~= "lazy" and not cut.place then
+      out[#out + 1] = ("%%#AnvimStatus%sBC#%s%%#AnvimStatus%sB#%s"):format(kind, sep.right, kind, place(win))
+    end
+    return table.concat(out)
   end
-  out[#out + 1] = "%#AnvimStatusC#"
-  out[#out + 1] = table.concat(left, "%#AnvimStatusC#" .. thin.left)
-  out[#out + 1] = "%#AnvimStatusC#%="
-  out[#out + 1] = table.concat(right, "%#AnvimStatusC#" .. thin.right)
-  if not no_file[ft] and ft ~= "lazy" then
-    out[#out + 1] = ("%%#AnvimStatus%sBC#%s%%#AnvimStatus%sB#%s"):format(kind, sep.right, kind, place(win))
+
+  local spare = vim.o.columns - width(build())
+  for _, part in ipairs(drops) do
+    if spare >= 0 then
+      break
+    elseif part == "branch" then
+      fit.branch = branch and truncate(branch, api.nvim_strwidth(branch) + spare)
+    else
+      fit.cut[part] = true
+    end
+    spare = vim.o.columns - width(build())
   end
-  return table.concat(out)
+  fit.spare = math.max(spare, 0)
+  return build()
 end
 
 function M.render()
@@ -413,10 +518,16 @@ function M.highlights()
   local follow = readable(orange, { part("normal", "a").fg, normal.bg, normal.fg })
   set("AnvimStatusFollow", { fg = follow, bg = orange, bold = true })
   set("AnvimStatusFollowC", { fg = orange, bg = c.bg })
+  -- anvim's name: orange on the branch's background, so it stands apart from
+  -- the orange FOLLOW block next to it.
+  local brand = part("normal", "b").bg
+  set("AnvimStatusBrand", { fg = orange, bg = brand, bold = true })
+  set("AnvimStatusBrandFollow", { fg = brand, bg = orange })
   for kind, mode in pairs(themes) do
     local a, b = part(mode, "a"), part(mode, "b")
     local name = "AnvimStatus" .. kind
     set(name, a)
+    set("AnvimStatusBrand" .. kind, { fg = brand, bg = a.bg })
     set(name .. "B", { fg = b.fg, bg = b.bg })
     set(name .. "AB", { fg = a.bg, bg = b.bg })
     set(name .. "AC", { fg = a.bg, bg = c.bg })

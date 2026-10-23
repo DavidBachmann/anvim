@@ -169,7 +169,7 @@ local function wire()
   end)
   -- No sandbox runs, so the sidecar started anvim's own default in default
   -- mode, or switched it there. It is the start mode until the next start,
-  -- so the footer shows no label, and Shift-Tab and plan approval offer no
+  -- so the statusline shows no label, and Shift-Tab and plan approval offer no
   -- bypass.
   sidecar.on("start_mode", function(ev)
     config.fall_back("the sandbox cannot start, and no mode was chosen")

@@ -86,10 +86,6 @@ describe("permission", function()
       assert.are.same("", tail(8)[1], "a blank line separates the block from the tool line")
       assert(permission.waiting())
       assert(input.activity():find("To answer: 1-3, or j/k and enter", 1, true), input.activity())
-      local footer = table.concat(vim.tbl_map(function(chunk)
-        return chunk[1]
-      end, input.footer(80)))
-      assert(footer:find("⏺ Claude is waiting for you", 1, true), footer)
       assert.are.same("n", api.nvim_get_mode().mode)
 
       keys("1")

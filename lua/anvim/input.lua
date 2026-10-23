@@ -1,5 +1,5 @@
 -- The prompt box under the transcript. Its winbar is the activity line, and
--- the footer is a virtual line under the last prompt line.
+-- the footer, a virtual line under the last prompt line, shows the running agents.
 local config = require("anvim.config")
 local sidecar = require("anvim.sidecar")
 local state = require("anvim.state")
@@ -22,9 +22,6 @@ local spinner_timer
 local stopped
 ---@type integer? The prompt buffer's changedtick then. A change of the text since makes the place stale.
 local stopped_tick
--- Whether the footer shows the follow status. When it does not fit, the
--- statusline shows it.
-local follows = false
 local spinner_frames = { "·", "✢", "✳", "✶", "✻", "✽", "✻", "✶", "✳", "✢" }
 
 -- <Esc> in normal mode in the prompt stops Claude or answers a request only on
@@ -47,13 +44,13 @@ local esc_ns = api.nvim_create_namespace("anvim.input.esc")
 ---@type uv.uv_timer_t?
 local esc_timer
 
--- Each label, its highlight, and a short form for a narrow column.
+-- Each label and its highlight.
 local mode_labels = {
-  default = { "⏵ manual mode on", "AnvimModeManual", "⏵ manual" },
-  acceptEdits = { "⏵⏵ accept edits on", "AnvimModeEdits", "⏵⏵ accept edits" },
-  plan = { "⏸ plan mode on", "AnvimModePlan", "⏸ plan" },
-  bypassPermissions = { "⏵⏵ bypass permissions on", "AnvimModeBypass", "⏵⏵ bypass" },
-  auto = { "⏵⏵ auto mode on", "AnvimModeAuto", "⏵⏵ auto" },
+  default = { "⏵ manual mode on", "AnvimModeManual" },
+  acceptEdits = { "⏵⏵ accept edits on", "AnvimModeEdits" },
+  plan = { "⏸ plan mode on", "AnvimModePlan" },
+  bypassPermissions = { "⏵⏵ bypass permissions on", "AnvimModeBypass" },
+  auto = { "⏵⏵ auto mode on", "AnvimModeAuto" },
 }
 
 function M.buf()
@@ -247,8 +244,7 @@ function M.resume(opts)
   vim.cmd.startinsert({ bang = col >= #line })
 end
 
--- While the prompt is empty and no request waits, ? shows the keys, and the
--- footer says so when it shows no mode label.
+-- While the prompt is empty and no request waits, ? shows the keys.
 function M.shortcuts()
   if state.waiting or not (bufnr and api.nvim_buf_is_loaded(bufnr)) then
     return false
@@ -521,115 +517,33 @@ function M.activity()
   return text .. "%#AnvimRule#" .. ("─"):rep(math.max(0, win_width(vim.g.statusline_winid) - width))
 end
 
--- The mode's label, while the mode differs from the one the session started
--- in, as Claude Code shows none for its default mode. Plan mode always shows,
--- because it changes what Claude may do.
-local function mode_label()
+-- The mode's label and its group, while the mode differs from the one the
+-- session started in, as Claude Code shows none for its default mode. Plan
+-- mode always shows, because it changes what Claude may do.
+---@return [string, string]?
+function M.mode_label()
   local mode = state.permission_mode
   if mode == "plan" or mode ~= config.options.permission_mode then
     return mode_labels[mode]
   end
 end
 
--- The model and its effort on the left. After them, a dot in each running
--- agent's color, with their count. The focused agent's dot is ◉. On the right, the follow
--- status says where Claude is, in the focused agent's color, then the mode's
--- label with its hint, or "? for shortcuts". In a narrow column, the hints go
--- first, then the branch, which the statusline shows too, then the agents'
--- count, the effort and the model. Then the follow status and the mode get
--- their short forms, the dots go, and the follow status goes to the
--- statusline.
----@param width integer
----@return [string, string?][] chunks, boolean follows The chunks show the follow status.
-function M.footer(width)
-  local w = api.nvim_strwidth
-  local branch = state.branch and ("git:(" .. state.branch .. ") ") or ""
-  local model = M.model_label(state.model or config.options.model)
-  local effort = state.effort and (" · " .. state.effort) or ""
-  local mode = state.waiting and { "⏺ Claude is waiting for you", "AnvimClaude", "⏺ waiting" } or mode_label()
-  local hint = mode and not state.waiting and " (shift+tab to cycle)" or ""
-  local shortcuts = not mode and M.shortcuts() and "? for shortcuts" or ""
-  local follow = require("anvim.follow")
-  local status = follow.status()
-  local jump = follow.place() and not follow.following() and " (<leader>j)" or ""
-  local agents = require("anvim.agents")
+-- A dot in each running agent's color, with their count, under the prompt
+-- text. The focused agent's dot is ◉.
+---@return [string, string?][]
+function M.footer()
+  local follow, agents = require("anvim.follow"), require("anvim.agents")
   local running = agents.running()
-  local dots = {} ---@type [string, string][]
+  local chunks = { { "  " } } ---@type [string, string?][]
   for _, agent in ipairs(running) do
     if agent.slot then
-      dots[#dots + 1] = { agent.id == follow.focus and "◉" or "⏺", agents.group(agent.slot) }
+      chunks[#chunks + 1] = { agent.id == follow.focus and "◉" or "⏺", agents.group(agent.slot) }
     end
   end
-  local count = #dots > 0 and (" %d agent%s"):format(#running, #running == 1 and "" or "s") or ""
-  -- The right side: the follow status, then the mode or the shortcuts hint.
-  local function right()
-    local place = status ~= "" and w(status .. jump) or 0
-    local tail = mode and w(mode[1] .. hint) or w(shortcuts)
-    return place + tail + (place > 0 and tail > 0 and 2 or 0)
+  if #chunks > 1 then
+    chunks[#chunks + 1] = { (" %d agent%s"):format(#running, #running == 1 and "" or "s"), "AnvimChip" }
   end
-  -- Columns to spare between the left side and the right side.
-  local function free()
-    local r = right()
-    local left = w(" anvim " .. branch .. model .. effort)
-    left = left + (#dots > 0 and 2 + #dots * w("⏺") + w(count) or 0)
-    return width - left - (r > 0 and r + 3 or 0)
-  end
-  if free() < 0 then
-    shortcuts = ""
-  end
-  if free() < 0 then
-    hint = ""
-  end
-  if free() < 0 then
-    jump = ""
-  end
-  if free() < 0 then
-    branch = ""
-  end
-  if free() < 0 then
-    count = ""
-  end
-  if free() < 0 then
-    effort = ""
-  end
-  if free() < 0 then
-    model = ""
-  end
-  if status ~= "" and free() < 0 then
-    status = follow.status(true)
-  end
-  if mode and mode[3] and free() < 0 then
-    mode = { mode[3], mode[2] }
-  end
-  if free() < 0 then
-    dots = {}
-  end
-  if free() < 0 then
-    status = ""
-  end
-  local chunks = { { " anvim ", "AnvimClaude" }, { branch, "Comment" }, { model .. effort } }
-  if #dots > 0 then
-    vim.list_extend(chunks, { { "  " }, unpack(dots) })
-    chunks[#chunks + 1] = { count, "AnvimChip" }
-  end
-  if right() > 0 then
-    chunks[#chunks + 1] = { (" "):rep(math.max(1, free() + 2)) }
-    if status ~= "" then
-      vim.list_extend(chunks, { { status, follow.group() }, { jump, "Comment" } })
-    end
-    local tail = mode and { { mode[1], mode[2] }, { hint, "Comment" } } or { { shortcuts, "Comment" } }
-    if status ~= "" and w(tail[1][1]) > 0 then
-      chunks[#chunks + 1] = { "  " }
-    end
-    vim.list_extend(chunks, tail)
-    chunks[#chunks + 1] = { " " }
-  end
-  return chunks, status ~= ""
-end
-
--- Whether the footer shows the follow status, as drawn.
-function M.follows()
-  return follows
+  return chunks
 end
 
 -- Neovim keeps the cursor line at the bottom of the window, which hides the
@@ -660,16 +574,11 @@ function M.render()
   end
   local win = prompt_win()
   local last = api.nvim_buf_line_count(bufnr) - 1
-  local chunks, shown = M.footer(win_width(win))
   footer_mark = api.nvim_buf_set_extmark(bufnr, ns, last, 0, {
     id = footer_mark,
-    virt_lines = { chunks },
+    virt_lines = { M.footer() },
     virt_lines_leftcol = true,
   })
-  if shown ~= follows then
-    follows = shown
-    api.nvim_exec_autocmds("User", { pattern = "AnvimStatus", modeline = false })
-  end
   if win then
     local limits = config.options.layout.input_height
     local rows = api.nvim_win_text_height(win, {}).all

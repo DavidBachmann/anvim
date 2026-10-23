@@ -35,17 +35,11 @@ local function bullet(pattern)
   error("no line matches " .. pattern)
 end
 
--- The groups of the footer's dots, and the footer's text: as drawn under the
--- prompt, or at a width.
-local function footer(width)
-  local chunks
-  if width then
-    chunks = input.footer(width)
-  else
-    local ns = api.nvim_get_namespaces()["anvim.input"]
-    local mark = api.nvim_buf_get_extmarks(input.buf(), ns, 0, -1, { details = true })[1]
-    chunks = mark[4].virt_lines[1]
-  end
+-- The groups of the footer's dots, and the footer's text, as drawn under the prompt.
+local function footer()
+  local ns = api.nvim_get_namespaces()["anvim.input"]
+  local mark = api.nvim_buf_get_extmarks(input.buf(), ns, 0, -1, { details = true })[1]
+  local chunks = mark[4].virt_lines[1]
   local dots, text = {}, {}
   for _, chunk in ipairs(chunks) do
     if chunk[1] == "⏺" then
@@ -84,17 +78,12 @@ local function tree_marks()
 end
 
 describe("agents", function()
-  local column_width ---@type integer?
   -- State that a case changes, to restore even when it fails.
   local restore ---@type fun()?
 
   -- Running agents would show in other specs' footers.
   after_each(function()
     agents.clear()
-    if column_width then
-      api.nvim_win_set_width(require("anvim.layout").wins.input, column_width)
-      column_width = nil
-    end
     local fn = restore
     restore = nil
     if fn then
@@ -104,10 +93,6 @@ describe("agents", function()
 
   it("replays three agents in parallel: slots, places, files, bullets and the footer", function()
     fresh()
-    -- Room for the dots in the footer under the prompt.
-    local win = require("anvim.layout").wins.input
-    column_width = api.nvim_win_get_width(win)
-    api.nvim_win_set_width(win, 60)
     for _, name in ipairs({ "alpha", "beta", "gamma" }) do
       vim.fn.writefile(
         { ("export function %s() {"):format(name), ('  return "%s";'):format(name), "}" },
@@ -140,9 +125,9 @@ describe("agents", function()
     assert.are.same("AnvimAgent1", bullet("^⏺ Agent%(Edit alpha%.js header%)"))
     assert.are.same("AnvimAgent2", bullet("^⏺ Agent%(Edit beta%.js header%)"))
     assert.are.same("AnvimAgent3", bullet("^⏺ Agent%(Edit gamma%.js header%)"))
-    assert.are.same({ "AnvimAgent1", "AnvimAgent2", "AnvimAgent3" }, footer())
-    local _, text = footer(120)
-    assert(text:find("  ⏺⏺⏺ 3 agents", 1, true), text)
+    local dots, text = footer()
+    assert.are.same({ "AnvimAgent1", "AnvimAgent2", "AnvimAgent3" }, dots)
+    assert.are.same("  ⏺⏺⏺ 3 agents", text)
 
     sidecar.dispatch(events[i])
     assert.are.same({ { beta, 2 }, { gamma, 3 } }, slots(), "beta and gamma keep their slots")
@@ -159,7 +144,6 @@ describe("agents", function()
     for _, name in ipairs({ "alpha", "beta", "gamma" }) do
       assert.are.same("AnvimToolOk", bullet(("^⏺ Agent%%(Edit %s%%.js header%%)"):format(name)))
     end
-    local dots
     dots, text = footer()
     assert.are.same({}, dots)
     assert(not text:find("agent", 1, true), text)

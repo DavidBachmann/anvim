@@ -1,4 +1,4 @@
--- Session state that several views read: the footer, the transcript, follow mode.
+-- Session state that several views read: the statusline, the transcript, follow mode.
 local M = {
   session_id = nil, ---@type string?
   model = nil, ---@type string?

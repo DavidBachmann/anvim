@@ -155,7 +155,7 @@ async function reportEffort(q: Query): Promise<void> {
     if (inheriting && applied?.model) inherited.set(applied.model, level);
     emit({ type: "effort", level });
   } catch {
-    // Without get_settings, the footer shows no effort.
+    // Without get_settings, the statusline shows no effort.
   }
 }
 
@@ -178,7 +178,7 @@ function translate(translator: Translator, msg: SDKMessage): Event[] {
 }
 
 // No sandbox runs, so anvim's own default, bypass mode, becomes default mode.
-// The plugin's start mode decides the footer's label and which modes
+// The plugin's start mode decides the statusline's label and which modes
 // Shift-Tab and plan approval offer. Claude Code's own line comes after the
 // start, so a running session switches too. It switches at once, as
 // set_permission_mode does, so a Shift-Tab that comes later wins.

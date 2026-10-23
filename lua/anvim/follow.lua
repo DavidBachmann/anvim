@@ -1,6 +1,6 @@
 -- Follow mode: while the cursor is in the prompt, the code window shows where
 -- Claude reads and writes. Elsewhere the user is in control, and the
--- prompt's footer says where Claude is. Follow mode follows one agent: the main agent, or the subagent that the user focused.
+-- statusline says where Claude is. Follow mode follows one agent: the main agent, or the subagent that the user focused.
 local agents = require("anvim.agents")
 local bashread = require("anvim.bashread")
 local input = require("anvim.input")
@@ -445,7 +445,7 @@ function M.resume()
 end
 
 -- Follow mode follows agent `id`, or the main agent for nil, and catches up
--- with it at once. Elsewhere the footer points at its place.
+-- with it at once. Elsewhere the statusline points at its place.
 ---@param id string?
 function M.set_focus(id)
   local agent = id and agents.get(id)
@@ -562,7 +562,7 @@ function M.forget()
   end
 end
 
--- The main agent's place stays for the footer, but its mark in the tree goes
+-- The main agent's place stays for the statusline, but its mark in the tree goes
 -- with the turn, as its written files do.
 local function end_main()
   local place = places[""]
@@ -742,10 +742,11 @@ end
 
 local edit_tools = { Edit = true, Write = true, NotebookEdit = true }
 
--- Where Claude is, as plain text for the prompt's footer. A focused subagent
+-- Where Claude is, as plain text for the statusline. A focused subagent
 -- takes Claude's name.
----@param short boolean? Without the words, for a narrow column.
-function M.status(short)
+---@param short boolean? Without the words, for a narrow screen.
+---@param for_mode anvim.Mode? The mode to say it for. Without it, the current window decides.
+function M.status(short, for_mode)
   local place = M.place()
   local where = place
     and ("%s:%d%s"):format(
@@ -756,7 +757,7 @@ function M.status(short)
   local agent = M.focused()
   local name = agent and agents.name(agent) or "Claude"
   local claude = where and (short and where or name .. " at " .. where) or (agent and name)
-  if M.enabled() then
+  if for_mode == "follow" or (for_mode == nil and M.enabled()) then
     return agent and (short and "◉ " or "◉ following ") .. name or "◉ following"
   end
   return claude and "⏺ " .. claude or ""

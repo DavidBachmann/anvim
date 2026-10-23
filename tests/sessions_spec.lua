@@ -165,10 +165,8 @@ describe("sessions", function()
     assert(#running > 0)
     assert.are.same(2, #choices)
     assert.are.same("claude-haiku-5-5", state.model)
-    local footer = table.concat(vim.tbl_map(function(c)
-      return c[1]
-    end, input.footer(80)))
-    assert(footer:find("Haiku 5.5", 1, true), footer)
+    local status = require("anvim.statusline").render()
+    assert(status:find("Haiku 5.5", 1, true), status)
     local all = buf_lines(transcript.buf())
     assert.are.same("✻ Set model to Haiku 5.5", all[#all])
     -- A restart keeps the chosen model.
@@ -199,12 +197,6 @@ describe("sessions", function()
     effort_levels = { "low", "medium", "high", "xhigh", "max" },
   }
   local old = { value = "claude-haiku-4-5-20251001", name = "Haiku 4.5", resolved = "claude-haiku-4-5-20251001" }
-
-  local function footer()
-    return table.concat(vim.tbl_map(function(c)
-      return c[1]
-    end, input.footer(100)))
-  end
 
   local function last_line()
     local all = buf_lines(transcript.buf())
@@ -274,7 +266,8 @@ describe("sessions", function()
       assert.are.same({ "default", "default" }, { config.options.permission_mode, state.permission_mode })
       assert.are.same("the sandbox cannot start, and no mode was chosen", config.mode_reason)
       assert.are.same({ "default", "acceptEdits", "plan" }, input.modes(), "Shift-Tab offers no bypass")
-      assert(not footer():find("manual mode", 1, true), footer())
+      local status = require("anvim.statusline").render()
+      assert(not status:find("manual mode", 1, true), status)
       -- The next start, as after :AnvimRestart or /resume, lets the sidecar check the sandbox again.
       local cmd = sessions.start_command()
       assert.are.same({ "bypassPermissions", false }, { cmd.permission_mode, cmd.permission_mode_chosen })
