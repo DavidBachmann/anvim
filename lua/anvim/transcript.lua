@@ -104,7 +104,7 @@ local primary_arg = {
 }
 
 -- With breakindentopt=list:-1, wrapped lines align after the bullet.
-M.list_pat = [[^\s*\%(⏺\|❯\|⎿\|⚠\)\?\s*]]
+M.list_pat = [[^\s*\%(⏺\|❯\|⎿\|⚠\|✻\)\?\s*]]
 
 function M.buf()
   if bufnr and api.nvim_buf_is_loaded(bufnr) and vim.b[bufnr].anvim_transcript then

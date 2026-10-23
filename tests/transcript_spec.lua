@@ -7,6 +7,12 @@ local state = require("anvim.state")
 local transcript = require("anvim.transcript")
 
 describe("transcript", function()
+  it("wraps the lines of every bullet after the bullet", function()
+    for _, bullet in ipairs({ "⏺", "❯", "⎿", "⚠", "✻" }) do
+      assert.are.same(#bullet + 1, vim.fn.matchend(bullet .. " text", transcript.list_pat), bullet)
+    end
+  end)
+
   it("renders a replayed turn like Claude Code", function()
     helpers.start()
     layout.focus_input()
