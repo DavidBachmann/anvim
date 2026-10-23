@@ -87,16 +87,22 @@ end
 
 function M.attach()
   local paste = vim.paste
+  -- A terminal can send even a short paste in chunks. The prompt holds them
+  -- until the last one, so that a path in two chunks still becomes a chip.
+  local held = ""
   ---@diagnostic disable-next-line: duplicate-set-field
   vim.paste = function(lines, phase)
-    -- A path comes in one piece. A streamed paste is long text.
-    if phase == -1 and vim.bo.filetype == "anvim_input" then
-      local chips = M.chips(table.concat(lines, "\n"))
-      if chips then
-        lines = { chips }
-      end
+    if vim.bo.filetype ~= "anvim_input" then
+      return paste(lines, phase)
     end
-    return paste(lines, phase)
+    local text = held .. table.concat(lines, "\n")
+    if phase == 1 or phase == 2 then
+      held = text
+      return true
+    end
+    held = ""
+    local chips = M.chips(text)
+    return paste(chips and { chips .. " " } or vim.split(text, "\n", { plain = true }), -1)
   end
 end
 
