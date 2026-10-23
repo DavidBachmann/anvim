@@ -56,12 +56,6 @@ local function slots()
   end, agents.running())
 end
 
-local function fresh()
-  helpers.start()
-  sidecar.dispatch({ type = "reset" })
-  transcript.clear()
-end
-
 -- The tree's marks on each of the replay's files, as "slot:kind".
 local function tree_marks()
   local ret = {}
@@ -92,7 +86,7 @@ describe("agents", function()
   end)
 
   it("replays three agents in parallel: slots, places, files, bullets and the footer", function()
-    fresh()
+    helpers.fresh()
     for _, name in ipairs({ "alpha", "beta", "gamma" }) do
       vim.fn.writefile(
         { ("export function %s() {"):format(name), ('  return "%s";'):format(name), "}" },
@@ -150,7 +144,7 @@ describe("agents", function()
   end)
 
   it("selects the agent count with j on the last prompt line, and enter opens the Agent Overview", function()
-    fresh()
+    helpers.fresh()
     local layout, overview = require("anvim.layout"), require("anvim.overview")
     restore = function()
       overview.close()

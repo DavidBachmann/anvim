@@ -3,7 +3,8 @@
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { root, Ui, type Frame, type Pos } from "../../tools/screen/ui.ts";
+import type { Pos } from "../../sidecar/src/screen.ts";
+import { root, Ui, type Frame } from "../../tools/screen/ui.ts";
 
 // A window's cells on the grid, 0-based.
 export type Box = { row: number; col: number; width: number; height: number };
@@ -184,7 +185,7 @@ export class Anvim {
   }
 }
 
-export type StartOptions = {
+export type AnvimOptions = {
   // A recording in tests/fixtures. Its /ANVIM_FIXTURE placeholder becomes the project dir.
   recording?: string;
   // Edits the recording's frames, one JSON line each, before the replay plays them.
@@ -199,7 +200,7 @@ export type StartOptions = {
   rows?: number;
 };
 
-export async function start(opts: StartOptions = {}): Promise<Anvim> {
+export async function start(opts: AnvimOptions = {}): Promise<Anvim> {
   const tmp = realpathSync(mkdtempSync(join(tmpdir(), "anvim-ui-")));
   const dir = join(tmp, "proj");
   mkdirSync(dir);

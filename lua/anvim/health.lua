@@ -163,7 +163,7 @@ function M.check()
 
   executables({
     { "git", "lazy.nvim installs the plugins with it.", error = true },
-    { "rg", "Grep needs ripgrep." },
+    { "rg", "The grep pickers need ripgrep." },
     { "cc", "The treesitter parsers need a C compiler." },
     { "node", "The TypeScript and JSON language servers need Node.js." },
     { "npm", "mason installs the TypeScript and JSON language servers with npm." },
@@ -189,9 +189,9 @@ function M.check()
 
   local chrome = vim.env.CHROME or "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
   if vim.fn.executable(chrome) == 1 then
-    health.ok("Google Chrome is installed, for the screen tool")
+    health.info("Google Chrome is installed, for the screen tool")
   else
-    health.warn("Google Chrome is missing. Only the screen tool needs it.", { "Set CHROME to the Chrome binary" })
+    health.info("Google Chrome is missing. Only the screen tool needs it. Set CHROME to the Chrome binary.")
   end
 
   health.info("Log: " .. sidecar.log_path)

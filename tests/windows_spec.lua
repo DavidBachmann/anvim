@@ -62,30 +62,33 @@ describe("windows", function()
       { keys = "<C-w>v", buf = file, line = 20 },
       { keys = "<C-w>s", buf = file, line = 20 },
     }
-    for _, case in ipairs(cases) do
-      in_code()
-      local what = case.cmd or case.keys
-      if case.cmd then
-        vim.cmd(case.cmd)
-      else
-        keys(case.keys)
+    local ok, err = pcall(function()
+      for _, case in ipairs(cases) do
+        in_code()
+        local what = case.cmd or case.keys
+        if case.cmd then
+          vim.cmd(case.cmd)
+        else
+          keys(case.keys)
+        end
+        assert(
+          vim.wait(500, function()
+            return #code_wins() == 1
+          end, 10),
+          what .. " left two code windows"
+        )
+        local code = layout.wins.code
+        assert.are.same({ code }, code_wins(), what)
+        assert.are.same(code, current(), what .. " focuses the code window")
+        assert.are.same(case.buf, api.nvim_buf_get_name(api.nvim_win_get_buf(code)), what)
+        if case.line then
+          assert.are.same(case.line, api.nvim_win_get_cursor(code)[1], what)
+        end
+        assert.is_false(vim.wo[code].diff, what .. " leaves diff mode on")
       end
-      assert(
-        vim.wait(500, function()
-          return #code_wins() == 1
-        end, 10),
-        what .. " left two code windows"
-      )
-      local code = layout.wins.code
-      assert.are.same({ code }, code_wins(), what)
-      assert.are.same(code, current(), what .. " focuses the code window")
-      assert.are.same(case.buf, api.nvim_buf_get_name(api.nvim_win_get_buf(code)), what)
-      if case.line then
-        assert.are.same(case.line, api.nvim_win_get_cursor(code)[1], what)
-      end
-      assert.is_false(vim.wo[code].diff, what .. " leaves diff mode on")
-    end
+    end)
     vim.notify = notify
+    assert(ok, err)
     assert(#notes <= 1, "the notice shows once: " .. vim.inspect(notes))
     layout.focus_input()
   end)

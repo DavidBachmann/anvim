@@ -577,9 +577,6 @@ function M.activity()
     local hint = ("(%s · esc twice to stop)"):format(transcript.duration(elapsed, true))
     text = ("%%#AnvimClaude#%s %s %%#Comment#%s "):format(frame, (verb:gsub("%%", "%%%%")), hint)
     width = vim.fn.strdisplaywidth(("%s %s %s "):format(frame, verb, hint))
-  elseif config.options.input.turn_stats and state.last_turn then
-    local info = ("%s · $%.2f "):format(transcript.duration(state.last_turn.duration_ms), state.cost_usd)
-    text, width = "%#Comment#" .. info, api.nvim_strwidth(info)
   end
   return text .. "%#AnvimRule#" .. ("─"):rep(math.max(0, win_width(vim.g.statusline_winid) - width))
 end
@@ -775,12 +772,7 @@ function M.attach()
       M.set_busy(true)
     end
   end)
-  sidecar.on("turn_end", function(ev)
-    -- A slash command such as /clear ends a turn that asked no model.
-    if (ev.num_turns or 0) > 0 then
-      state.last_turn = { duration_ms = ev.duration_ms, cost_usd = ev.cost_usd }
-    end
-    state.cost_usd = ev.cost_usd
+  sidecar.on("turn_end", function()
     M.set_busy(false)
     -- Claude Code starts the queued prompts as the next turn.
     take()

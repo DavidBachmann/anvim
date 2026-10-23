@@ -2,7 +2,7 @@
 local M = {}
 
 local function cut(text, n)
-  return #text > n and text:sub(1, n - 1) .. "..." or text
+  return vim.fn.strchars(text) > n and vim.fn.strcharpart(text, 0, n - 1) .. "..." or text
 end
 
 -- What Claude Code writes in the parentheses after the tool's name.

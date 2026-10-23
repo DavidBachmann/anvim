@@ -3,15 +3,14 @@
 // (lua/anvim/permission.lua) answers with a permission_response.
 import type {
   CanUseTool,
-  PermissionMode,
   PermissionResult,
   PermissionUpdate,
   PermissionUpdateDestination,
   SDKMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import { homedir } from "node:os";
-import { isAbsolute, relative, sep } from "node:path";
+import { isAbsolute, relative } from "node:path";
 import type { Command, Event } from "./protocol";
+import { tildePath } from "./sandbox";
 import { SendBack } from "./sendback";
 import { isEditorTool } from "./tools";
 
@@ -154,7 +153,7 @@ function decide(p: Pending, res: Response, bypass: boolean): PermissionResult {
     return {
       behavior: "allow",
       updatedInput: p.input,
-      updatedPermissions: [{ type: "setMode", mode: res.mode as PermissionMode, destination: "session" }],
+      updatedPermissions: [{ type: "setMode", mode: res.mode, destination: "session" }],
       decisionClassification: "user_temporary",
     };
   }
@@ -188,8 +187,7 @@ function shortDir(dir: string, cwd: string): string {
   const rel = relative(cwd, dir);
   if (rel === "") return "this directory";
   if (!rel.startsWith("..") && !isAbsolute(rel)) return rel;
-  const home = homedir();
-  return dir === home || dir.startsWith(home + sep) ? "~" + dir.slice(home.length) : dir;
+  return tildePath(dir);
 }
 
 // The label of the "don't ask again" choice. Choosing it applies every

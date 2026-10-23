@@ -3,8 +3,12 @@
 // into a PNG with headless Chrome. The screen tool (tools/screen) and the
 // debug screenshot tool share it.
 import { existsSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 
-export const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+// CHROME names the binary. Without it, the macOS app, or a Chrome on PATH.
+const CHROMES = process.env.CHROME
+  ? [process.env.CHROME]
+  : ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "google-chrome", "chromium"];
 
 export type Attr = {
   foreground?: number;
@@ -28,7 +32,7 @@ export type Screen = { rows: number; cols: number; cells: Cell[][]; cursor: Pos 
 const CELL_W = 9.6;
 const CELL_H = 20;
 
-export function pixels(cols: number, rows: number) {
+function pixels(cols: number, rows: number) {
   return { width: Math.ceil(cols * CELL_W), height: rows * CELL_H };
 }
 
@@ -80,13 +84,13 @@ export function svg(cells: Cell[][], defaults: Colors, cursor?: Pos): string {
 
 // Renders svgFile into pngFile. Returns why there is no PNG, or nothing.
 export async function png(svgFile: string, pngFile: string, cols: number, rows: number): Promise<string | undefined> {
-  const chrome = Bun.which(CHROME);
-  if (!chrome) return `Google Chrome is not at ${CHROME}. Set CHROME to its binary.`;
+  const chrome = CHROMES.map((name) => Bun.which(name)).find(Boolean);
+  if (!chrome) return `Found no Google Chrome at ${CHROMES.join(", ")}. Set CHROME to its binary.`;
   const { width, height } = pixels(cols, rows);
   let proc: Bun.Subprocess;
   try {
     proc = Bun.spawn(
-      [chrome, "--headless", "--disable-gpu", "--hide-scrollbars", `--screenshot=${pngFile}`, `--window-size=${width},${height}`, `file://${svgFile}`],
+      [chrome, "--headless", "--disable-gpu", "--hide-scrollbars", `--screenshot=${pngFile}`, `--window-size=${width},${height}`, pathToFileURL(svgFile).href],
       { stdout: "ignore", stderr: "ignore" },
     );
   } catch (err) {

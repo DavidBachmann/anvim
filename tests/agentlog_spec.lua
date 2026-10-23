@@ -10,12 +10,6 @@ local api = vim.api
 
 local alpha, beta, gamma = "a462161d1283697a4", "ac8d35b341c2136a8", "a2ba251a78b20a0f4"
 
-local function fresh()
-  helpers.start()
-  sidecar.dispatch({ type = "reset" })
-  transcript.clear()
-end
-
 local function lines(id)
   local buf = agentlog.buf(id)
   return buf and helpers.buf_lines(buf) or error("no log for " .. id)
@@ -139,7 +133,7 @@ describe("agent logs", function()
   end)
 
   it("draws each agent's prompt, calls, results, text and end in order, and a SendMessage restart", function()
-    fresh()
+    helpers.fresh()
     local failures = replay("overview-session")
     assert.are.same({}, failures)
     local function body(id)
@@ -199,7 +193,7 @@ describe("agent logs", function()
   end)
 
   it("draws text under a bullet with its next lines indented, and skips blank text", function()
-    fresh()
+    helpers.fresh()
     start("t")
     say("t", "   ")
     say("t", "Found it.\n\nIn a.lua.")
@@ -209,7 +203,7 @@ describe("agent logs", function()
   end)
 
   it("drops the oldest 500 lines beyond 3000, and calls whose lines stay keep their results", function()
-    fresh()
+    helpers.fresh()
     start("big")
     call("big", "Go.")
     use("big", "b1", "Read", { file_path = helpers.tmp .. "/a.lua" })
@@ -260,7 +254,7 @@ describe("agent logs", function()
   it(
     "keeps at most 16 logs: the oldest end goes first, past or not, but never a running agent's or a shown one",
     function()
-      fresh()
+      helpers.fresh()
       start("run")
       local bufs = {}
       for i = 1, 20 do
@@ -288,7 +282,7 @@ describe("agent logs", function()
   )
 
   it("replays the agents and background fixtures without a handler error", function()
-    fresh()
+    helpers.fresh()
     for _, name in ipairs({ "alpha", "beta", "gamma" }) do
       vim.fn.writefile(
         { ("export function %s() {"):format(name), ('  return "%s";'):format(name), "}" },

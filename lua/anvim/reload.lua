@@ -134,7 +134,7 @@ function M.request(done)
     return done(nil, "No terminal shows this Neovim, and :restart needs one.")
   elseif vim.fn.exists(":restart") ~= 2 then
     return done(nil, "This Neovim has no :restart.")
-  elseif vim.env.ANVIM_REPLAY then
+  elseif config.options.replay then
     return done(nil, "anvim plays a recording, which a reload cannot resume.")
   elseif not state.session_id then
     return done(nil, "The session has no id yet, so a reload cannot resume it.")

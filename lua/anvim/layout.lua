@@ -508,7 +508,7 @@ end
 function M.set_pane(on)
   pane_on = on
   prefs.set("tool_pane", on)
-  transcript.tools_apart = on
+  transcript.pane_on = on
   -- Another tab page gets the pane when the cursor comes back.
   if in_tab() and valid(M.wins.code) then
     sync_pane()
@@ -558,7 +558,7 @@ end
 
 function M.setup()
   pane_on = prefs.get("tool_pane") ~= false
-  transcript.tools_apart = pane_on
+  transcript.pane_on = pane_on
   local group = api.nvim_create_augroup("anvim.layout", {})
   -- The Claude column and the pane keep their share of the screen.
   -- 'winfixwidth' and 'winfixheight' alone would keep them at the smallest

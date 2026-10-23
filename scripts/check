@@ -8,6 +8,7 @@ cd "$(dirname "$0")/.." || exit 1
 # Once, before the gates, so that two of them never install at the same time.
 scripts/test-deps || exit 1
 
+# The fallback is for a LazyVim user, whose stylua lives in mason's dir.
 stylua=$(command -v stylua || echo "$HOME/.local/share/nvim/mason/bin/stylua")
 gates="stylua selene sidecar-tsc sidecar-test screen-tsc specs stack ui"
 logs=$(mktemp -d "${TMPDIR:-/tmp}/anvim-check.XXXXXX")

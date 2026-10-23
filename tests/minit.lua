@@ -1,5 +1,8 @@
 #!/usr/bin/env -S nvim -l
 
+-- lazy.nvim points the XDG dirs into .tests. The stack spec checks that the
+-- user's own dirs stay unchanged, so it needs the values from before.
+vim.g.anvim_user_xdg = { config = vim.env.XDG_CONFIG_HOME, data = vim.env.XDG_DATA_HOME }
 vim.env.LAZY_STDPATH = ".tests"
 -- lazy.nvim rewrites the helptags in its own dir after it installs plugins,
 -- so the tests use their own copy in .tests, not the shared one.
@@ -14,15 +17,23 @@ else
   load(vim.fn.system("curl -s https://raw.githubusercontent.com/folke/lazy.nvim/main/bootstrap.lua"), "bootstrap.lua")()
 end
 
+-- The test plugins use the app's pins, so the specs run against the same code.
+local lock = vim.json.decode(table.concat(vim.fn.readfile(vim.uv.cwd() .. "/lazy-lock.json"), "\n"))
+local function pin(name)
+  return lock[name] and lock[name].commit
+end
+
 -- Setup lazy.nvim
 require("lazy.minit").setup({
   spec = {
     { dir = vim.uv.cwd() },
-    { "folke/snacks.nvim", opts = {} },
-    { "nvim-mini/mini.icons", opts = {} },
+    { "folke/snacks.nvim", commit = pin("snacks.nvim"), opts = {} },
+    { "nvim-mini/mini.icons", commit = pin("mini.icons"), opts = {} },
     -- Without file arguments, run the bare specs only. scripts/test-stack runs tests/stack.
     {
-      "echasnovski/mini.test",
+      "nvim-mini/mini.test",
+      -- The app does not use mini.test, so its lockfile has no pin for it.
+      commit = "9880040d2085cdea170881cf1201911772a21629",
       opts = {
         collect = {
           find_files = function()

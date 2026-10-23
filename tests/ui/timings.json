@@ -1,15 +1,16 @@
 {
   "version": 1,
   "files": {
-    "tests/ui/jump.test.ts": 3862,
-    "tests/ui/follow.test.ts": 3322,
-    "tests/ui/mouse.test.ts": 3209,
-    "tests/ui/permission.test.ts": 2101,
-    "tests/ui/windows.test.ts": 1769,
-    "tests/ui/tree.test.ts": 636,
-    "tests/ui/messages.test.ts": 369,
-    "tests/ui/layout.test.ts": 306,
-    "tests/ui/cmdline.test.ts": 234,
+    "tests/ui/jump.test.ts": 4302,
+    "tests/ui/mouse.test.ts": 3686,
+    "tests/ui/follow.test.ts": 3311,
+    "tests/ui/permission.test.ts": 2258,
+    "tests/ui/windows.test.ts": 2002,
+    "tests/ui/tree.test.ts": 1389,
+    "tests/ui/layout.test.ts": 374,
+    "tests/ui/completion.test.ts": 337,
+    "tests/ui/messages.test.ts": 295,
+    "tests/ui/cmdline.test.ts": 281,
     "tests/ui/client.test.ts": 2
   }
 }

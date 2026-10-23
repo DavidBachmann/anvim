@@ -3,7 +3,7 @@
 -- `c{motion}` insert one and go on typing. Read-only buffers leave `c` free,
 -- and "c" reads as "change this, Claude". <leader>cb inserts the selection or
 -- the whole file, and leaves the cursor in the prompt in normal mode.
-local context = require("anvim.context")
+local paths = require("anvim.paths")
 
 local M = {}
 
@@ -13,8 +13,8 @@ local OPFUNC = "v:lua.require'anvim.refs'.operator"
 ---@param first integer? 1-based first line. Without it, the whole file.
 ---@param last integer?
 function M.format(path, first, last)
-  local ref = "@" .. context.relpath(path)
-  return first and ref .. context.range(first, last) or ref
+  local ref = "@" .. paths.relpath(path)
+  return first and ref .. paths.range(first, last) or ref
 end
 
 -- Puts text where typing stopped in the prompt, apart from its neighbors.
@@ -50,7 +50,7 @@ end
 -- Points Claude at lines of a file buffer, or at the whole file.
 ---@param typing boolean?
 function M.point(buf, first, last, typing)
-  local path = context.file(buf)
+  local path = paths.file(buf)
   if not path then
     vim.notify("anvim: this buffer has no file to point at", vim.log.levels.WARN)
     return
@@ -71,10 +71,10 @@ function M.operator()
 end
 
 -- Whole files and directories, as from the explorer.
----@param paths { path: string, dir: boolean? }[]
-function M.files(paths)
+---@param items { path: string, dir: boolean? }[]
+function M.files(items)
   local refs = {}
-  for _, p in ipairs(paths) do
+  for _, p in ipairs(items) do
     refs[#refs + 1] = M.format(p.path) .. (p.dir and not p.path:match("/$") and "/" or "")
   end
   if #refs > 0 then

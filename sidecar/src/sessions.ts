@@ -3,7 +3,7 @@
 //   bun src/sessions.ts list <dir>
 import { getSessionInfo, getSessionMessages, listSessions, type SessionMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Event } from "./protocol";
-import { commandOutput, readResult, resultText, truncate, truncateOutput } from "./translate";
+import { type AnyRecord, commandOutput, readResult, resultText, truncate, truncateOutput } from "./translate";
 
 export type SessionItem = {
   id: string;
@@ -16,7 +16,6 @@ export type SessionItem = {
 };
 
 type HistoryEvent = Extract<Event, { type: "history" }>["events"][number];
-type AnyRecord = Record<string, any>;
 
 // Only this directory's own sessions: a session of another worktree would not
 // resume here.

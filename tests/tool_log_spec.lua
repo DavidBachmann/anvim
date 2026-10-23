@@ -71,11 +71,11 @@ describe("the main log", function()
     transcript.clock = function()
       return now
     end
-    transcript.tools_apart = true
+    transcript.pane_on = true
   end)
 
   after_each(function()
-    transcript.tools_apart = false
+    transcript.pane_on = false
     transcript.clock = os.time
     permission.cancel_all()
     agents.clear()

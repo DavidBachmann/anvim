@@ -68,7 +68,7 @@ export function sandboxDisabled(stderr: string): string | undefined {
 // "fallback": anvim runs in default mode in place of its own default, bypass.
 export type WarningKind = "plain" | "bypass" | "fallback";
 
-export function sandboxWarning(problem: string, kind: WarningKind = "plain"): string {
+function sandboxWarning(problem: string, kind: WarningKind = "plain"): string {
   if (kind === "bypass") {
     return `Claude's Bash commands run without a sandbox, and in bypass mode without asking: ${problem}. Start anvim with --mode default to be asked, or --no-sandbox to hide this warning.`;
   }
@@ -89,8 +89,8 @@ export type StartMode = {
 // anvim's own default is bypass mode, where only the sandbox limits a Bash
 // command. So without a sandbox, a session whose mode nobody chose starts in
 // default mode. A mode that the user chose stays.
-export function startMode(requested: string | undefined, chosen: boolean, sandboxRuns: boolean): StartMode {
-  const mode = (requested ?? "bypassPermissions") as PermissionMode;
+export function startMode(requested: PermissionMode | undefined, chosen: boolean, sandboxRuns: boolean): StartMode {
+  const mode = requested ?? "bypassPermissions";
   if (chosen || sandboxRuns || mode !== "bypassPermissions") return { mode, chosen };
   return { mode: "default", chosen, fallback: true };
 }
@@ -355,7 +355,7 @@ const PROTECTED_DIRS = new Set([
 // list or .config/git on the way, or a file of the list at the end. As in
 // Claude Code, the first .claude/worktrees, where its worktree agents work,
 // and .claude/scheduled_tasks.json do not count. A later .claude does.
-export function protectedPath(path: string): boolean {
+function protectedPath(path: string): boolean {
   const parts = path
     .split(sep)
     .filter(Boolean)
@@ -396,6 +396,11 @@ export function realPath(path: string): string {
 
 function inside(path: string, dir: string): boolean {
   return path === dir || path.startsWith(dir.endsWith(sep) ? dir : dir + sep);
+}
+
+// A path under the home dir, written with ~.
+export function tildePath(path: string, home = homedir()): string {
+  return inside(path, home) ? "~" + path.slice(home.length) : path;
 }
 
 // What anvim's guards read from getSettings(): the effective settings.
@@ -539,7 +544,7 @@ export class SandboxGuard {
     if (paths.some((p) => settings.includes(fold(p)))) return this.ask(input, toolUseID, signal, REASONS.settings);
     const trusted = await this.trusted();
     const outside = paths.find((p) => !trusted.some((dir) => inside(p, dir)));
-    if (outside) return this.ask(input, toolUseID, signal, REASONS.outside(this.short(outside)));
+    if (outside) return this.ask(input, toolUseID, signal, REASONS.outside(tildePath(outside, this.home)));
     // Each path is below a trusted dir. The part below the nearest one counts.
     const below = (p: string) => {
       const dir = trusted.filter((d) => inside(p, d)).reduce((a, b) => (b.length > a.length ? b : a));
@@ -553,13 +558,9 @@ export class SandboxGuard {
     return isAbsolute(path) ? path : join(this.opts.cwd, path);
   }
 
-  private short(path: string): string {
-    return inside(path, this.home) ? "~" + path.slice(this.home.length) : path;
-  }
-
   // The project's own settings files. An edit there can widen the sandbox, and
   // in bypass mode nothing else would ask.
-  settingsFiles(): string[] {
+  private settingsFiles(): string[] {
     const roots = [this.opts.cwd, gitRoot(this.opts.cwd, { ...host, home: this.home })];
     return roots.flatMap((root) =>
       root ? ["settings.json", "settings.local.json"].map((file) => realPath(join(root, ".claude", file))) : [],
@@ -567,7 +568,7 @@ export class SandboxGuard {
   }
 
   // The dirs that an edit may write without a prompt.
-  async trusted(): Promise<string[]> {
+  private async trusted(): Promise<string[]> {
     const allowWrite = (await this.sandbox())?.filesystem?.allowWrite ?? [];
     const entries = allowWrite
       // Claude Code expands a glob anew for each command. anvim asks instead.

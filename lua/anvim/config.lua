@@ -20,7 +20,11 @@ M.defaults = {
   -- For anvim's own development: Claude gets the mcp__anvim__screenshot and mcp__anvim__reload tools.
   debug = false,
   bun = "bun",
-  ---@type string[]? Replaces the sidecar command, e.g. to replay a recording.
+  ---@type string? A recording that ANVIM_RECORD saved. The sidecar plays it instead of a live session.
+  replay = nil,
+  ---@type number How fast the replay plays: 2 is twice the recorded speed.
+  replay_speed = 1,
+  ---@type string[]? Replaces the sidecar command.
   sidecar_cmd = nil,
   layout = {
     ---@type number Columns, or a fraction of the screen width.
@@ -41,9 +45,6 @@ M.defaults = {
     -- start. Off, only insert commands start it, in the prompt or in a file
     -- buffer.
     auto_insert = false,
-    -- While Claude is idle, the line above the prompt shows the last turn's
-    -- time and cost, and how full the context window is.
-    turn_stats = false,
   },
   append_system_prompt = table.concat({
     "The user reads code in anvim, a read-only Neovim viewer, while you work.",
@@ -113,7 +114,8 @@ function M.setup(opts)
   elseif effort ~= nil and not vim.tbl_contains(M.effort_levels, effort) then
     M.options.effort = nil
     vim.schedule(function()
-      local levels = "low, medium, high, xhigh or max"
+      local n = #M.effort_levels
+      local levels = table.concat(M.effort_levels, ", ", 1, n - 1) .. " or " .. M.effort_levels[n]
       vim.notify(
         ("anvim: the effort %s is unknown, so Claude uses the default. Use %s."):format(vim.inspect(effort), levels),
         vim.log.levels.WARN

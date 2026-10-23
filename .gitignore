@@ -1,5 +1,7 @@
 sidecar/node_modules/
 tools/screen/node_modules/
 /.tests/
+# Claude's worktree agents work here.
+/.claude/worktrees/
 # A sandboxed Neovim writes its log into the cwd.
 /nvim.log

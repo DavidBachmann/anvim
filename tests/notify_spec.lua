@@ -12,6 +12,7 @@ local turn_end =
 -- What the notifications would run or write, instead of running it.
 local calls
 local env = {}
+local saved = {}
 
 local function set_env(vars)
   for _, key in ipairs({ "CMUX_SOCKET_PATH", "CMUX_SURFACE_ID", "CMUX_BUNDLED_CLI_PATH" }) do
@@ -26,6 +27,7 @@ describe("notify", function()
       env[key] = vim.env[key]
     end
     calls = {}
+    saved.system, saved.ui_send = notify.system, notify.ui_send
     notify.system = function(cmd)
       calls[#calls + 1] = { cmd = cmd }
     end
@@ -36,9 +38,7 @@ describe("notify", function()
 
   after_each(function()
     set_env(env)
-    notify.system, notify.ui_send = vim.system, function(text)
-      api.nvim_ui_send(text)
-    end
+    notify.system, notify.ui_send = saved.system, saved.ui_send
     api.nvim_exec_autocmds("FocusGained", {})
   end)
 

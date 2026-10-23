@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
-# Fills .tests/anvim, the install dir that the stack and UI tests boot from:
-# lazy.nvim and the plugins at the lockfile's commits, and mason's
-# lua-language-server at a fixed version. The first run needs the network.
-# Once the dir matches the lockfile and the version, it does nothing.
+# Installs tools/screen's packages, which the UI tests and the screen tool
+# need. Then it fills .tests/anvim, the install dir that the stack and UI
+# tests boot from: lazy.nvim and the plugins at the lockfile's commits, and
+# mason's lua-language-server at a fixed version. The first run needs the
+# network. Once both match their lockfiles and the version, it does nothing.
 
 cd "$(dirname "$0")/.." || exit 1
+if [ ! -d tools/screen/node_modules ] || [ tools/screen/bun.lock -nt tools/screen/node_modules ]; then
+  (cd tools/screen && bun install --frozen-lockfile) </dev/null || exit 1
+  # bun leaves the dir's time alone when nothing changed.
+  touch tools/screen/node_modules
+fi
 dir=$PWD/.tests/anvim
+# The LSP specs depend on how this version behaves, so a bump needs a spec run.
 mason=lua-language-server@3.19.2
 stamp=$dir/stamp
 if { cat lazy-lock.json; echo "$mason"; } | cmp -s - "$stamp" && [ -x "$dir/mason/bin/lua-language-server" ]; then

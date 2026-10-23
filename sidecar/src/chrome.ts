@@ -67,7 +67,7 @@ export async function setEnabledByDefault(on: boolean): Promise<void> {
 }
 
 // As Claude Code's dialog reads its server's state.
-export function chromeStatus(servers: McpServerStatus[]): ChromeState["status"] {
+function chromeStatus(servers: McpServerStatus[]): ChromeState["status"] {
   const own = servers.filter((s) => s.name === CHROME_SERVER);
   if (own.some((s) => s.status === "connected")) return "connected";
   if (own.some((s) => s.status === "pending")) return "connecting";

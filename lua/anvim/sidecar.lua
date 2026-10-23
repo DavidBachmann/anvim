@@ -1,10 +1,10 @@
 -- Runs the Agent SDK sidecar and speaks its line protocol (sidecar/src/protocol.ts).
 local config = require("anvim.config")
+local install = require("anvim.base.install")
 
 local M = {}
 
-local root = vim.fs.dirname(vim.fs.dirname(vim.fs.dirname(debug.getinfo(1, "S").source:sub(2))))
-M.dir = root .. "/sidecar"
+M.dir = install.root .. "/sidecar"
 M.log_path = vim.fn.stdpath("log") .. "/anvim.log"
 
 ---@type vim.SystemObj?
@@ -37,19 +37,23 @@ end
 function M.log(text)
   local f = io.open(M.log_path, "a")
   if f then
-    f:write(os.date("%H:%M:%S "), text, "\n")
+    f:write(os.date("%Y-%m-%d %H:%M:%S "), text, "\n")
     f:close()
   end
 end
 
+---@return string[]?
 local function command()
   local opts = config.options
   if opts.sidecar_cmd then
     return opts.sidecar_cmd
+  elseif opts.replay then
+    return { opts.bun, M.dir .. "/src/replay.ts", opts.replay, tostring(opts.replay_speed) }
   end
   if not vim.uv.fs_stat(M.dir .. "/node_modules") then
-    vim.notify("anvim: installing sidecar dependencies...")
-    vim.system({ opts.bun, "install", "--frozen-lockfile" }, { cwd = M.dir }):wait()
+    local run = install.root .. "/scripts/install"
+    vim.notify(("anvim: the sidecar's packages are missing. Run %s."):format(run), vim.log.levels.ERROR)
+    return
   end
   return { opts.bun, M.dir .. "/src/main.ts" }
 end
@@ -108,10 +112,11 @@ end
 
 ---@param start table The start command (see protocol.ts).
 function M.start(start)
-  if proc then
+  local cmd = not proc and command()
+  if not cmd then
     return
   end
-  proc = vim.system(command(), {
+  proc = vim.system(cmd, {
     stdin = true,
     cwd = start.cwd,
     env = M.env(),

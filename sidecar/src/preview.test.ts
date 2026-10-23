@@ -48,13 +48,14 @@ describe("PreviewBridge", () => {
   });
 
   test("gives a subagent's typed preview longer than the main agent's", async () => {
-    const { b } = bridge({ main: 30, agent: 120 });
+    // Wide margins, because scripts/check runs every gate side by side.
+    const { b } = bridge({ main: 20, agent: 300 });
     const signal = new AbortController().signal;
     const main = b.hook(mainInput, "t1", { signal });
     const agent = b.hook(agentInput, "t2", { signal });
-    expect(await within(main, 80)).toBe(true);
+    expect(await within(main, 150)).toBe(true);
     expect(await within(agent, 1)).toBe(false);
-    expect(await within(agent, 100)).toBe(true);
+    expect(await within(agent, 600)).toBe(true);
     expect(b.waiting).toBe(0);
     expect(TIMEOUT_MS.agent).toBeGreaterThan(TIMEOUT_MS.main);
   });

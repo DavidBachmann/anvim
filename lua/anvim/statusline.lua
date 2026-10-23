@@ -166,8 +166,7 @@ end
 local function file(buf)
   local name = api.nvim_buf_get_name(buf)
   local preview = vim.b[buf].anvim_preview
-  local context = package.loaded["anvim.context"]
-  local path = preview and context and context.relpath(preview) or vim.fn.fnamemodify(name, ":~:.")
+  local path = preview and require("anvim.paths").display(preview) or vim.fn.fnamemodify(name, ":~:.")
   if path == "" then
     path = "[No Name]"
   end

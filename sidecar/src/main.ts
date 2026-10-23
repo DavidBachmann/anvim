@@ -1,7 +1,6 @@
 import {
   query,
   type Options,
-  type PermissionMode,
   type Query,
   type SDKMessage,
   type SDKUserMessage,
@@ -120,7 +119,7 @@ function control(fn: (q: Query) => Promise<void>): Promise<void> {
 }
 
 // What getSettings() answers. The SDK has the method, but not in its types.
-export type SettingsAnswer = {
+type SettingsAnswer = {
   effective?: Record<string, any>;
   sources?: { source: string; settings?: Record<string, any> | null }[];
   applied?: { model?: string; effort?: EffortLevel | null };
@@ -306,13 +305,13 @@ export async function handle(cmd: Command): Promise<void> {
   switch (cmd.type) {
     case "start":
       if (session) return;
-      run(cmd)
-        .then(() => emit({ type: "exit", code: 0 }))
-        .catch((err) => {
+      run(cmd).then(
+        () => process.exit(0),
+        (err) => {
           emit({ type: "notice", level: "error", text: String(err?.stack ?? err) });
-          emit({ type: "exit", code: 1 });
-        })
-        .finally(() => process.exit());
+          process.exit(1);
+        },
+      );
       return;
     case "prompt":
       inbox.push(
@@ -325,7 +324,7 @@ export async function handle(cmd: Command): Promise<void> {
       await session?.interrupt();
       return;
     case "set_permission_mode":
-      await session?.setPermissionMode(cmd.mode as PermissionMode);
+      await session?.setPermissionMode(cmd.mode);
       return;
     case "set_model":
       await control(async (q) => {
@@ -357,7 +356,7 @@ export async function handle(cmd: Command): Promise<void> {
           // The SDK marks this call as one that may change in any release.
           emit(usageEvent(await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET()));
         } catch (err) {
-          emit({ type: "usage", error: String((err as Error)?.message ?? err) });
+          emit({ type: "usage", error: errorText(err) });
         }
       });
       return;
@@ -366,7 +365,7 @@ export async function handle(cmd: Command): Promise<void> {
         try {
           emit(contextEvent(await q.getContextUsage({ detail: "full" })));
         } catch (err) {
-          emit({ type: "context_usage", error: String((err as Error)?.message ?? err) });
+          emit({ type: "context_usage", error: errorText(err) });
         }
       });
       return;
@@ -375,7 +374,7 @@ export async function handle(cmd: Command): Promise<void> {
         try {
           emit(mcpEvent(await q.mcpServerStatus()));
         } catch (err) {
-          emit({ type: "mcp_servers", error: String((err as Error)?.message ?? err) });
+          emit({ type: "mcp_servers", error: errorText(err) });
         }
       });
       return;
@@ -388,12 +387,12 @@ export async function handle(cmd: Command): Promise<void> {
           if (cmd.action === "reconnect") await q.reconnectMcpServer(cmd.server);
           else await q.toggleMcpServer(cmd.server, cmd.action === "enable");
         } catch (err) {
-          error = `Could not ${cmd.action} ${cmd.server}: ${(err as Error)?.message ?? err}`;
+          error = `Could not ${cmd.action} ${cmd.server}: ${errorText(err)}`;
         }
         try {
           emit(mcpEvent(await q.mcpServerStatus(), error));
         } catch (err) {
-          emit({ type: "mcp_servers", error: error ?? String((err as Error)?.message ?? err) });
+          emit({ type: "mcp_servers", error: error ?? errorText(err) });
         }
       });
       return;
@@ -403,7 +402,7 @@ export async function handle(cmd: Command): Promise<void> {
           const init = await q.initializationResult();
           emit(sessionInfoEvent(init.claude_code_version, await q.accountInfo(), await q.mcpServerStatus()));
         } catch (err) {
-          emit({ type: "session_info", error: String((err as Error)?.message ?? err) });
+          emit({ type: "session_info", error: errorText(err) });
         }
       });
       return;

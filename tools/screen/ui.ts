@@ -5,13 +5,11 @@
 import { decodeMultiStream, encode } from "@msgpack/msgpack";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { png, svg, type Attr } from "../../sidecar/src/screen";
+import { png, svg, type Attr, type Pos } from "../../sidecar/src/screen";
 
-export type { Attr };
 export const root = resolve(import.meta.dir, "../..");
 
-export type Cell = { text: string; hl: number };
-export type Pos = { row: number; col: number };
+export type GridCell = { text: string; hl: number };
 // The screen at one flush. Rows and columns are 0-based grid cells. `changed`
 // lists the rows whose text or highlights changed since the previous flush,
 // and `cells` counts the changed cells.
@@ -30,7 +28,7 @@ export type StartOptions = {
 };
 
 export class Ui {
-  grid: Cell[][] = [];
+  grid: GridCell[][] = [];
   attrs = new Map<number, { rgb: Attr; names: string }>();
   defaults = { fg: 0xe0def4, bg: 0x191724 };
   cursor: Pos = { row: 0, col: 0 };
@@ -44,7 +42,7 @@ export class Ui {
   private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
   private log: Frame[] = [];
   // The grid at the last flush.
-  private shown: Cell[][] = [];
+  private shown: GridCell[][] = [];
 
   private constructor(opts: StartOptions) {
     this.xdg = resolve(opts.xdg);

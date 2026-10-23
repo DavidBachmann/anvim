@@ -15,6 +15,7 @@ describe("reload", function()
     helpers.start()
     local saved = {
       debug = config.options.debug,
+      replay = config.options.replay,
       chosen = config.mode_chosen,
       id = state.session_id,
       mode = state.permission_mode,
@@ -26,7 +27,8 @@ describe("reload", function()
       env[name] = vim.env[name]
     end
     local seen
-    config.options.debug, config.mode_chosen = true, false
+    -- The specs play a recording, which a real reload refuses.
+    config.options.debug, config.options.replay, config.mode_chosen = true, nil, false
     reload.tui = function()
       return true
     end
@@ -68,7 +70,7 @@ describe("reload", function()
     for name, value in pairs(env) do
       vim.env[name] = value
     end
-    config.options.debug, config.mode_chosen = saved.debug, saved.chosen
+    config.options.debug, config.options.replay, config.mode_chosen = saved.debug, saved.replay, saved.chosen
     state.session_id, state.permission_mode = saved.id, saved.mode
     reload.tui, reload.exec, sessions.model = saved.tui, saved.exec, nil
     api.nvim_buf_set_lines(input.buf(), 0, -1, false, { "" })
@@ -77,9 +79,15 @@ describe("reload", function()
 
   it("does not restart after the user stops Claude", function()
     helpers.start()
-    local saved = { debug = config.options.debug, id = state.session_id, tui = reload.tui, exec = reload.exec }
+    local saved = {
+      debug = config.options.debug,
+      replay = config.options.replay,
+      id = state.session_id,
+      tui = reload.tui,
+      exec = reload.exec,
+    }
     local restarted = false
-    config.options.debug = true
+    config.options.debug, config.options.replay = true, nil
     reload.tui = function()
       return true
     end
@@ -99,7 +107,7 @@ describe("reload", function()
       assert.is_false(restarted, "the restart undid the stop")
     end)
 
-    config.options.debug, state.session_id = saved.debug, saved.id
+    config.options.debug, config.options.replay, state.session_id = saved.debug, saved.replay, saved.id
     reload.tui, reload.exec = saved.tui, saved.exec
     assert(ok, err)
   end)

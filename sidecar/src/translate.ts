@@ -9,6 +9,7 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 import { FieldStream } from "./fieldstream";
 import type { ContextMark, Event, McpServer, UsageSection } from "./protocol";
+import { tildePath } from "./sandbox";
 import { isEditorTool } from "./tools";
 
 const MAX_TEXT = 2000;
@@ -26,7 +27,7 @@ type Block =
   | { type: "tool_use"; id: string; name: string; fields: FieldStream }
   | { type: "other" };
 
-type AnyRecord = Record<string, any>;
+export type AnyRecord = Record<string, any>;
 
 // A message of the main agent's own conversation. Background subagents send
 // their messages between the main agent's turns too, as do the task messages
@@ -414,11 +415,6 @@ export function usageEvent(u: SDKControlGetUsageResponse): Event {
   };
 }
 
-const home = (path: string) => {
-  const dir = process.env.HOME;
-  return dir && path.startsWith(dir + "/") ? "~" + path.slice(dir.length) : path;
-};
-
 // The first rows, and how many more there are.
 function top(rows: string[], n = 5): string[] {
   return rows.length > n ? [...rows.slice(0, n), `and ${rows.length - n} more`] : rows;
@@ -469,7 +465,7 @@ function contextSections(c: ContextAnswer): UsageSection[] {
   add("Custom agents", top([...c.agents].sort((a, b) => b.tokens - a.tokens).map((a) => `${a.agentType}: ${tokens(a.tokens)}`)));
   add(
     "Memory files",
-    c.memoryFiles.map((f) => `${f.type}: ${home(f.path)} (${tokens(f.tokens)})`),
+    c.memoryFiles.map((f) => `${f.type}: ${tildePath(f.path)} (${tokens(f.tokens)})`),
   );
   const sk = c.skills;
   if (sk?.totalSkills) {
@@ -592,7 +588,7 @@ export function truncateOutput(s: string): string {
 }
 
 // Tool results can hold whole files. The plugin only needs the metadata.
-export function trim(value: unknown): unknown {
+function trim(value: unknown): unknown {
   if (typeof value === "string") return truncate(value);
   if (Array.isArray(value)) return value.map(trim);
   if (value && typeof value === "object") {

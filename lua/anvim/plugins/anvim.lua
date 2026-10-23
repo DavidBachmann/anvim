@@ -1,11 +1,6 @@
-local root = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h:h:h")
-
--- ANVIM_REPLAY=<recording> plays a session that ANVIM_RECORD saved, at no API cost.
-local replay = vim.env.ANVIM_REPLAY
-
 return {
   {
-    dir = root,
+    dir = require("anvim.base.install").root,
     name = "anvim",
     lazy = false,
     opts = {
@@ -17,7 +12,9 @@ return {
       sandbox = vim.env.ANVIM_SANDBOX ~= "0",
       debug = vim.env.ANVIM_DEBUG == "1",
       chrome = ({ ["1"] = true, ["0"] = false })[vim.env.ANVIM_CHROME or ""],
-      sidecar_cmd = replay and { "bun", root .. "/sidecar/src/replay.ts", replay, vim.env.ANVIM_REPLAY_SPEED or "1" },
+      -- ANVIM_REPLAY=<recording> plays a session that ANVIM_RECORD saved, at no API cost.
+      replay = vim.env.ANVIM_REPLAY,
+      replay_speed = tonumber(vim.env.ANVIM_REPLAY_SPEED),
     },
     config = function(_, opts)
       local anvim = require("anvim")

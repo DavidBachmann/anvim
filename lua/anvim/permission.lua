@@ -7,6 +7,7 @@
 local agents = require("anvim.agents")
 local input = require("anvim.input")
 local layout = require("anvim.layout")
+local paths = require("anvim.paths")
 local sidecar = require("anvim.sidecar")
 local state = require("anvim.state")
 local transcript = require("anvim.transcript")
@@ -283,7 +284,7 @@ local function add_header(b, r)
       b.add("    " .. line)
     end
   elseif type(path) == "string" then
-    b.add("    " .. transcript.relpath(path))
+    b.add("    " .. paths.display(path))
   elseif mcp_server then
     b.add(("    %s - %s (MCP)"):format(mcp_server, transcript.label(mcp_tool, inp)))
   else

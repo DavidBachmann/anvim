@@ -93,7 +93,7 @@ end
 
 -- What belongs to one session. A new session starts with none of it.
 local function forget()
-  state.session_id, state.last_turn, state.cost_usd, state.context, state.turns = nil, nil, 0, nil, 0
+  state.session_id, state.context, state.turns = nil, nil, 0
   require("anvim.follow").forget()
 end
 

@@ -1,6 +1,7 @@
 -- Follow mode: while the cursor is in the prompt, the code window shows where
 -- Claude reads and writes. Elsewhere the user is in control, and the
--- statusline says where Claude is. Follow mode follows one agent: the main agent, or the subagent that the user focused.
+-- statusline says where Claude is. Follow mode follows one agent: the main
+-- agent, or the subagent that the user focused.
 local agents = require("anvim.agents")
 local bashread = require("anvim.bashread")
 local input = require("anvim.input")
@@ -518,11 +519,6 @@ local function with_slot(slot, fn)
   fn(agent and agent.id or nil)
 end
 
--- Changes the focus and leaves the cursor where it is.
-function M.focus_slot(slot)
-  with_slot(slot, M.set_focus)
-end
-
 -- Follows the agent in `slot` as the Agent Overview's <CR> does.
 function M.follow_slot(slot)
   with_slot(slot, M.follow)
@@ -791,7 +787,7 @@ function M.status(short, for_mode)
   local place = M.place()
   local where = place
     and ("%s:%d%s"):format(
-      require("anvim.transcript").relpath(place.path),
+      require("anvim.paths").display(place.path),
       place.line,
       place.behind > 0 and (" +%d"):format(place.behind) or ""
     )

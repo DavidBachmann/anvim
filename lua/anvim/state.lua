@@ -11,8 +11,6 @@ local M = {
   busy = false,
   thinking = false,
   turn_started = nil, ---@type integer? uv.now() at turn start
-  last_turn = nil, ---@type { duration_ms: integer, cost_usd: number }?
-  cost_usd = 0,
   -- Turns that this session has saved. Only such a session can be resumed.
   turns = 0,
   context = nil, ---@type { percent: number, tokens: integer, max: integer }?

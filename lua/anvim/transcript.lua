@@ -1,6 +1,7 @@
 -- The conversation view, drawn like Claude Code: user prompts, streamed
 -- assistant text, and one line per tool call with its result below it.
 local agents = require("anvim.agents")
+local paths = require("anvim.paths")
 local state = require("anvim.state")
 
 local M = {}
@@ -15,9 +16,10 @@ local ns_time = api.nvim_create_namespace("anvim.time")
 -- The clock of the times that items show. Specs replace it.
 M.clock = os.time
 
--- Whether the main agent's tool lines go to the main log, apart from the
--- chat. The chat then shows one count line for each run of tool calls.
-M.tools_apart = false
+-- Whether the tool pane is on. Then the main agent's tool lines go to the
+-- main log, apart from the chat, and the chat shows one count line for each
+-- run of tool calls.
+M.pane_on = false
 
 ---@class anvim.Run The tool calls between two other chat items.
 ---@field buf integer The chat buffer of the count line.
@@ -446,13 +448,6 @@ local function first_line(text)
   return line
 end
 
-function M.relpath(path)
-  if type(path) ~= "string" then
-    return ""
-  end
-  return vim.fs.relpath(state.cwd, path) or vim.fn.fnamemodify(path, ":~")
-end
-
 ---@type { cwd: string, forms: string[] }?
 local forms_of
 
@@ -544,7 +539,7 @@ local function tool_label(name, input)
     return name
   end
   if key == "file_path" or key == "notebook_path" then
-    arg = M.relpath(arg)
+    arg = paths.display(arg)
   else
     arg = M.short(arg)
   end
@@ -848,7 +843,7 @@ function M.tool_start(id, name)
   local label = tool_label(name)
   local tool = { id = id, name = name, time = now() }
   local row
-  if M.tools_apart then
+  if M.pane_on then
     -- A run whose chat buffer went, as after :bwipeout, ends with it.
     if run and not api.nvim_buf_is_loaded(run.buf) then
       run = nil

@@ -3,8 +3,8 @@
 -- current tab. A file that is not in the bar shows at the left, apart from
 -- the tabs.
 local agents = require("anvim.agents")
-local context = require("anvim.context")
 local files = require("anvim.files")
+local paths = require("anvim.paths")
 
 local M = {}
 
@@ -123,7 +123,7 @@ end
 -- The file that the code window shows, by its real path.
 ---@return string?
 local function shown(buf)
-  local file = context.file(buf)
+  local file = paths.file(buf)
   return file and files.real(file)
 end
 

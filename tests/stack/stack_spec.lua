@@ -7,8 +7,12 @@
 local helpers = require("helpers")
 
 local home = assert(vim.env.HOME)
-local nvim_config = home .. "/.config/nvim"
-local nvim_data = home .. "/.local/share/nvim"
+local xdg_user = vim.g.anvim_user_xdg or {}
+local function xdg_dir(value, default)
+  return (value and value ~= "" and value or home .. default) .. "/nvim"
+end
+local nvim_config = xdg_dir(xdg_user.config, "/.config")
+local nvim_data = xdg_dir(xdg_user.data, "/.local/share")
 local install = helpers.root .. "/.tests/anvim"
 local xdg = helpers.tmp .. "/xdg"
 

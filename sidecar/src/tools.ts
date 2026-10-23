@@ -105,7 +105,7 @@ async function screenshot(bridge: EditorBridge): Promise<Result | ImageResult> {
   }
 }
 
-export function editorTools(bridge: EditorBridge, opts: { debug?: boolean } = {}) {
+function editorTools(bridge: EditorBridge, opts: { debug?: boolean } = {}) {
   const call = (method: string) => (args: Record<string, unknown>) => bridge.request(method, args);
   // These tools are for anvim's own development, so only --debug adds them.
   const debug = opts.debug

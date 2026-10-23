@@ -107,12 +107,6 @@ local function launch(id, description)
   return tool_id
 end
 
-local function fresh()
-  helpers.start()
-  sidecar.dispatch({ type = "reset" })
-  transcript.clear()
-end
-
 -- The tree's marks on alpha.js and beta.js, as "slot:kind".
 local function tree_marks()
   local ret = {}
@@ -136,7 +130,7 @@ describe("background agents", function()
   end)
 
   it("replays two agents that work on after the turn, and whose ends start turns", function()
-    fresh()
+    helpers.fresh()
     for _, name in ipairs({ "alpha", "beta" }) do
       vim.fn.writefile(
         { ("export function %s() {"):format(name), ('  return "%s";'):format(name), "}" },
@@ -264,7 +258,7 @@ describe("background agents", function()
   end)
 
   it("keeps an agent that a background agent started, and answers each request that a turn's end drops", function()
-    fresh()
+    helpers.fresh()
     launch("p1", "Parent")
     local function start(id, parent)
       sidecar.dispatch({
@@ -307,7 +301,7 @@ describe("background agents", function()
   end)
 
   it("ends the main agent's tool line as interrupted when the sidecar exits", function()
-    fresh()
+    helpers.fresh()
     sidecar.dispatch({
       type = "tool_use",
       id = "m1",

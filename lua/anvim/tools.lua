@@ -3,6 +3,7 @@
 -- Handlers never block the main loop. They answer through `done`, once.
 local follow = require("anvim.follow")
 local layout = require("anvim.layout")
+local paths = require("anvim.paths")
 local sidecar = require("anvim.sidecar")
 local state = require("anvim.state")
 
@@ -26,10 +27,6 @@ local MAX_OUTLINE = 200
 local MAX_REPEATS = 20
 local MAX_HOVER_LINES = 40
 local MAX_TEXT = 120
-
-local function relpath(path)
-  return require("anvim.transcript").relpath(path)
-end
 
 local function plural(n, word)
   return ("%d %s%s"):format(n, word, n == 1 and "" or "s")
@@ -56,14 +53,6 @@ local function capped(header, lines, max)
   return table.concat(out, "\n")
 end
 
-local function resolve(path)
-  path = vim.fs.normalize(path)
-  if vim.fn.isabsolutepath(path) == 0 then
-    path = vim.fs.joinpath(state.cwd, path)
-  end
-  return vim.fs.normalize(path)
-end
-
 local function under(path, dir)
   return path == dir or vim.startswith(path, dir .. "/")
 end
@@ -88,13 +77,13 @@ local function existing(path, anywhere)
     error("path is required", 0)
   end
   local given = path
-  path = resolve(path)
+  path = paths.resolve(path)
   if not anywhere and not inside_cwd(path) then
     error(("%s is outside the working directory, so the editor tools do not read it."):format(given), 0)
   end
   local stat = vim.uv.fs_stat(path)
   if not stat or stat.type ~= "file" then
-    error(("No such file: %s"):format(relpath(path)), 0)
+    error(("No such file: %s"):format(paths.display(path)), 0)
   end
   return path
 end
@@ -196,7 +185,7 @@ local function show_user(params, done)
   if #virt > 0 then
     api.nvim_buf_set_extmark(buf, ns, first - 1, 0, { virt_lines = virt, virt_lines_above = true })
   end
-  local where = ("%s#L%d%s"):format(relpath(path), first, last > first and ("-%d"):format(last) or "")
+  local where = paths.display(path) .. paths.range(first, last)
   if follow.shows() then
     reveal(layout.code_win(), first, last, #virt)
     done(("Showed %s to the user."):format(where))
@@ -221,7 +210,7 @@ end
 -- client has initialized and none supports the method, no answer will come.
 local function with_clients(buf, method, done, cb)
   local start = vim.uv.now()
-  local name = relpath(api.nvim_buf_get_name(buf))
+  local name = paths.display(api.nvim_buf_get_name(buf))
   local function check()
     if not api.nvim_buf_is_loaded(buf) then
       return done(nil, closed(name))
@@ -305,7 +294,7 @@ local function locate(params)
   local buf = follow.load(path)
   local lnum, count = tonumber(params.line), api.nvim_buf_line_count(buf)
   if not lnum or lnum < 1 or lnum > count then
-    error(("Line %s is outside %s, which has %d lines."):format(tostring(params.line), relpath(path), count), 0)
+    error(("Line %s is outside %s, which has %d lines."):format(tostring(params.line), paths.display(path), count), 0)
   end
   local symbol = type(params.symbol) == "string" and vim.trim(params.symbol) or ""
   if symbol == "" then
@@ -315,7 +304,7 @@ local function locate(params)
   local col = text:find("%f[%w_]" .. vim.pesc(symbol) .. "%f[^%w_]") or text:find(symbol, 1, true)
   if not col then
     error(
-      ("%s is not on line %d of %s. The line reads: %s"):format(symbol, lnum, relpath(path), clip(text, MAX_TEXT)),
+      ("%s is not on line %d of %s. The line reads: %s"):format(symbol, lnum, paths.display(path), clip(text, MAX_TEXT)),
       0
     )
   end
@@ -348,7 +337,7 @@ local function location_lines(answers)
         if inside[item.filename] == nil then
           inside[item.filename] = inside_cwd(item.filename)
         end
-        local where = ("%s:%d"):format(relpath(item.filename), item.lnum)
+        local where = ("%s:%d"):format(paths.display(item.filename), item.lnum)
         lines[#lines + 1] = inside[item.filename] and ("%s: %s"):format(where, clip(item.text, MAX_TEXT)) or where
       end
     end
@@ -485,7 +474,7 @@ local function lsp_document_symbols(params, done)
       outline(answer.result, 0, lines)
     end
     if #lines == 0 then
-      return nothing(("No symbols found in %s."):format(relpath(path)), errors)
+      return nothing(("No symbols found in %s."):format(paths.display(path)), errors)
     end
     return capped(plural(#lines, "symbol"), lines, MAX_OUTLINE)
   end)
@@ -585,7 +574,7 @@ local function search_workspace(params, done, deadline)
       for _, answer in ipairs(answers) do
         for _, s in ipairs(answer.result) do
           local loc = s.location or {}
-          local where = loc.uri and relpath(vim.uri_to_fname(loc.uri)) or ""
+          local where = loc.uri and paths.display(vim.uri_to_fname(loc.uri)) or ""
           if loc.range then
             where = ("%s:%d"):format(where, loc.range.start.line + 1)
           end
@@ -631,7 +620,7 @@ local function diagnostics_text(diags, path)
       inside[name] = inside_cwd(name)
     end
     if name and inside[name] then
-      items[#items + 1] = { path = relpath(name), d = d }
+      items[#items + 1] = { path = paths.display(name), d = d }
     end
   end
   -- Errors first, so that the cap never hides one behind warnings.
@@ -645,7 +634,7 @@ local function diagnostics_text(diags, path)
     return a.d.lnum < b.d.lnum or (a.d.lnum == b.d.lnum and a.d.col < b.d.col)
   end)
   if #items == 0 then
-    return path and ("No diagnostics in %s."):format(relpath(path))
+    return path and ("No diagnostics in %s."):format(paths.display(path))
       or "No diagnostics in the files of the working directory that the servers checked."
   end
   -- One line for each message in a file. Its repeats only add their lines.
@@ -699,7 +688,7 @@ local function diagnostics(params, done)
   end
   local path = existing(params.path)
   local buf = follow.load(path)
-  local name = relpath(path)
+  local name = paths.display(path)
   local start = vim.uv.now()
   local function check()
     if not api.nvim_buf_is_loaded(buf) then
@@ -822,7 +811,7 @@ function M.label(name, input)
   if type(input) ~= "table" then
     return name
   end
-  local path = type(input.path) == "string" and input.path ~= "" and relpath(resolve(input.path))
+  local path = type(input.path) == "string" and input.path ~= "" and paths.display(paths.resolve(input.path))
   local first, last = tonumber(input.start_line), tonumber(input.end_line)
   local arg
   if name == "show_user" and path and first then

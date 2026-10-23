@@ -1,7 +1,7 @@
 -- Each agent's files: the files under the cwd that it read, edited, wrote or
 -- showed, with the last time it touched them. The main agent has the key "".
--- The code window's tab bar shows the slots of the agent that follow mode
--- follows, and <leader>cf picks from its last files.
+-- The code window's tab bar has a tab for each of some files of the agent
+-- that follow mode follows, and <leader>cf picks from its last files.
 local agents = require("anvim.agents")
 local bashread = require("anvim.bashread")
 local keys = require("anvim.keys")
@@ -12,7 +12,7 @@ local M = {}
 local api = vim.api
 
 -- The tabs of the bar.
-M.slots = 5
+M.tabs = 5
 -- The files that each agent keeps, newest first.
 local MAX = 100
 -- The files that the picker lists.
@@ -26,7 +26,7 @@ local PICK = 25
 
 ---@class anvim.Files
 ---@field files table<string, anvim.File> By real path.
----@field slots string[] The real paths of the bar's tabs, left to right.
+---@field tabs string[] The real paths of the bar's tabs, left to right.
 
 ---@type table<string, anvim.Files>
 local lists = {}
@@ -46,7 +46,7 @@ function M.real(path)
   if real then
     return real
   end
-  local full = vim.fs.normalize(vim.fn.isabsolutepath(path) == 1 and path or vim.fs.joinpath(state.cwd, path))
+  local full = require("anvim.paths").resolve(path)
   real = vim.uv.fs_realpath(full)
   if not real then
     local dir = vim.uv.fs_realpath(vim.fs.dirname(full))
@@ -79,23 +79,23 @@ end
 -- is full, a file that is gone leaves first, as the bar hides it. Else the
 -- file that the agent touched longest ago leaves.
 ---@param list anvim.Files
-local function take_slot(list, path)
-  if vim.tbl_contains(list.slots, path) then
+local function take_tab(list, path)
+  if vim.tbl_contains(list.tabs, path) then
     return
   end
-  if #list.slots >= M.slots then
+  if #list.tabs >= M.tabs then
     local out
-    for i, p in ipairs(list.slots) do
+    for i, p in ipairs(list.tabs) do
       if not vim.uv.fs_stat(p) and not pending(p) then
         out = i
         break
-      elseif not out or list.files[p].seq < list.files[list.slots[out]].seq then
+      elseif not out or list.files[p].seq < list.files[list.tabs[out]].seq then
         out = i
       end
     end
-    table.remove(list.slots, out)
+    table.remove(list.tabs, out)
   end
-  list.slots[#list.slots + 1] = path
+  list.tabs[#list.tabs + 1] = path
 end
 
 ---@param list anvim.Files
@@ -108,7 +108,7 @@ local function trim(list)
     return a.seq > b.seq
   end)
   for i = MAX + 1, #all do
-    if not vim.tbl_contains(list.slots, all[i].path) then
+    if not vim.tbl_contains(list.tabs, all[i].path) then
       list.files[all[i].path] = nil
     end
   end
@@ -128,13 +128,13 @@ local function touch(key, path, time, edit)
   if not under_cwd(real) or (stat and stat.type ~= "file") or not (stat or edit) then
     return
   end
-  local list = lists[key] or { files = {}, slots = {} }
+  local list = lists[key] or { files = {}, tabs = {} }
   lists[key] = list
   seq = seq + 1
   local file = list.files[real] or { path = real, edited = false }
   file.time, file.seq = time, seq
   list.files[real] = file
-  take_slot(list, real)
+  take_tab(list, real)
   trim(list)
   changed()
   return real
@@ -190,9 +190,9 @@ function M.tool_result(ev)
   if ev.is_error then
     if not vim.uv.fs_stat(file.path) and not pending(file.path) then
       list.files[file.path] = nil
-      list.slots = vim.tbl_filter(function(p)
+      list.tabs = vim.tbl_filter(function(p)
         return p ~= file.path
-      end, list.slots)
+      end, list.tabs)
       changed()
     end
   elseif not file.edited then
@@ -225,7 +225,7 @@ end
 function M.bar(key, keep)
   local list = lists[key]
   local ret = {}
-  for _, path in ipairs(list and list.slots or {}) do
+  for _, path in ipairs(list and list.tabs or {}) do
     if path == keep or vim.uv.fs_stat(path) then
       ret[#ret + 1] = list.files[path]
     end

@@ -45,7 +45,8 @@ function M.start()
   local anvim = require("anvim")
   anvim.setup({
     permission_mode = "bypassPermissions",
-    sidecar_cmd = { "bun", M.root .. "/sidecar/src/replay.ts", recording, "50" },
+    replay = recording,
+    replay_speed = 50,
   })
   anvim.start()
   -- Under nvim -l the explorer's finder never finishes, and snacks shows its
@@ -69,6 +70,13 @@ function M.start()
     "sidecar not ready"
   )
   return start_role
+end
+
+-- Starts anvim once, then clears what earlier specs left: the agents, the session and the transcript.
+function M.fresh()
+  M.start()
+  require("anvim.sidecar").dispatch({ type = "reset" })
+  require("anvim.transcript").clear()
 end
 
 -- The events of a fixture, with the paths in the temp project. The events

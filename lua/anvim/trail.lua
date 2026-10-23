@@ -1,8 +1,7 @@
 -- Claude's trail: the files and ranges that Claude read, edited, wrote and
 -- showed, and the user's own references, in a picker with the newest first.
 local bashread = require("anvim.bashread")
-local context = require("anvim.context")
-local state = require("anvim.state")
+local paths = require("anvim.paths")
 
 local M = {}
 
@@ -29,14 +28,6 @@ local groups = {
   You = "AnvimPrompt",
 }
 
-local function resolve(path)
-  path = vim.fs.normalize(path)
-  if vim.fn.isabsolutepath(path) == 0 then
-    path = vim.fs.joinpath(state.cwd, path)
-  end
-  return vim.fs.normalize(path)
-end
-
 ---@return anvim.TrailEntry?
 local function add(what, path, first, last, note)
   if type(path) ~= "string" or path == "" then
@@ -44,7 +35,7 @@ local function add(what, path, first, last, note)
   end
   first = tonumber(first)
   last = first and math.max(tonumber(last) or first, first)
-  local entry = { what = what, path = resolve(path), first = first, last = last }
+  local entry = { what = what, path = paths.resolve(path), first = first, last = last }
   if type(note) == "string" and vim.trim(note) ~= "" then
     entry.note = vim.trim(note):gsub("%s+", " ")
   end
@@ -98,7 +89,7 @@ function M.prompt(text)
     if start == 1 or text:sub(start - 1, start - 1):match("%s") then
       local file, first, last = ref:match("^(.-)#L(%d+)%-?(%d*)")
       file = file or (ref:gsub("[%.,;:!?%)]+$", ""))
-      local stat = vim.uv.fs_stat(resolve(file))
+      local stat = vim.uv.fs_stat(paths.resolve(file))
       if stat and stat.type == "file" then
         add("You", file, first, last ~= "" and last or first)
       end
@@ -134,13 +125,12 @@ end
 -- Picker items, newest first, each place once.
 function M.items()
   local items, seen = {}, {}
-  local transcript = require("anvim.transcript")
   for i = #entries, 1, -1 do
     local e = entries[i]
     local key = table.concat({ e.what, e.path, e.first or 0, e.last or 0 }, ":")
     if not seen[key] and vim.uv.fs_stat(e.path) then
       seen[key] = true
-      local where = transcript.relpath(e.path) .. (e.first and context.range(e.first, e.last) or "")
+      local where = paths.display(e.path) .. (e.first and paths.range(e.first, e.last) or "")
       items[#items + 1] = {
         text = table.concat({ e.what, where, e.note }, " "),
         file = e.path,

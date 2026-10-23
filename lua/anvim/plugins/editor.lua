@@ -8,12 +8,6 @@ local to_code = {
 }
 
 return {
-  -- The explorer's list is a float, and from a float <C-w>h and <C-w>l go to
-  -- the previous window, which can be the prompt. The explorer is at an edge
-  -- of the screen, so the code window is its only neighbor. The global <C-h>
-  -- and <C-l> remap to <C-w>h and <C-w>l but do not reach these keys, so map
-  -- them too.
-  -- `@` puts a reference to the files under the cursor or selected in the prompt.
   {
     "folke/snacks.nvim",
     optional = true,
@@ -60,6 +54,13 @@ return {
             },
             win = {
               list = {
+                -- The explorer's list is a float, and from a float <C-w>h and
+                -- <C-w>l go to the previous window, which can be the prompt.
+                -- The explorer is at an edge of the screen, so the code window
+                -- is its only neighbor. The global <C-h> and <C-l> remap to
+                -- <C-w>h and <C-w>l but do not reach these keys, so map them
+                -- too. `@` puts a reference to the files under the cursor or
+                -- selected in the prompt.
                 keys = {
                   ["<c-w>h"] = to_code,
                   ["<c-h>"] = to_code,

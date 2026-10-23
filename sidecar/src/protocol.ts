@@ -1,6 +1,8 @@
 // Wire protocol between the anvim Lua plugin and this sidecar.
 // One JSON object per line in each direction.
 
+import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk";
+
 // builtin marks Claude Code's own commands. A typed alias runs the command
 // that has it as its name, when one exists.
 export type SlashCommand = {
@@ -62,7 +64,7 @@ export type Command =
       cwd: string;
       model?: string;
       effort?: EffortLevel;
-      permission_mode?: string;
+      permission_mode?: PermissionMode;
       // The user named the mode. Without a sandbox, a mode that nobody chose
       // becomes default mode (startMode() in sandbox.ts).
       permission_mode_chosen?: boolean;
@@ -85,7 +87,7 @@ export type Command =
   // id is a UUID, which Claude Code's prompt_state events name.
   | { type: "prompt"; text: string; images?: string[]; id?: string }
   | { type: "interrupt" }
-  | { type: "set_permission_mode"; mode: string }
+  | { type: "set_permission_mode"; mode: PermissionMode }
   | { type: "set_model"; model?: string }
   // For the rest of the session. null is the default: the level of the user's
   // Claude Code settings for the model, else the model's, also after a switch.
@@ -123,7 +125,7 @@ export type Command =
       // AskUserQuestion: the chosen labels or typed text, per question text.
       answers?: Record<string, string[]>;
       // ExitPlanMode: the permission mode to work in after the plan.
-      mode?: string;
+      mode?: PermissionMode;
     };
 
 export type Event =
@@ -312,5 +314,4 @@ export type Event =
   // transcript as live ones do. A "user" event is a past prompt. An event
   // that starts an item has the time that Claude Code saved, in seconds since
   // the epoch.
-  | { type: "history"; session_id: string; events: ((Event | { type: "user"; text: string }) & { time?: number })[] }
-  | { type: "exit"; code: number };
+  | { type: "history"; session_id: string; events: ((Event | { type: "user"; text: string }) & { time?: number })[] };

@@ -27,6 +27,7 @@ export class PreviewBridge {
     await new Promise<void>((resolve) => {
       const done = () => {
         clearTimeout(timer);
+        signal.removeEventListener("abort", done);
         this.pending.delete(req);
         resolve();
       };

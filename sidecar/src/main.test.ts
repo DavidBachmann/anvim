@@ -88,12 +88,29 @@ async function emitted(fn: () => Promise<unknown>, until: (events: any[]) => boo
 
 const efforts = (events: any[]) => events.filter((e) => e.type === "effort").map((e) => e.level);
 
+const resume = { type: "start", cwd: "/tmp", model: "haiku", resume: "s1", history: true, sandbox: false } as const;
+
+// Brings the session to where the first test leaves it: resumed, on Sonnet,
+// at low effort. A test that runs alone with -t starts the session here.
+// After the first test, the calls change nothing.
+async function startSession(): Promise<void> {
+  await emitted(
+    async () => {
+      open();
+      await handle(resume);
+      await handle({ type: "set_model", model: "sonnet" });
+      await handle({ type: "set_effort", effort: "low" });
+    },
+    () => true,
+  );
+}
+
 describe("the sidecar's session", () => {
   test("model and effort changes wait for a resumed session, and then run in order", async () => {
     sandboxProblem = "the sandbox cannot start";
     const events = await emitted(
       async () => {
-        await handle({ type: "start", cwd: "/tmp", model: "haiku", resume: "s1", history: true, sandbox: false });
+        await handle(resume);
         const changes = [handle({ type: "set_model", model: "sonnet" }), handle({ type: "set_effort", effort: "low" })];
         await Bun.sleep(20);
         expect([started.length, calls.length]).toEqual([0, 0]);
@@ -135,6 +152,7 @@ describe("the sidecar's session", () => {
   });
 
   test("the default is the effort of a new session, and it follows a model switch", async () => {
+    await startSession();
     sources = [
       {
         source: "userSettings",
@@ -167,6 +185,7 @@ describe("the sidecar's session", () => {
   });
 
   test("a late fallback switches the running session at once, so a later Shift-Tab wins", async () => {
+    await startSession();
     calls.length = 0;
     const events = await emitted(
       async () => {

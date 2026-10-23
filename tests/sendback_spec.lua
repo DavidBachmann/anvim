@@ -9,12 +9,6 @@ local api = vim.api
 -- What Claude reads after a send-back in bypass mode: the guard's deny.
 local HOOK_ERROR = "PreToolUse:Bash hook error: anvim held this command back and has not asked the user yet."
 
-local function fresh()
-  helpers.start()
-  sidecar.dispatch({ type = "reset" })
-  transcript.clear()
-end
-
 -- The line after the last tool line that reads `label`, and the groups of both.
 local function result_of(buf, ns_name, label)
   local lines = helpers.buf_lines(buf)
@@ -46,7 +40,7 @@ end
 
 describe("a send-back", function()
   it("reads as such in the transcript, and a call without one keeps its error", function()
-    fresh()
+    helpers.fresh()
     sidecar.dispatch({ type = "tool_start", id = "sb1", name = "Bash" })
     bash("sb1", "npm i -g x")
     sidecar.dispatch({ type = "send_back", tool_use_id = "sb1", reason = "runs outside the sandbox" })
@@ -67,7 +61,7 @@ describe("a send-back", function()
   end)
 
   it("keeps an event that comes before the main agent's call", function()
-    fresh()
+    helpers.fresh()
     sidecar.dispatch({ type = "send_back", tool_use_id = "sb3", reason = "changes the sandbox's settings" })
     sidecar.dispatch({ type = "tool_start", id = "sb3", name = "Edit" })
     sidecar.dispatch({ type = "tool_use", id = "sb3", name = "Edit", input = { file_path = "settings.json" } })
