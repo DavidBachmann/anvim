@@ -149,12 +149,12 @@ end
 
 -- The pane's own options. A new window copies the current window's, and a
 -- buffer brings the ones of the window that showed it last, such as the
--- Agent Overview's. 'winfixwidth' would keep the code column's width when
--- the tree hides.
+-- Agent Overview's. The pane has the code window's background and bar, so it
+-- reads as part of the code column, not the chat. 'winfixwidth' would keep
+-- the code column's width when the tree hides.
 local pane_options = {
   winbar = "%!v:lua.require'anvim.layout'.pane_winbar()",
-  winhighlight = "Normal:AnvimNormal,NormalNC:AnvimNormal,WinBar:AnvimNormal,WinBarNC:AnvimNormal,"
-    .. "WinSeparator:AnvimSeparator",
+  winhighlight = "WinBar:AnvimWinBar,WinBarNC:AnvimWinBar",
   number = false,
   relativenumber = false,
   signcolumn = "no",
@@ -186,13 +186,15 @@ local function setup_pane_win(win)
   end
 end
 
--- The pane's winbar names the agent whose calls it shows, in its color.
+-- The pane's winbar names a subagent whose calls it shows, in its color.
 function M.pane_winbar()
   local agents = require("anvim.agents")
   local id = vim.b[api.nvim_win_get_buf(vim.g.statusline_winid)].anvim_agentlog
   local agent = id and agents.get(id)
-  local name = agent and agents.name(agent) or "Claude"
-  return ("%%#%s# %s"):format(agents.group(agent and agent.slot or 0), (name:gsub("%%", "%%%%")))
+  if not agent then
+    return " Tool calls"
+  end
+  return (" Tool calls · %%#%s#%s"):format(agents.group(agent.slot), (agents.name(agent):gsub("%%", "%%%%")))
 end
 
 -- Shows `buf` in the pane, at its end.

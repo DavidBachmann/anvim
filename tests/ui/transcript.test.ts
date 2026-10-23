@@ -32,6 +32,16 @@ const rows = (lines: string[], box: Box) =>
     .slice(box.row, box.row + box.height)
     .map((line) => cells(line, box.col, box.width).replace(/ +\d\d:\d\d:\d\d$/, "").trimEnd());
 
+// The turn ended, and the context report that follows it came in.
+const turnEnd = (ui: Anvim["ui"]) =>
+  ui.waitFor(
+    () =>
+      ui.exec_lua<boolean>(
+        `local s = require("anvim.state") return not s.busy and s.last_turn ~= nil and s.context ~= nil`,
+      ),
+    20000,
+  );
+
 const hlNames = (row: number, col: number) =>
   anvim!.ui.attrs.get(anvim!.ui.grid[row]![col]!.hl)?.names.split("+") ?? [];
 
@@ -40,7 +50,7 @@ test("the todo list stays under the newest output, updates in place, and draws n
   const box = await anvim!.box("transcript");
   const mark = ui.mark();
   await send("Track these steps");
-  await ui.waitFor("% context", 20000);
+  await turnEnd(ui);
   const frames = ui.frames(mark);
   const open = frames.filter((f) => rows(f.lines, box).some((r) => /Todos · [012] of 3 done/.test(r)));
   expect(open.length).toBeGreaterThan(0);
@@ -72,7 +82,7 @@ test("the todo list stays under the newest output, updates in place, and draws n
 test("Claude's markdown renders, while tool lines keep their markers", async () => {
   const { ui } = await tasksSession();
   await send("Track these steps");
-  await ui.waitFor("% context", 20000);
+  await turnEnd(ui);
   await ui.exec_lua(`
     local t = require("anvim.transcript")
     t.tool_start("md1", "Bash")
@@ -286,7 +296,7 @@ test("at 120x40 a time shows whole or not at all, in the Claude column and in th
   await ui.input("List the functions");
   await anvim.hideMenu();
   await ui.input("<CR>");
-  await ui.waitFor("% context", 20000);
+  await turnEnd(ui);
   await ui.drain();
   // Some of the Agent lines leave too little room, and others show the time.
   expect(times().length).toBeGreaterThan(2);

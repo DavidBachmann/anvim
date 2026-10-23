@@ -34,7 +34,10 @@ describe("input", function()
     state.turn_started = vim.uv.now() - 2400 * 1000
     assert(input.activity():find("(40m 0s · esc twice to stop)", 1, true), input.activity())
     state.busy, state.last_turn, state.cost_usd = false, { duration_ms = 3723400, cost_usd = 0.5 }, 0.5
+    assert.is_nil(input.activity():find("$0.50", 1, true), "the stats are off by default")
+    require("anvim.config").options.input.turn_stats = true
     assert(input.activity():find("1h 2m 3s · $0.50", 1, true), input.activity())
+    require("anvim.config").options.input.turn_stats = false
     state.busy, state.turn_started, state.last_turn, state.cost_usd = unpack(saved, 1, 4)
   end)
 end)

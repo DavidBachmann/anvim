@@ -36,6 +36,9 @@ M.defaults = {
     -- start. Off, only insert commands start it, in the prompt or in a file
     -- buffer.
     auto_insert = false,
+    -- While Claude is idle, the line above the prompt shows the last turn's
+    -- time and cost, and how full the context window is.
+    turn_stats = false,
   },
   append_system_prompt = table.concat({
     "The user reads code in anvim, a read-only Neovim viewer, while you work.",

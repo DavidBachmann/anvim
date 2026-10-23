@@ -49,8 +49,7 @@ test("<leader>us closes and opens the pane with no frame in between, and the cha
   expect(code.row + code.height + 2).toBe(pane.row);
   expect({ col: pane.col, width: pane.width }).toEqual({ col: code.col, width: code.width });
   expect(rows(ui.lines(), pane).some((r) => r.includes("⏺ Edit(matchparen.lua)"))).toBe(true);
-  expect(cells(ui.lines()[pane.row - 1]!, pane.col, 8)).toBe(" Claude ");
-  expect(hlNames(pane.row - 1, pane.col + 1)).toContain("AnvimClaude");
+  expect(cells(ui.lines()[pane.row - 1]!, pane.col, 12)).toBe(" Tool calls ");
   const transcript = await anvim!.box("transcript");
   expect(rows(ui.lines(), transcript).some((r) => r.includes("⎿  2 tool calls"))).toBe(true);
   expect(rows(ui.lines(), transcript).some((r) => r.includes("⏺ Read("))).toBe(false);
@@ -58,11 +57,11 @@ test("<leader>us closes and opens the pane with no frame in between, and the cha
   const sepRow = pane.row - 2;
   const on = (lines: string[]) =>
     /^─+$/.test(cells(lines[sepRow]!, code.col, code.width)) &&
-    cells(lines[pane.row - 1]!, pane.col, 7) === " Claude" &&
+    cells(lines[pane.row - 1]!, pane.col, 11) === " Tool calls" &&
     rows(lines, pane).some((r) => r.includes("⏺ Edit(matchparen.lua)"));
   const off = (lines: string[]) =>
     !cells(lines[sepRow]!, code.col, code.width).includes("─") &&
-    !rows(lines, pane).some((r) => r.includes("Claude") || r.includes("⏺ Edit("));
+    !rows(lines, pane).some((r) => r.includes("Tool calls") || r.includes("⏺ Edit("));
 
   let mark = ui.mark();
   await ui.input("<Space>us");
@@ -272,7 +271,7 @@ test("help, a split and the command line take rows from the column for a while, 
   const before = await boxes();
   // The command line's window can cover the pane's winbar.
   const shown = (lines: string[]) =>
-    lines.some((l) => cells(l, before.code.col, 7) === " Claude" || l.includes(" Command line "));
+    lines.some((l) => cells(l, before.code.col, 11) === " Tool calls" || l.includes(" Command line "));
   const mark = ui.mark();
 
   await ui.input(":help help<CR>");
@@ -428,13 +427,13 @@ test("<leader>c1 shows the subagent's tool calls in the pane, under its name in 
   await ui.input("<Esc>");
   await anvim.waitWhere("input", "n");
   const pane = await anvim.box("pane");
-  const winbar = () => cells(ui.lines()[pane.row - 1]!, pane.col, 10).trimEnd();
-  expect(winbar()).toBe(" Claude");
+  const winbar = () => cells(ui.lines()[pane.row - 1]!, pane.col, 24).trimEnd();
+  expect(winbar()).toBe(" Tool calls");
   expect(rows(ui.lines(), pane).some((r) => r.includes("⏺ Agent(List functions in alpha.js)"))).toBe(true);
 
   const mark = ui.mark();
   await ui.input("<Space>c1");
-  await ui.waitFor(() => winbar() === " Agent 1");
+  await ui.waitFor(() => winbar() === " Tool calls · Agent 1");
   // ext_hlstate names the group that a link ends in.
   const agent1 = await ui.exec_lua<string>(`
     local name = "AnvimAgent1"
@@ -443,20 +442,20 @@ test("<leader>c1 shows the subagent's tool calls in the pane, under its name in 
     end
     return name
   `);
-  expect(hlNames(pane.row - 1, pane.col + 1)).toContain(agent1);
+  expect(hlNames(pane.row - 1, pane.col + 14)).toContain(agent1);
   await ui.waitFor(() => rows(ui.lines(), pane).some((r) => r.includes("⏺ Read(alpha.js)")));
   expect(rows(ui.lines(), pane).some((r) => r.includes("⏺ Agent("))).toBe(false);
   expect(await anvim.where()).toEqual({ win: "input", mode: "n" });
   // No frame shows the new name over the old log, or the old name over the new one.
   const mixed = ui.frames(mark).filter((f) => {
-    const bar = cells(f.lines[pane.row - 1]!, pane.col, 10).trimEnd();
+    const bar = cells(f.lines[pane.row - 1]!, pane.col, 24).trimEnd();
     const main = rows(f.lines, pane).some((r) => r.includes("⏺ Agent("));
-    return (bar === " Agent 1") === main;
+    return (bar === " Tool calls · Agent 1") === main;
   });
   expect(mixed.length).toBe(0);
 
   await ui.input("<Space>c0");
-  await ui.waitFor(() => winbar() === " Claude");
+  await ui.waitFor(() => winbar() === " Tool calls");
   expect(rows(ui.lines(), pane).some((r) => r.includes("⏺ Agent(List functions in alpha.js)"))).toBe(true);
 });
 

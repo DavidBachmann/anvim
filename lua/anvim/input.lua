@@ -501,7 +501,7 @@ function M.activity()
     local hint = ("(%s · esc twice to stop)"):format(transcript.duration(elapsed, true))
     text = ("%%#AnvimClaude#%s %s %%#Comment#%s "):format(frame, (verb:gsub("%%", "%%%%")), hint)
     width = vim.fn.strdisplaywidth(("%s %s %s "):format(frame, verb, hint))
-  elseif state.last_turn or state.context then
+  elseif config.options.input.turn_stats and (state.last_turn or state.context) then
     local parts = {}
     if state.last_turn then
       parts[1] = ("%s · $%.2f"):format(transcript.duration(state.last_turn.duration_ms), state.cost_usd)

@@ -272,7 +272,7 @@ describe("the tool pane", function()
   local function winbar()
     local pane = layout.wins.pane
     local bar = api.nvim_eval_statusline(vim.wo[pane].winbar, { winid = pane, use_winbar = true, highlights = true })
-    return { bar.str, bar.highlights[1].group }
+    return { bar.str, bar.highlights[#bar.highlights].group }
   end
 
   before_each(function()
@@ -291,7 +291,7 @@ describe("the tool pane", function()
   it("shows the tool calls of the agent that follow mode follows, from their end", function()
     local main = transcript.log_buf()
     assert.are.same(main, pane_buf())
-    assert.are.same({ " Claude", "AnvimClaude" }, winbar())
+    assert.are.same({ " Tool calls", "WinBarNC" }, winbar())
     start("pa1")
     for i = 1, 30 do
       read("pa1", "pane_read" .. i)
@@ -301,13 +301,13 @@ describe("the tool pane", function()
     assert(log, "no log")
     assert.are.same(log, pane_buf(), "the focused agent's log")
     assert.are.same(api.nvim_buf_line_count(log), api.nvim_win_get_cursor(layout.wins.pane)[1], "at its end")
-    assert.are.same({ " Explore 1", "AnvimAgent1" }, winbar())
+    assert.are.same({ " Tool calls · Explore 1", "AnvimAgent1" }, winbar())
     local wo = vim.wo[layout.wins.pane]
     assert.are.same({ false, true, "" }, { wo.number, wo.winfixbuf, wo.statuscolumn }, "the pane's own options")
 
     follow.set_focus(nil)
     assert.are.same(main, pane_buf(), "focus back on Claude")
-    assert.are.same({ " Claude", "AnvimClaude" }, winbar())
+    assert.are.same({ " Tool calls", "WinBarNC" }, winbar())
 
     follow.set_focus("pa1")
     sidecar.dispatch({ type = "agent_end", agent_id = "pa1", status = "completed", summary = "done" })

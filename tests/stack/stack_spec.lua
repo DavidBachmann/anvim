@@ -762,7 +762,8 @@ describe("stack", function()
         width = vim.api.nvim_win_get_width(win),
       }
     ]])
-    assert(out.winbar:find("^%d+%.%ds · %$%d+%.%d%d ─"), out.winbar)
+    -- The turn's stats are off, so the idle line is a bare rule.
+    assert.are.same(("─"):rep(out.width), out.winbar)
     -- The session started in bypass mode, as the replay reports, so no mode
     -- label shows, and the empty prompt shows the shortcuts hint.
     assert(out.footer:find("^ anvim %a+ [%d.]+  ⧉ In [%w._-]+ +◉ following  %? for shortcuts $"), out.footer)
