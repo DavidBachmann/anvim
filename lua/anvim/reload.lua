@@ -189,9 +189,11 @@ local function announce(info)
       return
     end
     sent = true
+    -- Claude reads the message as the tool's output, and the transcript
+    -- draws it as a notice (transcript.user()).
     local text = {
-      "This message comes from anvim, not from the user.",
-      "anvim restarted, as you asked with mcp__anvim__reload.",
+      "[Sent by anvim, not by the user](mcp__anvim__reload):",
+      "anvim restarted with the code on disk, as you asked.",
     }
     if commit then
       local sha, subject = commit:match("^(%S+) ?(.*)$")

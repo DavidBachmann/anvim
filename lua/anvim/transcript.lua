@@ -764,17 +764,24 @@ end
 function M.user(text)
   -- A turn without text has no reply, rather than the last turn's.
   text_open, reply_done, reply, run = false, true, {}, nil
-  local lines = vim.split(text, "\n", { plain = true })
-  for i, line in ipairs(lines) do
-    lines[i] = (i == 1 and "❯ " or "  ") .. line
+  -- A message that anvim sends Claude names the tool that it comes from. The
+  -- user did not write it, so it is a notice.
+  local meta = text:match("^%[[^%]]*%]%(mcp__anvim__[%w_]+%): (.*)")
+  if meta then
+    M.notice("info", meta)
+  else
+    local lines = vim.split(text, "\n", { plain = true })
+    for i, line in ipairs(lines) do
+      lines[i] = (i == 1 and "❯ " or "  ") .. line
+    end
+    local row = append_item(lines)
+    local buf = M.buf()
+    for i = 0, #lines - 1 do
+      api.nvim_buf_set_extmark(buf, ns, row + i, 0, { line_hl_group = "AnvimUser" })
+    end
+    hl(buf, row, 0, #"❯", "AnvimPrompt")
+    M.stamp(buf, row, now())
   end
-  local row = append_item(lines)
-  local buf = M.buf()
-  for i = 0, #lines - 1 do
-    api.nvim_buf_set_extmark(buf, ns, row + i, 0, { line_hl_group = "AnvimUser" })
-  end
-  hl(buf, row, 0, #"❯", "AnvimPrompt")
-  M.stamp(buf, row, now())
   -- A new prompt brings every view back to the end.
   if not batch then
     scroll(follow_wins(false))
