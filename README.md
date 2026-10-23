@@ -51,20 +51,12 @@ Nothing that anvim does writes a tracked file, so `git pull` always works. `:Laz
 
 ## Your own plugins
 
-Your own specs go in `~/.config/anvim/lua/plugins/*.lua`. They load after anvim's, as lazy.nvim specs. lazy.nvim installs their plugins at the next start, and keeps their commits in the install dir's lockfile, `~/.local/share/anvim/lazy-lock.json`, never in the repo. Without a colorscheme of your own, anvim uses tokyonight. To bring one:
+Your own specs go in `~/.config/anvim/lua/plugins/*.lua`. They load after anvim's, as lazy.nvim specs. lazy.nvim installs their plugins at the next start, and keeps their commits in the install dir's lockfile, `~/.local/share/anvim/lazy-lock.json`, never in the repo. anvim starts with tokyonight. `<leader>uC` picks another colorscheme, with a live preview, and anvim remembers it for the next start. The picker lists Neovim's own colorschemes and the ones that anvim brings: catppuccin, rose-pine, kanagawa, nightfox, gruvbox and modus. Each loads only when you pick it. Add a colorscheme plugin with `lazy = true`, and the picker lists it too:
 
 ```lua
 -- ~/.config/anvim/lua/plugins/colorscheme.lua
 return {
-  {
-    "rose-pine/neovim",
-    name = "rose-pine",
-    lazy = false,
-    priority = 1000,
-    config = function()
-      vim.cmd.colorscheme("rose-pine")
-    end,
-  },
+  { "sainnhe/everforest", lazy = true },
 }
 ```
 
@@ -146,6 +138,7 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 | `<leader>uH` | Toggle Claude on the left and the explorer on the right |
 | `<leader>us` | Toggle the tool pane |
 | `<leader>ue` | Toggle explorer auto-minimize |
+| `<leader>uC` | Pick a colorscheme, with a live preview |
 | `q` | Close a help, quickfix or info window |
 
 ### Code window

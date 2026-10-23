@@ -492,6 +492,30 @@ describe("stack", function()
     lua([[require("anvim.layout").focus_input({ insert = false })]])
   end)
 
+  it("picks a colorscheme with <leader>uC and remembers it", function()
+    start()
+    lua([[require("anvim.layout").focus_input({ insert = false })]])
+    keys("<leader>uC")
+    wait(3000, [[return Snacks.picker.get({ source = "colorschemes" })[1] ~= nil]], "<leader>uC opened no picker")
+    keys("habamax")
+    wait(
+      3000,
+      [[
+        local item = Snacks.picker.get({ source = "colorschemes" })[1]:current()
+        return item and item.text == "habamax"
+      ]],
+      "the picker did not find habamax"
+    )
+    keys("<CR>")
+    wait(3000, [[return require("anvim.prefs").get("colorscheme") == "habamax"]], "Enter did not remember habamax")
+    wait(3000, [[return vim.g.colors_name == "habamax"]], "Enter did not load habamax")
+    lua([[
+      require("anvim.prefs").set("colorscheme", nil)
+      vim.cmd.colorscheme("tokyonight")
+      require("anvim.layout").focus_input({ insert = false })
+    ]])
+  end)
+
   it("does not write locked buffers, nor run BufWritePre", function()
     start()
     local file = helpers.tmp .. "/matchparen.lua"

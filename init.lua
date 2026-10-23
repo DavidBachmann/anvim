@@ -104,8 +104,10 @@ require("lazy").setup({
   },
 })
 
--- A personal spec may have set a colorscheme already.
-if not vim.g.colors_name then
+-- The colorscheme picked with <leader>uC wins over one that a personal spec
+-- set.
+local picked = require("anvim.prefs").get("colorscheme")
+if not (picked and pcall(vim.cmd.colorscheme, picked)) and not vim.g.colors_name then
   pcall(vim.cmd.colorscheme, "tokyonight")
 end
 

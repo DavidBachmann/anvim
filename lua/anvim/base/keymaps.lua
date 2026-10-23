@@ -150,3 +150,17 @@ Snacks.toggle({
     require("anvim.tree").set_minimize(state)
   end,
 }):map("<leader>ue", { desc = keys.desc("global", "n", "<leader>ue") })
+
+-- The picker previews each colorscheme on the whole screen. init.lua loads
+-- the picked one at the next start.
+map("n", "<leader>uC", function()
+  local confirm = Snacks.picker.config.get({ source = "colorschemes" }).confirm
+  Snacks.picker.colorschemes({
+    confirm = function(picker, item)
+      if item then
+        require("anvim.prefs").set("colorscheme", item.text)
+      end
+      confirm(picker, item)
+    end,
+  })
+end)
