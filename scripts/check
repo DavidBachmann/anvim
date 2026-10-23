@@ -13,16 +13,22 @@ gates="stylua selene sidecar-tsc sidecar-test screen-tsc specs stack ui"
 logs=$(mktemp -d "${TMPDIR:-/tmp}/anvim-check.XXXXXX")
 trap 'rm -rf "$logs"; exit 130' INT TERM
 
+# A test that ends the process stops bun test early, with status 0 and
+# without its summary.
+summary() {
+  grep -q "^Ran [0-9]" "$logs/$1.log"
+}
+
 run() {
   case $1 in
   stylua) "$stylua" --check . ;;
   selene) selene . ;;
   sidecar-tsc) cd sidecar && bunx tsc --noEmit ;;
-  sidecar-test) cd sidecar && bun test ;;
+  sidecar-test) (cd sidecar && bun test) && summary sidecar-test ;;
   screen-tsc) cd tools/screen && bunx tsc --noEmit ;;
   specs) scripts/test ;;
   stack) scripts/test-stack ;;
-  ui) scripts/test-ui ;;
+  ui) scripts/test-ui && summary ui ;;
   esac
 }
 
