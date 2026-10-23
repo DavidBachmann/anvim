@@ -39,7 +39,6 @@ opt.linebreak = true
 opt.list = true
 opt.mouse = "a"
 opt.number = true
-opt.pumblend = 10
 -- The menu only: Neovim has no option for a border on its info popup.
 opt.pumborder = "rounded"
 opt.pumheight = 10
