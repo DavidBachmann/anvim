@@ -809,6 +809,9 @@ describe("stack", function()
       require("anvim.keyview").open()
       snap("view", "view", vim.api.nvim_get_current_buf())
       require("anvim.keyview").close()
+      require("anvim.settings").open("status")
+      snap("settings", "settings", vim.api.nvim_get_current_buf())
+      require("anvim.settings").close()
       -- The prompt has the choice keys while a request waits.
       local req = { command = "make keys" }
       sidecar.dispatch({ type = "tool_start", id = "keys1", name = "Bash" })

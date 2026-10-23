@@ -20,7 +20,7 @@ local M = {}
 ---@class anvim.KeyPlace
 ---@field id string
 ---@field name string
----@field ctx "global"|"file"|"prompt"|"transcript"|"compose"|"explorer"|"files"|"overview"|"agentlog"|"view"|"other" Where its maps live.
+---@field ctx "global"|"file"|"prompt"|"transcript"|"compose"|"explorer"|"files"|"overview"|"agentlog"|"view"|"settings"|"other" Where its maps live.
 ---@field keys anvim.Key[]
 
 ---@type anvim.KeyPlace[]
@@ -328,6 +328,16 @@ M.places = {
       { { "q", "<Esc>" }, "close" },
       { "j", "scroll down", scrolls = true, row = "scroll", label = "j k" },
       { "k", "scroll up", scrolls = true, row = "scroll", label = "j k" },
+    },
+  },
+  {
+    id = "settings",
+    name = "Settings",
+    ctx = "settings",
+    keys = {
+      { "<Tab>", "Next tab", label = "<Tab> <S-Tab>", row = "Next and previous tab" },
+      { "<S-Tab>", "Previous tab", label = "<Tab> <S-Tab>", row = "Next and previous tab" },
+      { { "q", "<Esc>" }, "Close the window" },
     },
   },
 }

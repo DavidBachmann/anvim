@@ -1,6 +1,13 @@
-import type { ModelInfo, SDKMessage, SlashCommand as SdkSlashCommand } from "@anthropic-ai/claude-agent-sdk";
+import type {
+  AccountInfo,
+  McpServerStatus,
+  ModelInfo,
+  SDKControlGetUsageResponse,
+  SDKMessage,
+  SlashCommand as SdkSlashCommand,
+} from "@anthropic-ai/claude-agent-sdk";
 import { FieldStream } from "./fieldstream";
-import type { Event } from "./protocol";
+import type { Event, UsageSection } from "./protocol";
 
 const MAX_TEXT = 2000;
 // A subagent's reply can be long.
@@ -312,6 +319,125 @@ export function modelsEvent(models: ModelInfo[]): Event {
       resolved: m.resolvedModel,
       ...(m.supportsEffort && m.supportedEffortLevels?.length ? { effort_levels: m.supportedEffortLevels } : {}),
     })),
+  };
+}
+
+// Claude Code's words for what used the plan, by key.
+const BEHAVIORS: Record<string, string> = {
+  subagent_heavy: "came from subagent-heavy sessions",
+  long_context: "was at >150k context",
+  cron: "came from sessions active for 8+ hours",
+  cache_miss: "hit a >100k-token cache miss",
+  high_parallel: "was while 4+ sessions ran in parallel",
+  max_effort: "was at max effort",
+  workflow: "came from workflows",
+  always_on_context: "went to always-on context over 40k tokens",
+  large_tool_results: "went to tool results over 10k tokens",
+};
+
+type UsageWindowAnswer = NonNullable<SDKControlGetUsageResponse["behaviors"]>["day"];
+
+function usageWindow(title: string, w: UsageWindowAnswer): UsageSection {
+  const top = (label: string, rows: { name: string; pct: number }[]) =>
+    rows.length ? [`Top ${label}: ${rows.map((r) => `${r.name} ${r.pct}%`).join(", ")}`] : [];
+  return {
+    title: `${title} · ${w.request_count} requests · ${w.session_count} sessions`,
+    lines: [
+      ...w.behaviors.flatMap((b) => (BEHAVIORS[b.key] ? [`${b.pct}% of your usage ${BEHAVIORS[b.key]}`] : [])),
+      ...top("subagents", w.agents),
+      ...top("skills", w.skills),
+      ...top("plugins", w.plugins),
+      ...top("MCP servers", w.mcp_servers),
+    ],
+  };
+}
+
+// 11h 50m 1s, as Claude Code writes a duration.
+function duration(ms: number): string {
+  const s = Math.round(ms / 1000);
+  const [h, m] = [Math.floor(s / 3600), Math.floor((s % 3600) / 60)];
+  return h ? `${h}h ${m}m ${s % 60}s` : m ? `${m}m ${s % 60}s` : `${s}s`;
+}
+
+// 14.4m, 1.4k or 25 tokens.
+function tokens(n: number): string {
+  return n >= 1e6 ? `${(n / 1e6).toFixed(1)}m` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(n);
+}
+
+const dollars = (usd: number) => `$${usd.toFixed(usd >= 0.5 || usd === 0 ? 2 : 4)}`;
+
+function sessionSection(s: SDKControlGetUsageResponse["session"]): UsageSection {
+  const models = Object.entries(s.model_usage ?? {}).map(
+    ([name, m]) =>
+      `  ${name}: ${tokens(m.inputTokens)} input, ${tokens(m.outputTokens)} output, ` +
+      `${tokens(m.cacheReadInputTokens)} cache read, ${tokens(m.cacheCreationInputTokens)} cache write (${dollars(m.costUSD)})`,
+  );
+  return {
+    title: "Session",
+    lines: [
+      `Total cost: ${dollars(s.total_cost_usd)}`,
+      `Total duration (API): ${duration(s.total_api_duration_ms)}`,
+      `Total duration (wall): ${duration(s.total_duration_ms)}`,
+      `Total code changes: ${s.total_lines_added} lines added, ${s.total_lines_removed} lines removed`,
+      ...(models.length ? ["Usage by model:", ...models] : []),
+    ],
+  };
+}
+
+// The limits that Claude Code's /usage dialog shows, in its order.
+export function usageEvent(u: SDKControlGetUsageResponse): Event {
+  const rl = u.rate_limits;
+  const limits = [
+    { title: "Current session", limit: rl?.five_hour },
+    { title: "Current week (all models)", limit: rl?.seven_day },
+    { title: "Current week (Sonnet only)", limit: rl?.seven_day_sonnet },
+    ...(rl?.model_scoped ?? []).map((m) => ({ title: `Current week (${m.display_name})`, limit: m })),
+  ].flatMap(({ title, limit }) => {
+    if (limit?.utilization == null) return [];
+    const resets = Date.parse(limit.resets_at ?? "") / 1000;
+    return [{ title, percent: limit.utilization, ...(Number.isFinite(resets) ? { resets_at: Math.floor(resets) } : {}) }];
+  });
+  const b = u.behaviors;
+  return {
+    type: "usage",
+    usage: {
+      session: sessionSection(u.session),
+      limits,
+      windows: b ? [usageWindow("Last 24h", b.day), usageWindow("Last 7d", b.week)] : [],
+    },
+  };
+}
+
+const MCP_STATUS: [McpServerStatus["status"], string][] = [
+  ["connected", "connected"],
+  ["needs-auth", "need auth"],
+  ["failed", "failed"],
+  ["pending", "pending"],
+  ["disabled", "disabled"],
+];
+
+// How Claude Code logs in, as its Status tab names it.
+function login(a: AccountInfo): string | undefined {
+  if (a.subscriptionType) return `${a.subscriptionType} account`;
+  if (a.apiKeySource && a.apiKeySource !== "none") return `API key (${a.apiKeySource})`;
+  if (a.apiProvider && a.apiProvider !== "firstParty") return a.apiProvider;
+  return undefined;
+}
+
+export function sessionInfoEvent(version: string | undefined, account: AccountInfo, servers: McpServerStatus[]): Event {
+  const mcp = MCP_STATUS.flatMap(([status, words]) => {
+    const n = servers.filter((s) => s.status === status).length;
+    return n ? [`${n} ${words}`] : [];
+  });
+  return {
+    type: "session_info",
+    info: {
+      version,
+      login: login(account),
+      organization: account.organization,
+      email: account.email,
+      mcp: mcp.join(" · ") || "none",
+    },
   };
 }
 

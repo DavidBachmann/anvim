@@ -16,6 +16,8 @@ local M = {
   -- Turns that this session has saved. Only such a session can be resumed.
   turns = 0,
   context = nil, ---@type { percent: number, tokens: integer, max: integer }?
+  -- The email of Claude Code's login, as the sidecar reports it at start.
+  email = nil, ---@type string?
   compacting = false,
   -- Set while a permission prompt waits for the user: the hint that says how
   -- to answer.

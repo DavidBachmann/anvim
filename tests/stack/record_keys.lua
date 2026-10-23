@@ -44,6 +44,8 @@ local function ctx(buf)
     return "compose"
   elseif vim.bo[buf].filetype == "anvim_keys" then
     return "view"
+  elseif vim.bo[buf].filetype == "anvim_settings" then
+    return "settings"
   elseif vim.bo[buf].buftype == "" then
     return "file"
   end

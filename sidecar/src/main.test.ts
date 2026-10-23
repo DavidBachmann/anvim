@@ -16,6 +16,7 @@ const session = {
     await new Promise(() => {});
   },
   supportedCommands: async () => [],
+  accountInfo: async () => ({ email: "a@b.c" }),
   supportedModels: async () => [
     {
       value: "haiku",

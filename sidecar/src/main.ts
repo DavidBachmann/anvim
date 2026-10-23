@@ -15,7 +15,7 @@ import type { Command, EffortLevel, Event } from "./protocol";
 import { preToolUse, SandboxGuard, SandboxNotice, sandboxSetup, startMode } from "./sandbox";
 import * as sessions from "./sessions";
 import { EditorBridge, editorServer, SERVER } from "./tools";
-import { commandsEvent, modelsEvent, Translator } from "./translate";
+import { commandsEvent, modelsEvent, sessionInfoEvent, Translator, usageEvent } from "./translate";
 
 const record = process.env.ANVIM_RECORD;
 
@@ -251,6 +251,11 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     .supportedModels()
     .then((models) => emit(modelsEvent(models)))
     .catch(() => {});
+  // The statusline names the login, so a work login and a personal one differ.
+  session
+    .accountInfo()
+    .then((a) => emit({ type: "account", email: a.email }))
+    .catch(() => {});
   const translator = new Translator();
   for await (const msg of session) {
     permissions.message(msg);
@@ -310,6 +315,26 @@ export async function handle(cmd: Command): Promise<void> {
       return;
     case "list_models":
       await control(async (q) => emit(modelsEvent(await q.supportedModels())));
+      return;
+    case "usage":
+      await control(async (q) => {
+        try {
+          // The SDK marks this call as one that may change in any release.
+          emit(usageEvent(await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET()));
+        } catch (err) {
+          emit({ type: "usage", error: String((err as Error)?.message ?? err) });
+        }
+      });
+      return;
+    case "session_info":
+      await control(async (q) => {
+        try {
+          const init = await q.initializationResult();
+          emit(sessionInfoEvent(init.claude_code_version, await q.accountInfo(), await q.mcpServerStatus()));
+        } catch (err) {
+          emit({ type: "session_info", error: String((err as Error)?.message ?? err) });
+        }
+      });
       return;
     case "preview_done":
       previews.done(cmd.req);

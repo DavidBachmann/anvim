@@ -1,8 +1,8 @@
 -- The global statusline. On the left: anvim's name, Vim's mode, or FOLLOW in
 -- follow mode, the permission mode's label, the git branch, and the file with
 -- its diagnostics. On the right: whether Claude waits, the git diff counts,
--- how full the context window is, the model and its effort, where Claude is,
--- and the cursor's place. 'statusline' is
+-- the login's email, how full the context window is, the model and its
+-- effort, where Claude is, and the cursor's place. 'statusline' is
 -- "%!v:lua.require'anvim.statusline'.render()", so Neovim runs render() each
 -- time it draws the statusline.
 local M = {}
@@ -221,6 +221,7 @@ local function waiting(win)
 end
 
 ---@class anvim.StatusSession
+---@field email string? The login's email.
 ---@field context string? How full the context window is, as a meter.
 ---@field model string
 ---@field effort string
@@ -245,6 +246,7 @@ local function session()
     context = ("%s%%#AnvimStatusC# %d%%%%"):format(meter, percent)
   end
   return {
+    email = state.email,
     context = context,
     model = input.model_label(state.model or require("anvim.config").options.model),
     effort = state.effort and (" · " .. state.effort) or "",
@@ -259,7 +261,7 @@ end
 -- branch, because the code window's tab bar names it too. The branch is cut
 -- to the columns that are left, and only then do the cursor's place and
 -- anvim's name go.
-local drops = { "jump", "effort", "model", "context", "short", "file", "branch", "place", "brand" }
+local drops = { "email", "jump", "effort", "model", "context", "short", "file", "branch", "place", "brand" }
 
 -- With no row for the command line, the macro recording shows here.
 local function recording()
@@ -342,6 +344,9 @@ local function render()
     out[#out + 1] = "%#AnvimStatusC#%="
     local r = vim.list_extend({}, right)
     if s then
+      if s.email and not cut.email then
+        r[#r + 1] = " " .. esc(s.email) .. " "
+      end
       if s.context and not cut.context then
         r[#r + 1] = " " .. s.context .. " "
       end

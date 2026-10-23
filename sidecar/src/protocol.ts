@@ -13,6 +13,14 @@ export type SlashCommand = {
 
 export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
 
+// A plan limit: the percent used, and when it resets, in seconds since the epoch.
+export type UsageLimit = { title: string; percent: number; resets_at?: number };
+// Lines under a title, such as the session's totals or the last 24 hours.
+export type UsageSection = { title: string; lines: string[] };
+export type Usage = { session: UsageSection; limits: UsageLimit[]; windows: UsageSection[] };
+// The Status tab's lines that Claude Code knows. mcp counts the servers by status.
+export type SessionInfo = { version?: string; login?: string; organization?: string; email?: string; mcp: string };
+
 export type Command =
   | {
       type: "start";
@@ -45,6 +53,10 @@ export type Command =
   | { type: "set_effort"; effort: EffortLevel | null }
   // Answered with a models event.
   | { type: "list_models" }
+  // Answered with a usage event.
+  | { type: "usage" }
+  // Answered with a session_info event.
+  | { type: "session_info" }
   | { type: "preview_done"; req: number }
   // The answer to an editor_request: plain text for Claude, or an error.
   | { type: "editor_response"; req: number; result?: string; error?: string }
@@ -222,6 +234,13 @@ export type Event =
       type: "models";
       models: { value: string; name: string; description: string; resolved?: string; effort_levels?: EffortLevel[] }[];
     }
+  // The answer to usage, as /usage in Claude Code's terminal shows it. error
+  // says why there is no answer.
+  | { type: "usage"; usage?: Usage; error?: string }
+  // The email of Claude Code's login, at start.
+  | { type: "account"; email?: string }
+  // The answer to session_info, for the Status tab.
+  | { type: "session_info"; info?: SessionInfo; error?: string }
   // A resumed session's past, sent before it starts. Its events draw the
   // transcript as live ones do. A "user" event is a past prompt. An event
   // that starts an item has the time that Claude Code saved, in seconds since

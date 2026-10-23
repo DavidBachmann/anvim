@@ -472,6 +472,12 @@ function M.command(text)
     return true
   elseif name == "/effort" then
     return effort_command(arg)
+  elseif name == "/status" then
+    require("anvim.settings").open("status")
+    return true
+  elseif name == "/usage" or name == "/cost" or name == "/stats" then
+    require("anvim.settings").open("usage")
+    return true
   end
   local reason = name and require("anvim.completion").unusable(name:sub(2), arg)
   if reason then
@@ -506,6 +512,8 @@ local own_commands = {
   { name = "resume", description = "Resume a session of this directory" },
   { name = "model", description = "Choose Claude's model", argument_hint = "[model]" },
   { name = "effort", description = "Set the effort level for this session", argument_hint = "[level]" },
+  { name = "status", description = "Show the login, the model and the session" },
+  { name = "usage", description = "Show the plan's limits and what used them" },
 }
 
 local function add_commands()

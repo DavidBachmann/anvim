@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Event } from "./protocol";
-import { mainThread, modelsEvent, Translator } from "./translate";
+import { mainThread, modelsEvent, sessionInfoEvent, Translator, usageEvent } from "./translate";
 
 const se = (event: object, parent: string | null = null) =>
   ({ type: "stream_event", event, parent_tool_use_id: parent }) as unknown as SDKMessage;
@@ -195,6 +195,113 @@ describe("Translator", () => {
         { value: "haiku", name: "Haiku 5.5", description: "Fastest", resolved: "claude-haiku-5-5", effort_levels: ["low", "medium"] },
         { value: "claude-haiku-4-5", name: "Haiku 4.5", description: "Older", resolved: undefined },
       ],
+    });
+  });
+
+  test("usage has the plan's limits in Claude Code's order, and what used them", () => {
+    const window = (requests: number) => ({
+      request_count: requests,
+      session_count: 2,
+      behaviors: [
+        { key: "subagent_heavy", pct: 88, count: 5 },
+        { key: "a_new_key", pct: 10, count: 1 },
+      ],
+      agents: [
+        { name: "nvim-plugin", pct: 16 },
+        { name: "general-purpose", pct: 1 },
+      ],
+      skills: [],
+      plugins: [],
+      mcp_servers: [{ name: "anvim", pct: 1 }],
+    });
+    const answer = {
+      session: {
+        total_cost_usd: 7.56,
+        total_api_duration_ms: 1229000,
+        total_duration_ms: 42601000,
+        total_lines_added: 226,
+        total_lines_removed: 31,
+        model_usage: {
+          "claude-opus-5-5": {
+            inputTokens: 3700,
+            outputTokens: 109100,
+            cacheReadInputTokens: 14400000,
+            cacheCreationInputTokens: 310200,
+            costUSD: 7.56,
+          },
+          "claude-haiku-5-5": {
+            inputTokens: 1400,
+            outputTokens: 25,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
+            costUSD: 0.0002,
+          },
+        },
+      },
+      subscription_type: "team",
+      rate_limits_available: true,
+      rate_limits: {
+        five_hour: { utilization: 12, resets_at: "2026-10-23T22:59:59.901863+00:00" },
+        seven_day: { utilization: 33, resets_at: "2026-10-24T02:59:59+00:00" },
+        seven_day_sonnet: null,
+        model_scoped: [{ display_name: "Fable", utilization: 0, resets_at: null }],
+      },
+      behaviors: { day: window(10), week: window(70) },
+    } as unknown as Parameters<typeof usageEvent>[0];
+    const day = {
+      title: "Last 24h · 10 requests · 2 sessions",
+      lines: [
+        "88% of your usage came from subagent-heavy sessions",
+        "Top subagents: nvim-plugin 16%, general-purpose 1%",
+        "Top MCP servers: anvim 1%",
+      ],
+    };
+    expect(usageEvent(answer)).toEqual({
+      type: "usage",
+      usage: {
+        session: {
+          title: "Session",
+          lines: [
+            "Total cost: $7.56",
+            "Total duration (API): 20m 29s",
+            "Total duration (wall): 11h 50m 1s",
+            "Total code changes: 226 lines added, 31 lines removed",
+            "Usage by model:",
+            "  claude-opus-5-5: 3.7k input, 109.1k output, 14.4m cache read, 310.2k cache write ($7.56)",
+            "  claude-haiku-5-5: 1.4k input, 25 output, 0 cache read, 0 cache write ($0.0002)",
+          ],
+        },
+        limits: [
+          { title: "Current session", percent: 12, resets_at: 1792796399 },
+          { title: "Current week (all models)", percent: 33, resets_at: 1792810799 },
+          { title: "Current week (Fable)", percent: 0 },
+        ],
+        windows: [day, { ...day, title: "Last 7d · 70 requests · 2 sessions" }],
+      },
+    });
+    // Without a plan, there are no limits.
+    const apiKey = { ...answer, subscription_type: null, rate_limits: null, behaviors: null };
+    expect(usageEvent(apiKey)).toMatchObject({ type: "usage", usage: { limits: [], windows: [] } });
+  });
+
+  test("session_info names the login and counts the MCP servers by status", () => {
+    const servers = (["needs-auth", "connected", "needs-auth", "pending"] as const).map((status, i) => ({
+      name: `s${i}`,
+      status,
+    }));
+    const team = { email: "a@b.c", organization: "Org", subscriptionType: "Claude Team", apiProvider: "firstParty" as const };
+    expect(sessionInfoEvent("2.1.304", team, servers)).toEqual({
+      type: "session_info",
+      info: {
+        version: "2.1.304",
+        login: "Claude Team account",
+        organization: "Org",
+        email: "a@b.c",
+        mcp: "1 connected · 2 need auth · 1 pending",
+      },
+    });
+    expect(sessionInfoEvent(undefined, { apiKeySource: "ANTHROPIC_API_KEY" }, [])).toMatchObject({
+      info: { login: "API key (ANTHROPIC_API_KEY)", mcp: "none" },
     });
   });
 
