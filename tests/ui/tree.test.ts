@@ -1,5 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
-import { type Anvim, type Box, cells, cursorIn, start } from "./helpers.ts";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { type Anvim, type Box, cells, cursorIn, quiet, start } from "./helpers.ts";
 
 let anvim: Anvim | undefined;
 afterEach(async () => {
@@ -106,4 +108,18 @@ test("<leader>ue keeps the tree at the width of its names, beside the code windo
   expect(await minimizes()).toBe(true);
   await ui.waitFor(() => state(ui.lines(), code).wall && !state(ui.lines(), code).long);
   expect(ui.frames(mark).filter((f) => torn(f.lines)).length).toBe(0);
+});
+
+test("a file outside the cwd leaves the tree's root at the cwd", async () => {
+  anvim = await start();
+  const { ui } = anvim;
+  const other = join(dirname(anvim.dir), "other");
+  mkdirSync(other);
+  writeFileSync(join(other, "note.txt"), "outside\n");
+  const root = () => ui.exec_lua<string>(`return require("anvim.tree").explorer():cwd()`);
+  await ui.waitFor(async () => (await root()) === anvim!.dir);
+  await ui.exec_lua(`local f = require("anvim.follow"); f.show(f.load(...))`, join(other, "note.txt"));
+  await ui.waitFor("outside");
+  await quiet(ui);
+  expect(await root()).toBe(anvim.dir);
 });

@@ -378,9 +378,13 @@ function M.load(path)
   return buf
 end
 
+-- The explorer's reveal moves its root up to a folder that holds the file,
+-- such as the home folder for a file in ~/.claude. So a file outside the
+-- root shows in the code window only.
 local function reveal_in_tree(path)
   local ok, snacks = pcall(require, "snacks")
-  if ok and snacks.picker and snacks.picker.get({ source = "explorer" })[1] then
+  local explorer = ok and snacks.picker and snacks.picker.get({ source = "explorer" })[1]
+  if explorer and vim.fs.relpath(explorer:cwd(), path) then
     pcall(snacks.explorer.reveal, { file = path })
   end
 end
