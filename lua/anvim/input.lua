@@ -1,6 +1,6 @@
 -- The prompt box under the transcript. Its winbar is the activity line. Under
--- the last prompt line, a rule closes the box, and the footer under the rule
--- shows the running agents.
+-- the last prompt line, a rule closes the box. Under the rule are the prompts
+-- that wait for Claude, and the footer that shows the running agents.
 local config = require("anvim.config")
 local sidecar = require("anvim.sidecar")
 local state = require("anvim.state")
@@ -17,6 +17,10 @@ local bufnr
 local winid
 ---@type integer?
 local footer_mark
+-- Prompts sent while Claude works, in order. Claude Code takes them after a
+-- tool result or after the turn, and only then do they join the transcript.
+---@type { id: string, text: string }[]
+local queued = {}
 ---@type uv.uv_timer_t?
 local spinner_timer
 ---@type [integer, integer]? Where typing stopped when the prompt window was left in insert mode.
@@ -302,15 +306,57 @@ function M.submit()
   end
 end
 
-function M.send(text)
+-- A version 4 UUID, which Claude Code's prompt_state events name.
+local function uuid()
+  local b = { vim.uv.random(16):byte(1, 16) }
+  b[7] = bit.bor(bit.band(b[7], 0x0f), 0x40)
+  b[9] = bit.bor(bit.band(b[9], 0x3f), 0x80)
+  return ("%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x"):format(unpack(b))
+end
+
+-- The prompt joins the transcript, where Claude takes it.
+local function shown(text)
   -- Marks from show_user last until the user's next prompt. A turn that a
   -- background agent's end starts has none.
   require("anvim.tools").clear()
   require("anvim.agents").prompt_sent()
   require("anvim.trail").prompt(text)
   transcript.user(text)
+end
+
+-- Moves the queued prompts up to the one with this id, or all of them, to
+-- the transcript. Claude Code takes queued prompts in order.
+---@param id? string
+local function take(id)
+  local n = #queued
+  for i, q in ipairs(queued) do
+    if q.id == id then
+      n = i
+      break
+    elseif id and i == #queued then
+      return
+    end
+  end
+  for i = 1, n do
+    shown(table.remove(queued, 1).text)
+    if i == n then
+      M.render()
+    end
+  end
+end
+
+function M.send(text)
+  local id = uuid()
+  -- While Claude works, the prompt waits under the box. In the transcript, it
+  -- would split the reply that streams in.
+  if state.busy then
+    queued[#queued + 1] = { id = id, text = text }
+    M.render()
+  else
+    shown(text)
+  end
   local images = require("anvim.images").take(text)
-  sidecar.send({ type = "prompt", text = text, images = #images > 0 and images or nil })
+  sidecar.send({ type = "prompt", text = text, images = #images > 0 and images or nil, id = id })
   if not state.busy then
     M.set_busy(true)
   end
@@ -672,9 +718,22 @@ function M.render()
   end
   local win = prompt_win()
   local last = api.nvim_buf_line_count(bufnr) - 1
+  local width = win_width(win)
+  local lines = { { { ("─"):rep(width), "AnvimRule" } } }
+  -- Each queued prompt's first line, cut to the window.
+  for _, q in ipairs(queued) do
+    local tag = "  queued"
+    local room = width - 4 - #tag
+    local line = q.text:match("^[^\n]*")
+    if api.nvim_strwidth(line) > room or q.text:find("\n") then
+      line = vim.fn.strcharpart(line, 0, math.max(room - 1, 0)) .. "…"
+    end
+    lines[#lines + 1] = { { "  ❯ " .. line, "AnvimResult" }, { tag, "AnvimChip" } }
+  end
+  lines[#lines + 1] = M.footer()
   footer_mark = api.nvim_buf_set_extmark(bufnr, ns, last, 0, {
     id = footer_mark,
-    virt_lines = { { { ("─"):rep(win_width(win)), "AnvimRule" } }, M.footer() },
+    virt_lines = lines,
     virt_lines_leftcol = true,
   })
   if win then
@@ -723,6 +782,22 @@ function M.attach()
     end
     state.cost_usd = ev.cost_usd
     M.set_busy(false)
+    -- Claude Code starts the queued prompts as the next turn.
+    take()
+  end)
+  sidecar.on("prompt_state", function(ev)
+    if ev.state == "started" then
+      take(ev.id)
+    elseif ev.state == "cancelled" then
+      for i, q in ipairs(queued) do
+        if q.id == ev.id then
+          table.remove(queued, i)
+          transcript.notice("warn", "Claude Code dropped a queued prompt: " .. q.text:match("^[^\n]*"))
+          M.render()
+          break
+        end
+      end
+    end
   end)
   sidecar.on("thinking_start", function()
     state.thinking = true
@@ -732,6 +807,18 @@ function M.attach()
   end)
   sidecar.on("exit", function()
     M.set_busy(false)
+    if #queued > 0 then
+      local n = #queued
+      queued = {}
+      transcript.notice(
+        "warn",
+        ("Claude stopped before it took %d queued prompt%s. <Up> in the prompt brings them back."):format(
+          n,
+          n == 1 and "" or "s"
+        )
+      )
+      M.render()
+    end
   end)
   api.nvim_create_autocmd({ "WinResized", "VimResized" }, {
     group = api.nvim_create_augroup("anvim.input.resize", {}),

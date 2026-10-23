@@ -65,6 +65,9 @@ export class Translator {
       case "conversation_reset":
         out.push({ type: "reset" });
         break;
+      case "command_lifecycle":
+        if (typeof m.command_uuid === "string") out.push({ type: "prompt_state", id: m.command_uuid, state: String(m.state) });
+        break;
       case "stream_event":
         if (m.parent_tool_use_id == null) this.streamEvent(m.event, out);
         break;

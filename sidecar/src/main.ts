@@ -31,9 +31,15 @@ class Inbox implements AsyncIterable<SDKUserMessage> {
   private wake: (() => void) | null = null;
   private closed = false;
 
-  push(text: string, images: ImageBlock[] = []): void {
+  // Claude Code reports the lifecycle of a prompt that has a uuid.
+  push(text: string, images: ImageBlock[] = [], uuid?: string): void {
     const content = images.length ? [{ type: "text" as const, text }, ...images] : text;
-    this.queue.push({ type: "user", message: { role: "user", content }, parent_tool_use_id: null });
+    this.queue.push({
+      type: "user",
+      message: { role: "user", content },
+      parent_tool_use_id: null,
+      ...(uuid ? { uuid: uuid as SDKUserMessage["uuid"] } : {}),
+    });
     this.wake?.();
   }
 
@@ -284,6 +290,7 @@ export async function handle(cmd: Command): Promise<void> {
       inbox.push(
         cmd.text,
         imageBlocks(cmd.images ?? [], (text) => emit({ type: "notice", level: "warn", text })),
+        cmd.id,
       );
       return;
     case "interrupt":

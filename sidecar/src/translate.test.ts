@@ -305,6 +305,14 @@ describe("Translator", () => {
     });
   });
 
+  test("a prompt's lifecycle names the prompt by its uuid", () => {
+    const frame = (state: string) => msg({ type: "command_lifecycle", command_uuid: "u1", state, uuid: "f", session_id: "s" });
+    expect(run([frame("queued"), frame("started")])).toEqual([
+      { type: "prompt_state", id: "u1", state: "queued" },
+      { type: "prompt_state", id: "u1", state: "started" },
+    ]);
+  });
+
   test("a failed compaction is an error notice", () => {
     const events = run([msg({ type: "system", subtype: "status", status: null, compact_result: "failed", compact_error: "too short" })]);
     expect(events.at(-1)).toEqual({ type: "notice", level: "error", text: "Compaction failed: too short" });

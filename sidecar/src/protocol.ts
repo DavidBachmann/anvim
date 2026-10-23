@@ -44,7 +44,8 @@ export type Command =
       debug?: boolean;
     }
   // Absolute paths of the images that the prompt's [Image #N] chips stand for.
-  | { type: "prompt"; text: string; images?: string[] }
+  // id is a UUID, which Claude Code's prompt_state events name.
+  | { type: "prompt"; text: string; images?: string[]; id?: string }
   | { type: "interrupt" }
   | { type: "set_permission_mode"; mode: string }
   | { type: "set_model"; model?: string }
@@ -237,6 +238,9 @@ export type Event =
   // The answer to usage, as /usage in Claude Code's terminal shows it. error
   // says why there is no answer.
   | { type: "usage"; usage?: Usage; error?: string }
+  // Claude Code queued, started, completed or cancelled the prompt with this
+  // id. A prompt sent mid-turn starts after a tool result, or after the turn.
+  | { type: "prompt_state"; id: string; state: string }
   // The email of Claude Code's login, at start.
   | { type: "account"; email?: string }
   // The answer to session_info, for the Status tab.
