@@ -1,3 +1,5 @@
 sidecar/node_modules/
 tools/screen/node_modules/
 /.tests/
+# A sandboxed Neovim writes its log into the cwd.
+/nvim.log
