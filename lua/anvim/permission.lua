@@ -465,11 +465,12 @@ local function safely(what, fn, ...)
   end
 end
 
+-- Only a plan is markdown. The other blocks hold choices such as `[x] Label`.
 ---@param opts? { quiet: boolean? }
 local function draw(r, opts)
   local lines, marks = render(r)
   if not (r.block and transcript.set_block(r.block, lines, marks, opts)) then
-    r.block = transcript.block(lines, marks, opts)
+    r.block = transcript.block(lines, marks, { quiet = opts and opts.quiet, markdown = r.kind == "plan" })
   end
 end
 

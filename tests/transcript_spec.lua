@@ -44,4 +44,29 @@ describe("transcript", function()
       "code window followed"
     )
   end)
+
+  it("parses markdown in a plan, also once kept, and not in the choices of a question", function()
+    helpers.start()
+    local buf = transcript.buf()
+    -- The first row of each markdown region, once the scheduled update ran.
+    local function region_rows()
+      vim.wait(50, function()
+        return false
+      end)
+      return vim.tbl_map(function(region)
+        return region[1][1]
+      end, vim.treesitter.get_parser(buf):included_regions())
+    end
+    local question = transcript.block({ "  ❯ 1. [x] One", "    2. [ ] Two" }, {})
+    local plan = transcript.block({ "  Claude's plan:", "  **Step**" }, {}, { markdown = true })
+    local plan_row =
+      vim.api.nvim_buf_get_extmark_by_id(buf, vim.api.nvim_create_namespace("anvim.transcript"), plan, {})[1]
+    assert(vim.tbl_contains(region_rows(), plan_row), "the plan is not markdown")
+    local question_row = plan_row - 3
+    assert.are.same("  ❯ 1. [x] One", helpers.buf_lines(buf)[question_row + 1])
+    assert(not vim.tbl_contains(region_rows(), question_row), "the question's choices are markdown")
+    transcript.keep_block(plan)
+    assert(vim.tbl_contains(region_rows(), plan_row), "the kept plan lost its markdown")
+    transcript.remove_block(question)
+  end)
 end)

@@ -199,8 +199,9 @@ M.follow_wins, M.scroll = follow_wins, scroll
 
 local block_row
 
--- Markdown parses only Claude's text and the blocks, such as a plan. In tool
--- lines, results and prompts, markers like ** and __ stay as they are.
+-- Markdown parses only Claude's text and the blocks that ask for it, such as
+-- a plan. In tool lines, results, prompts and the choices of a request,
+-- markers like ** and [x] stay as they are.
 local function set_regions()
   regions_pending = false
   -- Not M.buf(), which would make a new buffer, as while Neovim quits.
@@ -221,7 +222,7 @@ local function set_regions()
     end
   end
   for id, block in pairs(blocks) do
-    local row = block.buf == buf and api.nvim_buf_get_extmark_by_id(buf, ns, id, {})[1]
+    local row = block.markdown and block.buf == buf and api.nvim_buf_get_extmark_by_id(buf, ns, id, {})[1]
     if row then
       local last = row + block.count - 1
       local line = api.nvim_buf_get_lines(buf, last, last + 1, false)[1] or ""
@@ -233,6 +234,13 @@ local function set_regions()
   end)
   -- No regions at all would keep the old child trees.
   parser:set_included_regions(#regions > 0 and regions or { { { 0, 0, 0, 0 } } })
+end
+
+local function regions_later()
+  if not regions_pending then
+    regions_pending = true
+    vim.schedule(set_regions)
+  end
 end
 
 ---@param buf integer? The chat by default.
@@ -250,9 +258,8 @@ local function with_modifiable(fn, buf)
   for _, win in ipairs(vim.fn.win_findbuf(buf)) do
     require("anvim.windows").clamp(win)
   end
-  if buf == bufnr and not regions_pending then
-    regions_pending = true
-    vim.schedule(set_regions)
+  if buf == bufnr then
+    regions_later()
   end
   if not ok then
     error(err, 0)
@@ -1139,8 +1146,8 @@ end
 -- a permission prompt. Each mark is { row, col, end_col, group }, with rows
 -- counted from the block's first line. A block that waits for the user goes
 -- last, after the todo list too, as in Claude Code, and brings every view to
--- it. A `quiet` one does neither.
----@param opts? { quiet: boolean? }
+-- it. A `quiet` one does neither. A `markdown` one renders its markdown.
+---@param opts? { quiet: boolean?, markdown: boolean? }
 ---@return integer id
 function M.block(lines, marks, opts)
   text_open = false
@@ -1149,7 +1156,7 @@ function M.block(lines, marks, opts)
   -- Lines that go in on the mark's row push it down, as when an item goes
   -- above a todo list that came first.
   local id = api.nvim_buf_set_extmark(M.buf(), ns, row, 0, {})
-  blocks[id] = { buf = M.buf(), count = #lines }
+  blocks[id] = { buf = M.buf(), count = #lines, markdown = opts and opts.markdown }
   for _, m in ipairs(marks or {}) do
     hl(M.buf(), row + m[1], m[2], m[3], m[4])
   end
@@ -1208,6 +1215,16 @@ function M.keep_block(id)
   local row = block_row(id)
   if row then
     api.nvim_buf_del_extmark(M.buf(), ns, id)
+    -- Its markdown stays, as Claude's text does.
+    if blocks[id].markdown then
+      local last = row + blocks[id].count - 1
+      local line = api.nvim_buf_get_lines(M.buf(), last, last + 1, false)[1] or ""
+      texts[#texts + 1] = {
+        first = api.nvim_buf_set_extmark(M.buf(), ns_text, row, 0, { right_gravity = false }),
+        last = api.nvim_buf_set_extmark(M.buf(), ns_text, last, #line, { right_gravity = false }),
+      }
+      regions_later()
+    end
   end
   blocks[id] = nil
   local list_row = todo and todo.id ~= id and block_row(todo.id)
