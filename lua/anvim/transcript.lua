@@ -15,9 +15,24 @@ local ns_time = api.nvim_create_namespace("anvim.time")
 -- The clock of the times that items show. Specs replace it.
 M.clock = os.time
 
+-- Whether the main agent's tool lines go to the main log, apart from the
+-- chat. The chat then shows one count line for each run of tool calls.
+M.tools_apart = false
+
+---@class anvim.Run The tool calls between two other chat items.
+---@field buf integer The chat buffer of the count line.
+---@field mark integer? The mark of the count line.
+---@field count integer
+---@field failed integer
+---@field time integer? When the first call started.
+---@field stamp integer?
+
 ---@class anvim.Tool
 ---@field id string
 ---@field name string
+---@field buf integer? The chat or the main log, where the tool's line is.
+---@field run anvim.Run? The run that counts the call, for a call in the main log.
+---@field failed boolean? The call failed, and its run counts it.
 ---@field mark integer?
 ---@field time integer? When the call started, as the clock or a saved session tells it.
 ---@field stamp integer? The mark that shows the time.
@@ -32,6 +47,16 @@ M.clock = os.time
 
 ---@type integer?
 local bufnr
+-- The main log, the buffer of the main agent's tool lines while they go apart.
+---@type integer?
+local logbuf
+-- The open run, which the next tool call joins.
+---@type anvim.Run?
+local run
+-- The first line of the item that started the turn: a prompt, or a
+-- background agent's end row. It starts each run in the main log.
+---@type string?
+local run_head
 ---@type table<string, anvim.Tool>
 local tools = {}
 -- The lines of background agents. Their tool call returns once the agent
@@ -82,6 +107,9 @@ local primary_arg = {
   Skill = "skill",
 }
 
+-- With breakindentopt=list:-1, wrapped lines align after the bullet.
+M.list_pat = [[^\s*\%(⏺\|❯\|⎿\|⚠\)\?\s*]]
+
 function M.buf()
   if bufnr and api.nvim_buf_is_loaded(bufnr) and vim.b[bufnr].anvim_transcript then
     return bufnr
@@ -99,8 +127,7 @@ function M.buf()
   vim.bo[bufnr].filetype = "anvim_transcript"
   pcall(vim.treesitter.start, bufnr, "markdown")
   vim.bo[bufnr].modifiable = false
-  -- With breakindentopt=list:-1, wrapped lines align after the bullet.
-  vim.bo[bufnr].formatlistpat = [[^\s*\%(⏺\|❯\|⎿\|⚠\)\?\s*]]
+  vim.bo[bufnr].formatlistpat = M.list_pat
   -- The cursor is here only in read mode. Insert commands go back to typing.
   local layout = require("anvim.layout")
   local keys = require("anvim.keys")
@@ -119,6 +146,28 @@ function M.buf()
     keys.set("transcript", "n", key, layout.focus_input, { buffer = bufnr })
   end
   return bufnr
+end
+
+---@return integer? buf The main log, if it exists.
+local function log_loaded()
+  return logbuf and api.nvim_buf_is_loaded(logbuf) and vim.b[logbuf].anvim_tool_log and logbuf or nil
+end
+
+-- The main log: the main agent's tool calls while they go apart from the chat.
+function M.log_buf()
+  if log_loaded() then
+    return logbuf
+  end
+  if logbuf and api.nvim_buf_is_valid(logbuf) then
+    pcall(api.nvim_buf_delete, logbuf, { force = true })
+  end
+  logbuf = api.nvim_create_buf(false, true)
+  vim.b[logbuf].anvim_tool_log = true
+  require("anvim.windows").stop_at_end(logbuf)
+  api.nvim_buf_set_name(logbuf, "anvim://tools")
+  vim.bo[logbuf].modifiable = false
+  vim.bo[logbuf].formatlistpat = M.list_pat
+  return logbuf
 end
 
 -- Windows that show the transcript, or `buf`, except the one the user is in.
@@ -190,21 +239,22 @@ local function set_regions()
   parser:set_included_regions(#regions > 0 and regions or { { { 0, 0, 0, 0 } } })
 end
 
-local function with_modifiable(fn)
-  local buf = M.buf()
-  local tail = not batch and follow_wins(true)
+---@param buf integer? The chat by default.
+local function with_modifiable(fn, buf)
+  buf = buf or M.buf()
+  local tail = not batch and follow_wins(true, buf)
   vim.bo[buf].modifiable = true
   local ok, err = pcall(fn, buf)
   vim.bo[buf].modifiable = false
   if tail then
-    scroll(tail)
+    scroll(tail, buf)
   end
   -- Lines that go from the end, such as an answered request's, do not scroll
   -- a window, so no WinScrolled fires.
   for _, win in ipairs(vim.fn.win_findbuf(buf)) do
     require("anvim.windows").clamp(win)
   end
-  if not regions_pending then
+  if buf == bufnr and not regions_pending then
     regions_pending = true
     vim.schedule(set_regions)
   end
@@ -248,9 +298,9 @@ local function append_item(lines, last)
   return row
 end
 
-local function hl(row, col, end_col, group, opts)
+local function hl(buf, row, col, end_col, group, opts)
   return api.nvim_buf_set_extmark(
-    M.buf(),
+    buf,
     ns,
     row,
     col,
@@ -617,8 +667,76 @@ end
 ---@return string text, string? group
 M.summary = summarize
 
+-- The row of a mark, unless its buffer or the mark went.
+local function mark_row(buf, id)
+  if id and api.nvim_buf_is_loaded(buf) then
+    return api.nvim_buf_get_extmark_by_id(buf, ns, id, {})[1]
+  end
+end
+
 local function tool_row(tool)
-  return api.nvim_buf_get_extmark_by_id(M.buf(), ns, tool.mark, {})[1]
+  return mark_row(tool.buf, tool.mark)
+end
+
+-- Appends a tool line to the main log. The calls of a run follow each other.
+-- A run starts after a blank line, with the first line of the item that
+-- started its turn.
+---@return integer row
+local function log_append(line, starts_run)
+  local buf, row = M.log_buf(), 0
+  local lines = { line }
+  if starts_run and run_head then
+    table.insert(lines, 1, run_head)
+  end
+  with_modifiable(function()
+    if is_empty(buf) then
+      api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+      return
+    elseif starts_run then
+      table.insert(lines, 1, "")
+    end
+    row = api.nvim_buf_line_count(buf)
+    api.nvim_buf_set_lines(buf, row, row, false, lines)
+  end, buf)
+  row = row + #lines - 1
+  if starts_run and run_head then
+    hl(buf, row - 1, 0, #run_head, "AnvimResult")
+  end
+  return row
+end
+
+-- The count line of a run, such as "⎿  7 tool calls · 1 failed". The first
+-- call of a run appends it to the chat, and later calls set it again.
+---@param r anvim.Run
+local function set_count(r)
+  local line = "  ⎿  " .. plural(r.count, "tool call")
+  local failed = r.failed > 0 and (" · %d failed"):format(r.failed) or ""
+  local row = mark_row(r.buf, r.mark)
+  if r.mark and not row then
+    return
+  elseif row then
+    with_modifiable(function(buf)
+      api.nvim_buf_set_lines(buf, row, row + 1, false, { line .. failed })
+    end, r.buf)
+    api.nvim_buf_clear_namespace(r.buf, ns, row, row + 1)
+  else
+    row = append_item({ line .. failed })
+  end
+  r.mark = hl(r.buf, row, 0, #line, "AnvimResult")
+  if failed ~= "" then
+    hl(r.buf, row, #line, #line + #failed, "AnvimToolError")
+  end
+  r.stamp = M.stamp(r.buf, row, r.time, r.stamp)
+end
+
+-- A call of the main agent joins the open run, or starts one.
+local function join_run(tool)
+  if not run then
+    run = { buf = M.buf(), count = 0, failed = 0, time = tool.time }
+  end
+  run.count = run.count + 1
+  tool.run = run
+  set_count(run)
 end
 
 -- The bullet of a tool call that has no result yet. An Agent call's bullet
@@ -634,52 +752,59 @@ local function set_tool_line(tool, label, bullet_hl)
     return
   end
   local line = "⏺ " .. label
-  with_modifiable(function(buf)
+  local buf = tool.buf
+  with_modifiable(function()
     api.nvim_buf_set_lines(buf, row, row + 1, false, { line })
-  end)
+  end, buf)
   local bullet = #"⏺"
-  api.nvim_buf_clear_namespace(M.buf(), ns, row, row + 1)
-  tool.mark = hl(row, 0, bullet, bullet_hl)
+  api.nvim_buf_clear_namespace(buf, ns, row, row + 1)
+  tool.mark = hl(buf, row, 0, bullet, bullet_hl)
   local name_end = label:find("(", 1, true)
-  hl(row, bullet + 1, bullet + 1 + (name_end and name_end - 1 or #label), "AnvimToolName")
-  tool.stamp = M.stamp(M.buf(), row, tool.time, tool.stamp)
+  hl(buf, row, bullet + 1, bullet + 1 + (name_end and name_end - 1 or #label), "AnvimToolName")
+  tool.stamp = M.stamp(buf, row, tool.time, tool.stamp)
 end
 
 ---@param context string? The editor context that went with the prompt, such as a.lua#L12-30.
 function M.user(text, context)
   -- A turn without text has no reply, rather than the last turn's.
-  text_open, reply_done, reply = false, true, {}
+  text_open, reply_done, reply, run = false, true, {}, nil
+  run_head = "❯ " .. vim.trim(text):match("^[^\n]*")
   local lines = vim.split(text, "\n", { plain = true })
   for i, line in ipairs(lines) do
     lines[i] = (i == 1 and "❯ " or "  ") .. line
   end
   local row = append_item(lines)
+  local buf = M.buf()
   for i = 0, #lines - 1 do
-    api.nvim_buf_set_extmark(M.buf(), ns, row + i, 0, { line_hl_group = "AnvimUser" })
+    api.nvim_buf_set_extmark(buf, ns, row + i, 0, { line_hl_group = "AnvimUser" })
   end
-  hl(row, 0, #"❯", "AnvimPrompt")
-  M.stamp(M.buf(), row, now())
+  hl(buf, row, 0, #"❯", "AnvimPrompt")
+  M.stamp(buf, row, now())
   if context then
     local line = "  ⎿  ⧉ " .. context
-    with_modifiable(function(buf)
+    with_modifiable(function()
       api.nvim_buf_set_lines(buf, row + #lines, row + #lines, false, { line })
     end)
-    hl(row + #lines, 0, #line, "AnvimResult")
+    hl(buf, row + #lines, 0, #line, "AnvimResult")
   end
   -- A new prompt brings every view back to the end.
   if not batch then
     scroll(follow_wins(false))
+    local log = log_loaded()
+    if log then
+      scroll(follow_wins(false, log), log)
+    end
   end
 end
 
 function M.text_start()
-  text_open = true
+  text_open, run = true, nil
   if reply_done then
     reply, reply_done = {}, false
   end
   reply[#reply + 1] = ""
   local row = append_item({ "⏺ " })
-  hl(row, 0, #"⏺", "AnvimBullet")
+  hl(M.buf(), row, 0, #"⏺", "AnvimBullet")
   M.stamp(M.buf(), row, now())
   -- The end mark moves with the text that streams in after it.
   local col = #"⏺ "
@@ -721,12 +846,25 @@ function M.tool_start(id, name)
     return
   end
   local label = tool_label(name)
-  local row = append_item({ "⏺ " .. label })
   local tool = { id = id, name = name, time = now() }
-  tool.mark = hl(row, 0, #"⏺", pending(tool))
+  local row
+  if M.tools_apart then
+    -- A run whose chat buffer went, as after :bwipeout, ends with it.
+    if run and not api.nvim_buf_is_loaded(run.buf) then
+      run = nil
+    end
+    tool.buf = M.log_buf()
+    row = log_append("⏺ " .. label, run == nil)
+    join_run(tool)
+  else
+    -- A call in the chat ends the run, so that calls after it count anew.
+    tool.buf, run = M.buf(), nil
+    row = append_item({ "⏺ " .. label })
+  end
+  tool.mark = hl(tool.buf, row, 0, #"⏺", pending(tool))
   tools[id] = tool
-  hl(row, #"⏺" + 1, #"⏺" + 1 + #label, "AnvimToolName")
-  tool.stamp = M.stamp(M.buf(), row, tool.time)
+  hl(tool.buf, row, #"⏺" + 1, #"⏺" + 1 + #label, "AnvimToolName")
+  tool.stamp = M.stamp(tool.buf, row, tool.time)
 end
 
 function M.tool_field(ev)
@@ -757,13 +895,13 @@ local function set_children(tool)
     lines[i] = (i == 1 and "  ⎿  " or "     ") .. item
   end
   local old = tool.child_rows or 0
-  api.nvim_buf_clear_namespace(M.buf(), ns, row + 1, row + 1 + old)
+  api.nvim_buf_clear_namespace(tool.buf, ns, row + 1, row + 1 + old)
   with_modifiable(function(buf)
     api.nvim_buf_set_lines(buf, row + 1, row + 1 + old, false, lines)
-  end)
+  end, tool.buf)
   tool.child_rows = #lines
   for i, line in ipairs(lines) do
-    hl(row + i, 0, #line, "AnvimResult")
+    hl(tool.buf, row + i, 0, #line, "AnvimResult")
   end
 end
 
@@ -798,6 +936,11 @@ end
 
 local function finish_tool(tool, is_error, summary, group)
   tool.done = true
+  if is_error and tool.run and not tool.failed then
+    tool.failed = true
+    tool.run.failed = tool.run.failed + 1
+    set_count(tool.run)
+  end
   set_tool_line(tool, tool_label(tool.name, tool.input), is_error and "AnvimToolError" or "AnvimToolOk")
   local row = tool_row(tool)
   if not row then
@@ -805,12 +948,12 @@ local function finish_tool(tool, is_error, summary, group)
   end
   local line = "  ⎿  " .. M.short(summary)
   local old = tool.child_rows or 0
-  api.nvim_buf_clear_namespace(M.buf(), ns, row + 1, row + 1 + old)
+  api.nvim_buf_clear_namespace(tool.buf, ns, row + 1, row + 1 + old)
   with_modifiable(function(buf)
     api.nvim_buf_set_lines(buf, row + 1, row + 1 + old, false, { line })
-  end)
+  end, tool.buf)
   tool.child_rows = nil
-  hl(row + 1, 0, #line, group or "AnvimResult")
+  hl(tool.buf, row + 1, 0, #line, group or "AnvimResult")
 end
 
 local task_result
@@ -863,19 +1006,25 @@ local function end_agent(tool, ev)
     local usage = { totalToolUseCount = ev.tool_uses, totalTokens = ev.tokens, totalDurationMs = ev.duration_ms }
     finish_tool(tool, not ok, ok and agent_done(tool, usage) or ev.status == "stopped" and "Stopped" or "Failed")
   end
-  text_open = false
+  text_open, run = false, nil
   local name = description and description ~= "" and ('Agent "%s"'):format(description) or "Agent"
   local lines = { ("⏺ %s %s"):format(name, ended[ev.status] or "ended") }
   local summary = M.short(first_line(ev.summary))
   if summary ~= "" then
     lines[2] = "  ⎿  " .. summary
   end
-  local row = append_item(lines)
-  hl(row, 0, #"⏺", ok and "AnvimToolOk" or "AnvimToolError")
-  for i, line in ipairs(lines) do
-    hl(row + i - 1, i == 1 and #"⏺" or 0, #line, "AnvimResult")
+  -- An end while no turn runs starts a turn, whose calls answer the end. A
+  -- resumed session's past draws each end as a turn of its own.
+  if batch or not state.busy then
+    run_head = lines[1]
   end
-  M.stamp(M.buf(), row, now())
+  local row = append_item(lines)
+  local buf = M.buf()
+  hl(buf, row, 0, #"⏺", ok and "AnvimToolOk" or "AnvimToolError")
+  for i, line in ipairs(lines) do
+    hl(buf, row + i - 1, i == 1 and #"⏺" or 0, #line, "AnvimResult")
+  end
+  M.stamp(buf, row, now())
 end
 
 -- A background agent's end in a resumed session's past.
@@ -909,16 +1058,20 @@ local function paint_agents()
     for _, tool in pairs(list) do
       local row = (tool.name == "Agent" or tool.name == "Task") and tool.mark and not tool.done and tool_row(tool)
       if row then
-        tool.mark = hl(row, 0, #"⏺", pending(tool), { id = tool.mark })
+        tool.mark = hl(tool.buf, row, 0, #"⏺", pending(tool), { id = tool.mark })
       end
     end
   end
   api.nvim_buf_clear_namespace(M.buf(), ns_focus, 0, -1)
+  local log = log_loaded()
+  if log then
+    api.nvim_buf_clear_namespace(log, ns_focus, 0, -1)
+  end
   local agent = require("anvim.follow").focused()
   local tool = agent and (tools[agent.tool_use_id] or held[agent.tool_use_id])
   local row = tool and tool.mark and tool_row(tool)
   if row then
-    api.nvim_buf_set_extmark(M.buf(), ns_focus, row, 0, {
+    api.nvim_buf_set_extmark(tool.buf, ns_focus, row, 0, {
       virt_text = { { "◉ focused", agents.group(agent.slot) } },
       virt_text_pos = "eol",
       right_gravity = false,
@@ -928,26 +1081,27 @@ end
 
 -- Info notices, such as a compaction, read like Claude Code's ✻ lines.
 function M.notice(level, text)
-  text_open = false
+  text_open, run = false, nil
   local info = level == "info"
   local lines = vim.split(text, "\n", { plain = true })
   for i, line in ipairs(lines) do
     lines[i] = (i == 1 and (info and "✻ " or "⚠ ") or "  ") .. line
   end
   local row = append_item(lines)
+  local buf = M.buf()
   local group = info and "AnvimResult" or level == "error" and "AnvimToolError" or "WarningMsg"
   for i = 0, #lines - 1 do
-    hl(row + i, 0, #lines[i + 1], group)
+    hl(buf, row + i, 0, #lines[i + 1], group)
   end
   if info then
-    hl(row, 0, #"✻", "AnvimClaude")
+    hl(buf, row, 0, #"✻", "AnvimClaude")
   end
-  M.stamp(M.buf(), row, now())
+  M.stamp(buf, row, now())
 end
 
 -- A slash command's output, as result lines under the prompt that ran it.
 function M.output(text)
-  text_open = false
+  text_open, run = false, nil
   local lines = vim.split(M.short(vim.trim(text)), "\n", { plain = true })
   for i, line in ipairs(lines) do
     lines[i] = (i == 1 and "  ⎿  " or "     ") .. line
@@ -958,7 +1112,7 @@ function M.output(text)
     api.nvim_buf_set_lines(buf, row, row, false, lines)
   end)
   for i, line in ipairs(lines) do
-    hl(row + i - 1, 0, #line, "AnvimResult")
+    hl(M.buf(), row + i - 1, 0, #line, "AnvimResult")
   end
 end
 
@@ -978,12 +1132,16 @@ function M.outcome(id, text, group)
   end
 end
 
--- A block waits for the user, so it brings every view of the transcript to
--- the end, even one that the user scrolled up. The window with the cursor, in
--- read mode, follows only with `all`.
+-- A block waits for the user, so it brings every view of the transcript and
+-- of the main log to the end, even one that the user scrolled up. The window
+-- with the cursor, in read mode, follows only with `all`.
 function M.reveal(all)
   if not batch then
     scroll(all and vim.fn.win_findbuf(M.buf()) or follow_wins(false))
+    local log = log_loaded()
+    if log then
+      scroll(follow_wins(false, log), log)
+    end
   end
 end
 
@@ -1019,7 +1177,7 @@ function M.block(lines, marks, opts)
   local id = api.nvim_buf_set_extmark(M.buf(), ns, row, 0, {})
   blocks[id] = { buf = M.buf(), count = #lines }
   for _, m in ipairs(marks or {}) do
-    hl(row + m[1], m[2], m[3], m[4])
+    hl(M.buf(), row + m[1], m[2], m[3], m[4])
   end
   if not quiet then
     M.reveal()
@@ -1045,7 +1203,7 @@ function M.set_block(id, lines, marks, opts)
   api.nvim_buf_set_extmark(M.buf(), ns, row, 0, { id = id })
   blocks[id].count = #lines
   for _, m in ipairs(marks or {}) do
-    hl(row + m[1], m[2], m[3], m[4])
+    hl(M.buf(), row + m[1], m[2], m[3], m[4])
   end
   if not (opts and opts.quiet) then
     M.reveal()
@@ -1072,6 +1230,7 @@ end
 -- after the pinned todo list, such as an approved plan, moves the list under
 -- it, so the list stays last.
 function M.keep_block(id)
+  run = nil
   local row = block_row(id)
   if row then
     api.nvim_buf_del_extmark(M.buf(), ns, id)
@@ -1232,7 +1391,8 @@ function M.batch(fn)
   end
 end
 
--- Empties the transcript, for /clear and before a resumed session draws.
+-- Empties the transcript and the main log, for /clear and before a resumed
+-- session draws.
 function M.clear()
   local buf = M.buf()
   for id, block in pairs(blocks) do
@@ -1241,15 +1401,17 @@ function M.clear()
     end
   end
   tools, held, todo, reply, reply_done, text_open, texts = {}, {}, nil, {}, true, false, {}
-  sent_back = {}
+  sent_back, run, run_head = {}, nil, nil
   tasks = { order = {}, by_id = {} }
-  api.nvim_buf_clear_namespace(buf, ns, 0, -1)
-  api.nvim_buf_clear_namespace(buf, ns_text, 0, -1)
-  api.nvim_buf_clear_namespace(buf, ns_focus, 0, -1)
-  M.unstamp(buf, 0, -1)
-  with_modifiable(function()
-    api.nvim_buf_set_lines(buf, 0, -1, false, {})
-  end)
+  for _, b in ipairs({ buf, log_loaded() }) do
+    api.nvim_buf_clear_namespace(b, ns, 0, -1)
+    api.nvim_buf_clear_namespace(b, ns_text, 0, -1)
+    api.nvim_buf_clear_namespace(b, ns_focus, 0, -1)
+    M.unstamp(b, 0, -1)
+    with_modifiable(function()
+      api.nvim_buf_set_lines(b, 0, -1, false, {})
+    end, b)
+  end
 end
 
 function M.attach(sidecar)

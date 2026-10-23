@@ -214,8 +214,7 @@ local function new_log(id)
   end
   vim.bo[buf].bufhidden = "hide"
   vim.bo[buf].modifiable = false
-  -- With breakindentopt=list:-1, wrapped lines align after the bullet.
-  vim.bo[buf].formatlistpat = [[^\s*\%(⏺\|❯\|⎿\|⚠\)\?\s*]]
+  vim.bo[buf].formatlistpat = transcript.list_pat
   -- The Agent Overview shows the log, and <a-w> goes into it.
   for _, key in ipairs({ "q", "<Esc>" }) do
     keys.set("overview", "n", key, function()
