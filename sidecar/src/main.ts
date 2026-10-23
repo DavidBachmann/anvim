@@ -8,6 +8,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { appendFileSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { type ImageBlock, imageBlocks } from "./images";
 import { PermissionBridge } from "./permissions";
 import { PreviewBridge } from "./preview";
 import type { Command, EffortLevel, Event } from "./protocol";
@@ -30,8 +31,9 @@ class Inbox implements AsyncIterable<SDKUserMessage> {
   private wake: (() => void) | null = null;
   private closed = false;
 
-  push(text: string): void {
-    this.queue.push({ type: "user", message: { role: "user", content: text }, parent_tool_use_id: null });
+  push(text: string, images: ImageBlock[] = []): void {
+    const content = images.length ? [{ type: "text" as const, text }, ...images] : text;
+    this.queue.push({ type: "user", message: { role: "user", content }, parent_tool_use_id: null });
     this.wake?.();
   }
 
@@ -272,7 +274,10 @@ export async function handle(cmd: Command): Promise<void> {
         .finally(() => process.exit());
       return;
     case "prompt":
-      inbox.push(cmd.text);
+      inbox.push(
+        cmd.text,
+        imageBlocks(cmd.images ?? [], (text) => emit({ type: "notice", level: "warn", text })),
+      );
       return;
     case "interrupt":
       await session?.interrupt();

@@ -1,0 +1,5 @@
+WRN 2026-10-23T08:52:42.169 ?.64599    server_start:197: Failed to start server: operation not permitted: /tmp/claude-501/nvim.davidbachmann/5GJAqC/nvim.64599.0
+WRN 2026-10-23T08:52:53.194 ?.72337    server_start:197: Failed to start server: operation not permitted: /tmp/claude-501/nvim.davidbachmann/LTw3ru/nvim.72337.0
+WRN 2026-10-23T08:53:04.805 ?.74228    server_start:197: Failed to start server: operation not permitted: /tmp/claude-501/nvim.davidbachmann/39aNfi/nvim.74228.0
+WRN 2026-10-23T08:53:25.176 ?.78354    server_start:197: Failed to start server: operation not permitted: /tmp/claude-501/nvim.davidbachmann/CCvEAb/nvim.78354.0
+WRN 2026-10-23T08:53:25.230 ?.78364    server_start:197: Failed to start server: operation not permitted: /tmp/claude-501/nvim.davidbachmann/zOQh51/nvim.78364.0

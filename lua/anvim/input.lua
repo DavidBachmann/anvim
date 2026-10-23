@@ -282,7 +282,8 @@ function M.send(text)
   require("anvim.agents").prompt_sent()
   require("anvim.trail").prompt(text)
   transcript.user(text)
-  sidecar.send({ type = "prompt", text = text })
+  local images = require("anvim.images").take(text)
+  sidecar.send({ type = "prompt", text = text, images = #images > 0 and images or nil })
   if not state.busy then
     M.set_busy(true)
   end

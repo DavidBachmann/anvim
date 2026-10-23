@@ -33,7 +33,8 @@ export type Command =
       history?: boolean;
       append_system_prompt?: string;
     }
-  | { type: "prompt"; text: string }
+  // Absolute paths of the images that the prompt's [Image #N] chips stand for.
+  | { type: "prompt"; text: string; images?: string[] }
   | { type: "interrupt" }
   | { type: "set_permission_mode"; mode: string }
   | { type: "set_model"; model?: string }

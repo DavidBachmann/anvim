@@ -124,6 +124,7 @@ local function wire()
   require("anvim.completion").attach(sidecar)
   require("anvim.sessions").attach()
   require("anvim.notify").attach(sidecar)
+  require("anvim.images").attach()
   sidecar.on("init", function(ev)
     state.session_id = ev.session_id
     state.model = ev.model

@@ -155,7 +155,10 @@ export function historyEvents(messages: SessionMessage[]): HistoryEvent[] {
             texts.push("[Image]");
           }
         }
-        const ev = texts.length ? prompt(texts.join("\n")) : undefined;
+        // anvim's prompts name their images with chips, such as [Image #1].
+        const named = texts.some((t) => /\[Image #\d+\]/.test(t));
+        const shown = named ? texts.filter((t) => t !== "[Image]") : texts;
+        const ev = shown.length ? prompt(shown.join("\n")) : undefined;
         if (ev) out.push(at(ev));
       }
     }
