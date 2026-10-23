@@ -11,8 +11,9 @@
 # project, a temp dir and the caches of npm, bun and go build.
 # --no-sandbox (ANVIM_SANDBOX=0) turns it off. --debug (ANVIM_DEBUG=1) is for
 # anvim's own development: it gives Claude a tool that takes a picture of the
-# screen. When the repo's lockfiles changed since the last install, anvim runs
-# scripts/install first. ANVIM_NO_INSTALL=1 skips that.
+# screen, and a tool that restarts anvim with the code on disk in the same
+# session. When the repo's lockfiles changed since the last install, anvim
+# runs scripts/install first. ANVIM_NO_INSTALL=1 skips that.
 root=$(cd "$(dirname "$(realpath "$0")")/.." && pwd)
 
 is_session_id() {

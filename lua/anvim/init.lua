@@ -250,6 +250,7 @@ function M.start()
   state.cwd = vim.fn.getcwd()
   state.permission_mode = config.options.permission_mode
   wire()
+  require("anvim.reload").attach()
   refresh_branch()
   local resume = config.options.resume
   local sessions = require("anvim.sessions")

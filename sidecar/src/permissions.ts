@@ -62,7 +62,7 @@ export class PermissionBridge {
   }
 
   canUseTool: CanUseTool = (tool, input, opts) => {
-    // Read-only editor tools need no prompt (tools.ts).
+    // Editor tools need no prompt (tools.ts).
     if (isEditorTool(opts.mcpServer)) return Promise.resolve({ behavior: "allow", updatedInput: input });
     // Claude Code passes the hook's reason as decisionReason, but a user's own
     // hook can ask too, so the guard tells anvim's asks apart. A saved rule

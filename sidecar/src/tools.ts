@@ -107,7 +107,7 @@ async function screenshot(bridge: EditorBridge): Promise<Result | ImageResult> {
 
 export function editorTools(bridge: EditorBridge, opts: { debug?: boolean } = {}) {
   const call = (method: string) => (args: Record<string, unknown>) => bridge.request(method, args);
-  // The screenshot tool is for anvim's own development, so only --debug adds it.
+  // These tools are for anvim's own development, so only --debug adds them.
   const debug = opts.debug
     ? [
         tool(
@@ -116,6 +116,12 @@ export function editorTools(bridge: EditorBridge, opts: { debug?: boolean } = {}
           {},
           () => screenshot(bridge),
           readOnly,
+        ),
+        tool(
+          "reload",
+          "Restart anvim with its code on disk, to load your changes to anvim's Lua or sidecar code. Run the gates before the call. anvim restarts when this turn ends and no agent runs, so end your turn right after the call. The new anvim resumes this session and sends a prompt that says it restarted.",
+          {},
+          call("reload"),
         ),
       ]
     : [];
@@ -183,7 +189,7 @@ export function editorServer(bridge: EditorBridge, opts: { debug?: boolean } = {
   return createSdkMcpServer({ name: SERVER, tools: editorTools(bridge, opts), alwaysLoad: true });
 }
 
-// Read-only tools need no permission prompt. Trust comes from the server's
+// Editor tools need no permission prompt. Trust comes from the server's
 // source, not the tool name: the tools of a settings server named "anvim_",
 // "anvim." or "anvim__evil" also start with mcp__anvim__.
 export function isEditorTool(mcpServer: { name: string; source: string } | undefined): boolean {

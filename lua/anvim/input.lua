@@ -292,6 +292,7 @@ function M.send(text)
 end
 
 function M.interrupt()
+  require("anvim.reload").cancel()
   if state.busy then
     sidecar.send({ type = "interrupt" })
   end

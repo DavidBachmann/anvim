@@ -32,7 +32,7 @@ export type Command =
       // Send the resumed session's messages as a history event first.
       history?: boolean;
       append_system_prompt?: string;
-      // anvim runs with --debug: the editor tools include screenshot.
+      // anvim runs with --debug: the editor tools include screenshot and reload.
       debug?: boolean;
     }
   // Absolute paths of the images that the prompt's [Image #N] chips stand for.

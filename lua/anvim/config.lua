@@ -15,7 +15,7 @@ M.defaults = {
   -- Run Claude's Bash commands in Claude Code's sandbox: they can write only in the project, a temp dir and
   -- the npm, bun and go build caches.
   sandbox = true,
-  -- For anvim's own development: Claude gets the mcp__anvim__screenshot tool.
+  -- For anvim's own development: Claude gets the mcp__anvim__screenshot and mcp__anvim__reload tools.
   debug = false,
   bun = "bun",
   ---@type string[]? Replaces the sidecar command, e.g. to replay a recording.

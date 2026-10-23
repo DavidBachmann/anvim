@@ -67,11 +67,12 @@ describe("editor MCP server", () => {
     for (const t of tools) expect(t.annotations?.readOnlyHint).toBe(true);
   });
 
-  test("has the screenshot tool only with --debug", async () => {
+  test("has the screenshot and reload tools only with --debug", async () => {
     const names = async (debug: boolean) =>
       (await (await connect(bridge().b, { debug })).listTools()).tools.map((t) => t.name);
     expect(await names(false)).not.toContain("screenshot");
-    expect(await names(true)).toContain("screenshot");
+    expect(await names(false)).not.toContain("reload");
+    expect(await names(true)).toEqual(expect.arrayContaining(["screenshot", "reload"]));
   });
 
   test("trusts only the in-process server that anvim registered", () => {

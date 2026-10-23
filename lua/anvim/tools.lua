@@ -792,6 +792,9 @@ end
 
 local handlers = {
   screenshot = screenshot,
+  reload = function(_, done)
+    require("anvim.reload").request(done)
+  end,
   show_user = show_user,
   diagnostics = diagnostics,
   lsp_definition = lsp_definition,
