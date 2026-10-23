@@ -3,7 +3,6 @@
 local agentlog = require("anvim.agentlog")
 local agents = require("anvim.agents")
 local compose = require("anvim.compose")
-local context = require("anvim.context")
 local follow = require("anvim.follow")
 local helpers = require("helpers")
 local layout = require("anvim.layout")
@@ -50,7 +49,6 @@ end
 local function fresh()
   helpers.start()
   overview.close()
-  context.clear()
   sidecar.dispatch({ type = "reset" })
   follow.forget()
   transcript.clear()
@@ -373,12 +371,9 @@ describe("the Agent Overview", function()
     assert.is_nil(overview.get())
     assert.are.same({ layout.wins.input, "n" }, { api.nvim_get_current_win(), api.nvim_get_mode().mode })
 
-    -- From the code window, with a pinned selection: the pin goes, and the
-    -- cursor goes to the prompt.
+    -- From the code window, the cursor goes to the prompt.
     api.nvim_set_current_win(layout.code_win())
     vim.cmd.edit(helpers.tmp .. "/matchparen.lua")
-    feed("Vj<Esc>")
-    assert(context.selection(), "no pin")
     open()
     feed("2<CR>")
     assert(
@@ -388,7 +383,6 @@ describe("the Agent Overview", function()
       "<CR> from the code window took no focus"
     )
     assert.are.same({ layout.wins.input, "n" }, { api.nvim_get_current_win(), api.nvim_get_mode().mode })
-    assert.is_nil(context.selection())
     assert.are.same("◉ following Agent 2", follow.status())
 
     -- The compose window is the prompt too, so the cursor stays there.

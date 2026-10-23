@@ -8,7 +8,6 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { appendFileSync } from "node:fs";
 import { createInterface } from "node:readline";
-import { contextHook, PendingContexts } from "./context";
 import { PermissionBridge } from "./permissions";
 import { PreviewBridge } from "./preview";
 import type { Command, EffortLevel, Event } from "./protocol";
@@ -66,7 +65,6 @@ const ready = new Promise<Query>((resolve) => (sessionReady = resolve)).then(asy
 let controls: Promise<void> = Promise.resolve();
 const editor = new EditorBridge(emit);
 const permissions = new PermissionBridge(emit);
-const contexts = new PendingContexts();
 const previews = new PreviewBridge(emit);
 
 // The session to resume, after its history went out. Claude Code fails to
@@ -226,7 +224,6 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     forwardSubagentText: true,
     hooks: {
       PreToolUse: preToolUse(previews.hook, guard),
-      UserPromptSubmit: [{ hooks: [contextHook(contexts)] }],
     },
     systemPrompt: { type: "preset", preset: "claude_code", append: cmd.append_system_prompt },
     mcpServers: { [SERVER]: editorServer(editor) },
@@ -252,7 +249,6 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     .catch(() => {});
   const translator = new Translator();
   for await (const msg of session) {
-    contexts.message(msg);
     permissions.message(msg);
     for (const ev of translate(translator, msg)) emit(ev);
     if (msg.type === "result") {
@@ -276,7 +272,6 @@ export async function handle(cmd: Command): Promise<void> {
         .finally(() => process.exit());
       return;
     case "prompt":
-      contexts.push(cmd.text, cmd.context);
       inbox.push(cmd.text);
       return;
     case "interrupt":

@@ -103,7 +103,6 @@ describe("footer", function()
       effort = state.effort,
       mode = state.permission_mode,
       start = options().permission_mode,
-      paused = follow.paused,
     }
     api.nvim_buf_set_lines(input.buf(), 0, -1, false, { "" })
     follow.forget()
@@ -112,7 +111,7 @@ describe("footer", function()
   after_each(function()
     state.branch, state.permission_mode, options().permission_mode = saved.branch, saved.mode, saved.start
     state.model, state.effort = saved.model, saved.effort
-    follow.paused, state.waiting = saved.paused, nil
+    state.waiting = nil
     agents.clear()
     follow.forget()
     api.nvim_buf_set_lines(input.buf(), 0, -1, false, { "" })
@@ -160,11 +159,6 @@ describe("footer", function()
     away("footer_follow.lua")
     assert(text(200):find("⏺ Claude at footer_follow.lua:3 +1 (<leader>j)  ? for shortcuts", 1, true), text(200))
     assert.are.same("Comment", group(200, "(<leader>j)"))
-    follow.paused = function()
-      return true
-    end
-    assert(text(200):find("⏸ pinned · Claude at footer_follow.lua:3 +1 (<leader>j)", 1, true), text(200))
-    follow.paused = saved.paused
     start("ff1")
     follow.set_focus("ff1")
     layout.focus_input({ insert = false })
@@ -172,7 +166,7 @@ describe("footer", function()
     assert.are.same("AnvimAgent1", group(200, "◉ following Agent 1"))
   end)
 
-  it("drops the hints first in a narrow column, then shortens and drops the follow status before the chip", function()
+  it("drops the hints first in a narrow column, then shortens and drops the follow status", function()
     options().permission_mode, state.permission_mode, state.branch = "default", "acceptEdits", "main"
     state.model, state.effort = "claude-opus-5-5", "xhigh"
     away("footer_narrow.lua")
@@ -193,8 +187,6 @@ describe("footer", function()
       { "the long label", "accept edits on" },
       { "the dots", dots },
       { "the follow status", "footer_narrow.lua:3 +1" },
-      { "the whole chip", "⧉ In footer_narrow.lua" },
-      { "the chip", "⧉" },
     }
     local function has(width, part)
       if type(part) == "function" then
@@ -225,23 +217,6 @@ describe("footer", function()
     for width = gone[#parts - 1], 200 do
       assert.are.same(width, api.nvim_strwidth(text(width)), text(width))
     end
-  end)
-
-  it("keeps the follow status at 50 columns, leaves it to the statusline at 31, and shortens waiting", function()
-    options().permission_mode, state.permission_mode, state.branch = "bypassPermissions", "bypassPermissions", nil
-    state.model = "claude-opus-5-5"
-    away("f.lua")
-    local wide, follows = input.footer(50)
-    assert(text(50):find("⏺ Claude at f.lua:3 +1", 1, true), text(50))
-    assert(not text(50):find("Opus 5.5", 1, true), "the model goes before the follow status: " .. text(50))
-    assert.are.same(true, follows)
-    assert.are.same(50, api.nvim_strwidth(text(50)), text(50))
-    assert(wide)
-    local _, narrow = input.footer(31)
-    assert.are.same(false, narrow, text(31))
-    assert(text(31):find("⧉ In f.lua", 1, true), text(31))
-    state.waiting = "Esc to deny"
-    assert(vim.endswith(text(31), "⧉ In f.lua  ⏺ waiting "), text(31))
   end)
 
   it("drops ? for shortcuts before the jump key, when no label shows", function()

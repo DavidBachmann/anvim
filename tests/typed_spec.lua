@@ -1,7 +1,6 @@
 ---@module "luassert"
 
 local agents = require("anvim.agents")
-local context = require("anvim.context")
 local follow = require("anvim.follow")
 local helpers = require("helpers")
 local layout = require("anvim.layout")
@@ -118,7 +117,6 @@ end
 
 local function fresh(...)
   helpers.start()
-  context.clear()
   sidecar.dispatch({ type = "reset" })
   follow.forget()
   for _, id in ipairs({ ... }) do
@@ -132,7 +130,6 @@ describe("typed previews", function()
     stream.cancel_all()
     agents.clear()
     follow.forget()
-    context.clear()
   end)
 
   it("types the focused agent's edit at a steady pace, and answers once it has caught up", function()

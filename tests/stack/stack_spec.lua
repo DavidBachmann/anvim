@@ -518,7 +518,7 @@ describe("stack", function()
     wait_footer({ "⏺ ", "matchparen.lua:1 +1" }, "the footer in the code window")
     assert(not statusline():find("matchparen.lua:1", 1, true), statusline())
     -- A column too narrow for it leaves the follow status to the statusline.
-    lua([[vim.o.columns, vim.o.lines = 90, 24]])
+    lua([[vim.o.columns, vim.o.lines = 70, 24]])
     local ok = vim.wait(3000, function()
       return not footer().text:find("matchparen.lua:1", 1, true)
         and statusline():find("⏺ matchparen.lua:1 +1", 1, true) ~= nil
@@ -641,7 +641,7 @@ describe("stack", function()
       ]],
         file
       )
-      -- In the code window, with a pinned selection, an empty slot only says so.
+      -- In the code window, an empty slot only says so.
       lua(
         [[
         vim.api.nvim_set_current_win(require("anvim.layout").wins.code)
@@ -654,22 +654,19 @@ describe("stack", function()
       ]],
         file
       )
-      keys("2GVj<Esc>")
-      wait(2000, [[return require("anvim.context").selection() ~= nil]], "Vj<Esc> pinned nothing")
       keys("<leader>c3")
       wait(3000, [[return vim.tbl_contains(_G.said, "No agent in slot 3")]], "<leader>c3 said nothing")
       local probe = [[
-        local sel = require("anvim.context").selection()
         local follow = require("anvim.follow")
-        return { focus = follow.focus or false, mode = follow.mode(), sel = sel and { sel.start_line, sel.end_line } or false }
+        return { focus = follow.focus or false, mode = follow.mode() }
       ]]
       assert.are.same({ win = "code", mode = "n" }, where(), "<leader>c3 moved the cursor")
-      assert.are.same({ focus = false, mode = "review", sel = { 2, 3 } }, lua(probe))
-      -- <leader>c1 goes to the prompt, unpins and follows the agent in slot 1.
+      assert.are.same({ focus = false, mode = "review" }, lua(probe))
+      -- <leader>c1 goes to the prompt and follows the agent in slot 1.
       keys("<leader>c1")
       wait_where({ win = "input", mode = "n" }, "<leader>c1 from the code window")
       wait(3000, [[return require("anvim.follow").focus == "s1"]], "<leader>c1 took no focus")
-      assert.are.same({ focus = "s1", mode = "follow", sel = false }, lua(probe))
+      assert.are.same({ focus = "s1", mode = "follow" }, lua(probe))
       -- The focus redraws the footer, which colors the status with the agent's color.
       wait_footer({ "◉ ", "Agent 1" }, "the footer after the focus")
       local out = footer("Agent 1")
@@ -725,12 +722,10 @@ describe("stack", function()
       wait_footer({ "◉ ", "Explore 2" }, "the footer after the Overview")
       -- <leader>c0 does the same for Claude, the main agent.
       lua([[vim.api.nvim_set_current_win(require("anvim.layout").wins.code)]])
-      keys("5GVj<Esc>")
-      wait(2000, [[return require("anvim.context").selection() ~= nil]], "Vj<Esc> pinned nothing")
       keys("<leader>c0")
       wait_where({ win = "input", mode = "n" }, "<leader>c0 from the code window")
       wait(3000, [[return require("anvim.follow").focus == nil]], "<leader>c0 kept the focus")
-      assert.are.same({ focus = false, mode = "follow", sel = false }, lua(probe))
+      assert.are.same({ focus = false, mode = "follow" }, lua(probe))
     end)
     lua([[
       vim.notify = _G.notify or vim.notify
@@ -766,7 +761,7 @@ describe("stack", function()
     assert.are.same(("─"):rep(out.width), out.winbar)
     -- The session started in bypass mode, as the replay reports, so no mode
     -- label shows, and the empty prompt shows the shortcuts hint.
-    assert(out.footer:find("^ anvim %a+ [%d.]+  ⧉ In [%w._-]+ +◉ following  %? for shortcuts $"), out.footer)
+    assert(out.footer:find("^ anvim %a+ [%d.]+ +◉ following  %? for shortcuts $"), out.footer)
     assert.are.same(out.width, vim.fn.strdisplaywidth(out.footer))
     assert.are.same(3, out.height, "one prompt line, the footer and the winbar")
     lua([[vim.api.nvim_buf_set_lines(require("anvim.input").buf(), 0, -1, false, { "a", "b", "c" })]])
@@ -1134,7 +1129,6 @@ describe("stack", function()
     ]])
     assert.are.same(1, #sent)
     assert.are.same({ "prompt", word }, { sent[1].type, sent[1].text })
-    assert(sent[1].context and sent[1].context.file, "the prompt has no editor context")
 
     -- Enter on a slash command completes it and sends it, as in Claude Code.
     -- A command that needs an argument is only completed.
@@ -1222,153 +1216,6 @@ describe("stack", function()
       vim.cmd.stopinsert()
       vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
     ]])
-  end)
-
-  it("pins a visual selection for the prompt, until the cursor moves in the code window", function()
-    start()
-    local function probe()
-      return lua([[
-        local footer = {}
-        for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(require("anvim.input").buf(), -1, 0, -1, { details = true })) do
-          for _, line in ipairs(mark[4].virt_lines or {}) do
-            for _, chunk in ipairs(line) do
-              footer[#footer + 1] = chunk[1]
-            end
-          end
-        end
-        local sel = require("anvim.context").selection()
-        return { footer = table.concat(footer), sel = sel and { sel.start_line, sel.end_line, sel.mode } or false }
-      ]])
-    end
-    lua(
-      [[
-      vim.cmd.stopinsert()
-      vim.api.nvim_set_current_win(require("anvim.layout").wins.code)
-      vim.cmd.edit(...)
-    ]],
-      helpers.tmp .. "/matchparen.lua"
-    )
-    keys("2GVjj<C-l>")
-    wait_where({ win = "input", mode = "n" }, "<C-l> from visual mode")
-    local out = probe()
-    assert.are.same({ 2, 4, "line" }, out.sel)
-    assert(out.footer:find("⧉ 3 lines selected", 1, true), out.footer)
-    keys("<Esc><C-h>")
-    wait_where({ win = "code", mode = "n" }, "<C-h> from the prompt")
-    vim.wait(200)
-    assert.are.same({ 2, 4, "line" }, probe().sel, "going back to the code window dropped the pin")
-    keys("j")
-    wait(2000, [[return require("anvim.context").selection() == nil]], "j kept the pin")
-    assert(probe().footer:find("⧉ In matchparen.lua", 1, true), probe().footer)
-    keys("5Gvj")
-    local pos = lua([[
-      local pos = vim.fn.win_screenpos(require("anvim.layout").wins.input)
-      return { row = pos[1], col = pos[2] + 3 }
-    ]])
-    lua(
-      [[
-      vim.api.nvim_input_mouse("left", "press", "", 0, ...)
-      vim.api.nvim_input_mouse("left", "release", "", 0, ...)
-    ]],
-      pos.row,
-      pos.col
-    )
-    wait_where({ win = "input", mode = "n" }, "a click on the prompt from visual mode")
-    assert.are.same({ 5, 6, "char" }, probe().sel)
-    -- A typed <Esc> in the code window unpins, also through anvim's <Esc> map.
-    keys("<C-h>")
-    wait_where({ win = "code", mode = "n" }, "<C-h> from the prompt")
-    vim.wait(200)
-    assert.are.same({ 5, 6, "char" }, probe().sel, "going back to the code window dropped the pin")
-    assert.are.same("Clear the search highlight", lua([[return vim.fn.maparg("<Esc>", "n", false, true).desc]]))
-    keys("<Esc>")
-    wait(2000, [[return require("anvim.context").selection() == nil]], "<Esc> kept the pin")
-    lua([[require("anvim.layout").focus_input({ insert = false })]])
-  end)
-
-  it("pauses follow mode while a selection is pinned, and follows again after the prompt", function()
-    start()
-    local file, other = helpers.tmp .. "/matchparen.lua", helpers.tmp .. "/pin_other.lua"
-    vim.fn.writefile({ "local x = 1", "local yy = 22", "return x" }, other)
-    local function read(id)
-      lua(
-        [[require("anvim.sidecar").dispatch({ type = "tool_use", id = ..., name = "Read", input = { file_path = select(2, ...) } })]],
-        id,
-        other
-      )
-    end
-    local function code_file()
-      return lua([[return vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(require("anvim.layout").wins.code))]])
-    end
-    -- Types a prompt and sends it, and returns what the plugin sent.
-    local function ask()
-      lua([[
-        local sidecar = require("anvim.sidecar")
-        _G.sent, _G.send = {}, sidecar.send
-        sidecar.send = function(msg)
-          table.insert(_G.sent, msg)
-        end
-      ]])
-      keys("Awhat is this?")
-      wait(2000, [[return vim.api.nvim_get_current_line() == "what is this?"]], "the prompt was not typed")
-      hide_menu()
-      keys("<CR>")
-      wait(2000, [[return #_G.sent > 0]], "the prompt was not sent")
-      return lua([[
-        require("anvim.sidecar").send = _G.send
-        require("anvim.input").set_busy(false)
-        return _G.sent[1]
-      ]])
-    end
-    local function in_code()
-      lua(
-        [[
-        vim.cmd.stopinsert()
-        vim.api.nvim_set_current_win(require("anvim.layout").wins.code)
-        vim.cmd.edit(...)
-      ]],
-        file
-      )
-    end
-
-    -- Claude reads another file after the user pinned and went to the prompt.
-    in_code()
-    keys("10G")
-    vim.wait(300)
-    keys("Vj<C-l>")
-    wait_where({ win = "input", mode = "n" }, "<C-l> with a selection")
-    read("pin1")
-    vim.wait(100)
-    assert.are.same(file, code_file(), "follow mode left the pinned file")
-    wait_footer({ "⏸ ", "pin_other.lua:1 +1" }, "the footer with a pin")
-    local sent = ask()
-    assert.are.same({ 10, 11 }, { sent.context.selection.start_line, sent.context.selection.end_line })
-    wait(
-      2000,
-      ([[return vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(require("anvim.layout").wins.code)) == %q]]):format(
-        other
-      ),
-      "follow mode did not catch up after the prompt"
-    )
-    wait_footer({ "◉ following" }, "the footer after the prompt")
-
-    -- Claude reads another file while the user reads, and the user then points.
-    keys("<Esc>")
-    in_code()
-    read("pin2")
-    keys("10G")
-    vim.wait(300)
-    keys("Vj<C-l>")
-    wait_where({ win = "input", mode = "n" }, "<C-l> with a selection")
-    vim.wait(100)
-    assert.are.same(file, code_file(), "entering the prompt took the pinned file away")
-    sent = ask()
-    assert.are.same({ "matchparen.lua", 10, 11 }, {
-      sent.context.file,
-      sent.context.selection.start_line,
-      sent.context.selection.end_line,
-    })
-    keys("<Esc>")
   end)
 
   it("gives a file that follow mode catches up to its filetype and the read-only lock", function()

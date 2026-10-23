@@ -95,9 +95,6 @@ function M.buf()
   map("n", "<Esc>", M.escape, { nowait = true })
   map({ "i", "n" }, "<C-c>", M.interrupt)
   map({ "i", "n" }, "<S-Tab>", M.cycle_mode)
-  map({ "i", "n" }, "<C-x>", function()
-    require("anvim.context").clear()
-  end)
   map({ "i", "n" }, "<C-g>", function()
     require("anvim.compose").open()
   end)
@@ -283,9 +280,9 @@ function M.send(text)
   -- background agent's end starts has none.
   require("anvim.tools").clear()
   require("anvim.agents").prompt_sent()
-  local context, label = require("anvim.context").prompt(text)
-  transcript.user(text, label)
-  sidecar.send({ type = "prompt", text = text, context = context })
+  require("anvim.trail").prompt(text)
+  transcript.user(text)
+  sidecar.send({ type = "prompt", text = text })
   if not state.busy then
     M.set_busy(true)
   end
@@ -525,16 +522,14 @@ local function mode_label()
   end
 end
 
--- The model and its effort on the left. After them, the chip says what the
--- next prompt shows Claude, and a dot in each running agent's color follows,
--- with their count. The focused agent's dot is ◉. On the right, the follow
+-- The model and its effort on the left. After them, a dot in each running
+-- agent's color, with their count. The focused agent's dot is ◉. On the right, the follow
 -- status says where Claude is, in the focused agent's color, then the mode's
 -- label with its hint, or "? for shortcuts". In a narrow column, the hints go
 -- first, then the branch, which the statusline shows too, then the agents'
 -- count, the effort and the model. Then the follow status and the mode get
 -- their short forms, the dots go, and the follow status goes to the
--- statusline. The chip, which says what Claude gets, goes last: first its
--- file name gets shorter.
+-- statusline.
 ---@param width integer
 ---@return [string, string?][] chunks, boolean follows The chunks show the follow status.
 function M.footer(width)
@@ -548,8 +543,6 @@ function M.footer(width)
   local follow = require("anvim.follow")
   local status = follow.status()
   local jump = follow.place() and not follow.following() and " (<leader>j)" or ""
-  local context = require("anvim.context")
-  local chip = context.chip()
   local agents = require("anvim.agents")
   local running = agents.running()
   local dots = {} ---@type [string, string][]
@@ -568,7 +561,7 @@ function M.footer(width)
   -- Columns to spare between the left side and the right side.
   local function free()
     local r = right()
-    local left = w(" anvim " .. branch .. model .. effort) + (chip and w("  " .. chip[1]) or 0)
+    local left = w(" anvim " .. branch .. model .. effort)
     left = left + (#dots > 0 and 2 + #dots * w("⏺") + w(count) or 0)
     return width - left - (r > 0 and r + 3 or 0)
   end
@@ -605,13 +598,7 @@ function M.footer(width)
   if free() < 0 then
     status = ""
   end
-  if chip and free() < 0 then
-    chip = context.chip(w(chip[1]) + free())
-  end
   local chunks = { { " anvim ", "AnvimClaude" }, { branch, "Comment" }, { model .. effort } }
-  if chip then
-    vim.list_extend(chunks, { { "  " }, chip })
-  end
   if #dots > 0 then
     vim.list_extend(chunks, { { "  " }, unpack(dots) })
     chunks[#chunks + 1] = { count, "AnvimChip" }

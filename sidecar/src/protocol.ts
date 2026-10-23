@@ -1,16 +1,6 @@
 // Wire protocol between the anvim Lua plugin and this sidecar.
 // One JSON object per line in each direction.
 
-// What the code window shows when the user sends a prompt (context.ts).
-// Paths are relative to the cwd, or absolute outside it. Lines are 1-based
-// and inclusive.
-export type PromptContext = {
-  file?: string;
-  cursor_line?: number;
-  visible?: [number, number];
-  selection?: { start_line: number; end_line: number; text: string; mode: "char" | "line" | "block" };
-};
-
 // builtin marks Claude Code's own commands. A typed alias runs the command
 // that has it as its name, when one exists.
 export type SlashCommand = {
@@ -43,7 +33,7 @@ export type Command =
       history?: boolean;
       append_system_prompt?: string;
     }
-  | { type: "prompt"; text: string; context?: PromptContext }
+  | { type: "prompt"; text: string }
   | { type: "interrupt" }
   | { type: "set_permission_mode"; mode: string }
   | { type: "set_model"; model?: string }

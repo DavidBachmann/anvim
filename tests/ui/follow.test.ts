@@ -175,9 +175,7 @@ test("the mode block and the line numbers change in the same frame, for each way
   const click = (action: string) => `<Left${action}><${code.col + 20},${code.row + 5}>`;
   await step("to the prompt", ["<C-w>l"], "input", "n");
   await step("back to the code window", ["<C-w>h"], "code", "n");
-  await step("pin", ["V2j<Esc>"], "code", "n");
-  await step("to the prompt with a pin", ["<C-w>l"], "input", "n");
-  await step("unpin", ["<C-x>"], "input", "n");
+  await step("back to the prompt", ["<C-w>l"], "input", "n");
   await step("compose window", ["<C-g>"], "anvim_input", "n");
   await step("compose window closes", ["<C-g>"], "input", "n");
   await step("key view", ["?"], "anvim_keys", "n");

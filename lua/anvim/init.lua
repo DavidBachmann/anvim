@@ -38,9 +38,7 @@ local highlights = {
   AnvimDanger = { link = "DiagnosticError" },
   AnvimShow = { link = "Visual" },
   AnvimNote = { link = "DiagnosticInfo" },
-  AnvimSelection = { link = "Visual" },
   AnvimChip = { link = "Comment" },
-  AnvimChipSelection = { link = "AnvimClaude" },
   -- The Claude column's background is the tree's. The explorer's list maps
   -- NormalFloat to SnacksPickerList.
   AnvimNormal = { link = "SnacksPickerList" },
@@ -122,7 +120,6 @@ local function wire()
   stream.attach()
   require("anvim.tools").attach()
   require("anvim.permission").attach()
-  require("anvim.context").attach()
   require("anvim.trail").attach(sidecar)
   require("anvim.completion").attach(sidecar)
   require("anvim.sessions").attach()

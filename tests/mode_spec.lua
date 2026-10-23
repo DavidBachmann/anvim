@@ -1,7 +1,6 @@
 ---@module "luassert"
 
 local compose = require("anvim.compose")
-local context = require("anvim.context")
 local follow = require("anvim.follow")
 local helpers = require("helpers")
 local keyview = require("anvim.keyview")
@@ -62,7 +61,6 @@ end
 
 local function fresh()
   helpers.start()
-  context.clear()
   if compose.win() then
     api.nvim_win_close(compose.win(), true)
   end
@@ -88,7 +86,6 @@ describe("mode", function()
       pcall(api.nvim_win_close, win, true)
     end
     extra = {}
-    context.clear()
     vim.cmd.stopinsert()
   end)
 
@@ -219,21 +216,6 @@ describe("mode", function()
     api.nvim_exec_autocmds("SafeState", {})
     assert.are.same("review", follow.mode())
     assert.are.same(REVIEW, numbers())
-  end)
-
-  it("is review while a selection is pinned, also in the prompt, and follow again once it goes", function()
-    fresh()
-    feed("2GVj<Esc>")
-    assert(context.selection(), "no pin")
-    to_prompt()
-    assert.are.same("review", follow.mode())
-    assert.are.same(REVIEW, numbers())
-    changes = 0
-    feed("<C-x>")
-    assert.is_nil(context.selection())
-    assert.are.same("follow", follow.mode())
-    assert.are.same(NONE, numbers())
-    assert.are.same(1, changes)
   end)
 
   it("keeps the numbers of the mode when the code window shows another buffer", function()

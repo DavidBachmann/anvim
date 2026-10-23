@@ -752,8 +752,7 @@ local function set_tool_line(tool, label, bullet_hl)
   tool.stamp = M.stamp(buf, row, tool.time, tool.stamp)
 end
 
----@param context string? The editor context that went with the prompt, such as a.lua#L12-30.
-function M.user(text, context)
+function M.user(text)
   -- A turn without text has no reply, rather than the last turn's.
   text_open, reply_done, reply, run = false, true, {}, nil
   local lines = vim.split(text, "\n", { plain = true })
@@ -767,13 +766,6 @@ function M.user(text, context)
   end
   hl(buf, row, 0, #"❯", "AnvimPrompt")
   M.stamp(buf, row, now())
-  if context then
-    local line = "  ⎿  ⧉ " .. context
-    with_modifiable(function()
-      api.nvim_buf_set_lines(buf, row + #lines, row + #lines, false, { line })
-    end)
-    hl(buf, row + #lines, 0, #line, "AnvimResult")
-  end
   -- A new prompt brings every view back to the end.
   if not batch then
     scroll(follow_wins(false))

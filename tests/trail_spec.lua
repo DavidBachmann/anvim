@@ -47,20 +47,15 @@ describe("trail", function()
 
     replay(helpers.recording)
     replay(helpers.root .. "/tests/fixtures/editor-tools.jsonl")
-    trail.prompt(
-      "see @matchparen.lua#L3-5, @nope.lua and @lua/anvim/stream.lua",
-      helpers.tmp .. "/matchparen.lua",
-      { start_line = 10, end_line = 12 }
-    )
+    trail.prompt("see @matchparen.lua#L3-5, @nope.lua and @lua/anvim/stream.lua")
 
     local items = trail.items()
     local you_file = find(items, "You", "lua/anvim/stream.lua")
     local you_ref = find(items, "You", "matchparen.lua#L3-5")
-    local you_sel = find(items, "You", "matchparen.lua#L10-12")
     local show, shown = find(items, "Show", "lua/anvim/stream.lua#L189-205")
     local edit, edited = find(items, "Edit", "matchparen.lua#L9")
     local read = find(items, "Read", "matchparen.lua")
-    assert(you_file < you_ref and you_ref < you_sel and you_sel < show and show < edit and edit < read, "newest first")
+    assert(you_file < you_ref and you_ref < show and show < edit and edit < read, "newest first")
     assert(shown.note:find("^The only real use of take"), shown.note)
     assert.are.same({ { 9, 0 }, { 9, #vim.fn.readfile(helpers.tmp .. "/matchparen.lua")[9] } }, {
       edited.pos,

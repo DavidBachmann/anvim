@@ -2,7 +2,6 @@
 
 local agents = require("anvim.agents")
 local bashread = require("anvim.bashread")
-local context = require("anvim.context")
 local follow = require("anvim.follow")
 local helpers = require("helpers")
 local layout = require("anvim.layout")
@@ -107,7 +106,6 @@ end
 
 local function fresh()
   helpers.start()
-  context.clear()
   sidecar.dispatch({ type = "reset" })
   follow.forget()
   bashread.forget()
@@ -136,7 +134,6 @@ describe("bash reads", function()
   after_each(function()
     agents.clear()
     follow.forget()
-    context.clear()
     vim.cmd.stopinsert()
   end)
 

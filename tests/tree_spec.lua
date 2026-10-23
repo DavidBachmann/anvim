@@ -204,7 +204,6 @@ describe("tree", function()
   it("drops the main agent's place mark when a turn's end flushes the steps through a Bash call's reads", function()
     fresh()
     local a, b, c = file("steps_a.lua"), file("steps_b.lua"), file("steps_c.lua")
-    require("anvim.context").clear()
     layout.focus_input({ insert = false })
     assert.is_true(follow.shows(nil))
     sidecar.dispatch({

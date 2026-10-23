@@ -92,11 +92,8 @@ function M.tool_result(ev)
   entry.first, entry.last = first, last and math.max(last, first)
 end
 
--- The selection that went with a prompt, and the references in its text.
-function M.prompt(text, path, selection)
-  if path and selection then
-    add("You", path, selection.start_line, selection.end_line)
-  end
+-- The references in a prompt's text.
+function M.prompt(text)
   for start, ref in text:gmatch("()@(%S+)") do
     if start == 1 or text:sub(start - 1, start - 1):match("%s") then
       local file, first, last = ref:match("^(.-)#L(%d+)%-?(%d*)")

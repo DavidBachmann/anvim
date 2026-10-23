@@ -1,7 +1,8 @@
 -- References in the prompt: @path#L12-30 (1-based, inclusive), the format of
 -- Claude Code's IDE integrations. In a file buffer, visual `c` and
--- `c{motion}` insert one. Read-only buffers leave `c` free, and "c" reads as
--- "change this, Claude".
+-- `c{motion}` insert one and go on typing. Read-only buffers leave `c` free,
+-- and "c" reads as "change this, Claude". <leader>cb inserts the selection or
+-- the whole file, and leaves the cursor in the prompt in normal mode.
 local context = require("anvim.context")
 
 local M = {}
@@ -46,27 +47,27 @@ function M.insert(text, typing)
   end
 end
 
--- Points Claude at lines of a file buffer. The reference replaces the pinned
--- selection.
-function M.point(buf, first, last)
+-- Points Claude at lines of a file buffer, or at the whole file.
+---@param typing boolean?
+function M.point(buf, first, last, typing)
   local path = context.file(buf)
   if not path then
     vim.notify("anvim: this buffer has no file to point at", vim.log.levels.WARN)
     return
   end
-  context.clear()
-  M.insert(M.format(path, first, last), true)
+  M.insert(M.format(path, first, last), typing)
 end
 
-function M.visual()
+---@param typing boolean?
+function M.visual(typing)
   local buf = api.nvim_get_current_buf()
-  M.point(buf, api.nvim_buf_get_mark(buf, "<")[1], api.nvim_buf_get_mark(buf, ">")[1])
+  M.point(buf, api.nvim_buf_get_mark(buf, "<")[1], api.nvim_buf_get_mark(buf, ">")[1], typing)
 end
 
 -- The 'operatorfunc' of `c`.
 function M.operator()
   local buf = api.nvim_get_current_buf()
-  M.point(buf, api.nvim_buf_get_mark(buf, "[")[1], api.nvim_buf_get_mark(buf, "]")[1])
+  M.point(buf, api.nvim_buf_get_mark(buf, "[")[1], api.nvim_buf_get_mark(buf, "]")[1], true)
 end
 
 -- Whole files and directories, as from the explorer.
@@ -86,7 +87,11 @@ function M.map(buf)
   local function map(mode, lhs, rhs, opts)
     require("anvim.keys").set("code", mode, lhs, rhs, vim.tbl_extend("force", { buffer = buf }, opts or {}))
   end
-  map("x", "c", "<Esc><Cmd>lua require('anvim.refs').visual()<CR>")
+  map("x", "c", "<Esc><Cmd>lua require('anvim.refs').visual(true)<CR>")
+  map("x", "<leader>cb", "<Esc><Cmd>lua require('anvim.refs').visual()<CR>")
+  map("n", "<leader>cb", function()
+    M.point(buf)
+  end)
   -- nowait: a global map such as a personal spec's `cs` would make `c` wait
   -- for 'timeoutlen'.
   map("n", "c", function()
@@ -98,12 +103,10 @@ function M.map(buf)
   map("o", "c", function()
     return vim.v.operator == "g@" and vim.o.operatorfunc == OPFUNC and "_" or "c"
   end, { expr = true })
-  -- The global <C-l> is for normal mode only.
-  map("x", "<C-l>", "<C-w>l")
 end
 
 function M.unmap(buf)
-  for _, k in ipairs({ { "x", "c" }, { "n", "c" }, { "o", "c" }, { "x", "<C-l>" } }) do
+  for _, k in ipairs({ { "x", "c" }, { "n", "c" }, { "o", "c" }, { "x", "<leader>cb" }, { "n", "<leader>cb" } }) do
     pcall(vim.keymap.del, k[1], k[2], { buffer = buf })
   end
 end

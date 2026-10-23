@@ -1,8 +1,6 @@
 -- Follow mode: while the cursor is in the prompt, the code window shows where
 -- Claude reads and writes. Elsewhere the user is in control, and the
--- prompt's footer says where Claude is. A pinned selection pauses it, so the
--- code window keeps what the user points at until the next prompt. Follow mode
--- follows one agent: the main agent, or the subagent that the user focused.
+-- prompt's footer says where Claude is. Follow mode follows one agent: the main agent, or the subagent that the user focused.
 local agents = require("anvim.agents")
 local bashread = require("anvim.bashread")
 local input = require("anvim.input")
@@ -62,13 +60,9 @@ function M.enabled()
   return layout.wins.input ~= nil and (win == layout.wins.input or win == require("anvim.compose").win())
 end
 
-function M.paused()
-  return require("anvim.context").selection() ~= nil
-end
-
 -- Whether the focused agent's moves move the code window.
 function M.following()
-  return M.enabled() and not M.paused()
+  return M.enabled()
 end
 
 -- Whether the moves of agent `id`, or of the main agent for nil, move the code window.
@@ -80,8 +74,7 @@ end
 ---@alias anvim.Mode 'follow'|'review'
 
 -- Follow mode is a mode of its own, next to Vim's: the cursor is in the
--- prompt or the compose window, and no selection is pinned. Anywhere else,
--- the user reviews code.
+-- prompt or the compose window. Anywhere else, the user reviews code.
 ---@type anvim.Mode
 local mode = "review"
 -- Whether the last window that set the mode was the prompt.
@@ -295,7 +288,7 @@ function M.update()
   if prompt or not (on_top(win) or float_copy(win)) then
     in_prompt = prompt
   end
-  local new = in_prompt and not M.paused() and "follow" or "review"
+  local new = in_prompt and "follow" or "review"
   if new ~= mode then
     mode = new
     if new == "review" and require("anvim.windows").clicked() then
@@ -425,16 +418,14 @@ local function catch_up()
   end
 end
 
--- Moves the code window to the focused agent's latest place. A pin goes
--- first, since it would keep the view where the user pointed.
+-- Moves the code window to the focused agent's latest place.
 function M.jump()
-  require("anvim.context").clear()
   catch_up()
   input.redraw()
 end
 
 -- When following, the code window catches up with the focused agent, as on
--- entering the prompt or after a pin ends.
+-- entering the prompt.
 function M.resume()
   local place = M.place()
   if M.following() and place and place.behind > 0 then
@@ -499,8 +490,6 @@ function M.follow(id)
   -- The end of an agent that has the focus already says so in the transcript.
   local focused = id ~= nil and id == M.focus
   vim.schedule(function()
-    -- The user asked to follow now, so a pinned selection goes.
-    require("anvim.context").clear()
     if not M.enabled() then
       layout.focus_input({ insert = false })
     end
@@ -748,9 +737,7 @@ function M.status(short)
   local agent = M.focused()
   local name = agent and agents.name(agent) or "Claude"
   local claude = where and (short and where or name .. " at " .. where) or (agent and name)
-  if M.paused() then
-    return short and "⏸ " .. (where or "pinned") or "⏸ pinned" .. (claude and " · " .. claude or "")
-  elseif M.enabled() then
+  if M.enabled() then
     return agent and (short and "◉ " or "◉ following ") .. name or "◉ following"
   end
   return claude and "⏺ " .. claude or ""

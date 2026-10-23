@@ -1,7 +1,6 @@
 ---@module "luassert"
 
 local agents = require("anvim.agents")
-local context = require("anvim.context")
 local follow = require("anvim.follow")
 local helpers = require("helpers")
 local input = require("anvim.input")
@@ -72,7 +71,6 @@ end
 
 local function fresh()
   helpers.start()
-  context.clear()
   sidecar.dispatch({ type = "reset" })
   follow.forget()
   transcript.clear()
@@ -112,7 +110,6 @@ describe("focus", function()
     permission.cancel_all()
     agents.clear()
     follow.forget()
-    context.clear()
     local fn = restore
     restore = nil
     if fn then
@@ -199,21 +196,6 @@ describe("focus", function()
     assert.are.same("⏺ Agent 2 at focus_g.lua:3 +1", follow.status(), "focus counts a place the view left")
     follow.jump()
     assert.are.same({ a, 3 }, { code_file(), code_line() }, "<leader>j goes to the focused agent")
-
-    -- A pin pauses follow mode for the focused agent too.
-    vim.api.nvim_feedkeys(vim.keycode("2GVj<Esc>"), "mxt", false)
-    assert(context.selection(), "no pin")
-    prompt()
-    read("g2", other, 2)
-    assert.are.same(a, code_file())
-    assert.are.same("⏸ pinned · Agent 2 at focus_other.lua:2 +1", follow.status())
-    context.clear()
-    assert(
-      vim.wait(1000, function()
-        return code_file() == other
-      end),
-      "no catch-up after the pin"
-    )
   end)
 
   it("goes back to the main agent when the focused agent ends, with a notice", function()
