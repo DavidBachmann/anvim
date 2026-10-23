@@ -1,14 +1,19 @@
 // Editor tools: an in-process MCP server whose tools run in Neovim. Each call
 // becomes an editor_request, and the plugin (lua/anvim/tools.lua) answers it.
 import { createSdkMcpServer, tool, type McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-sdk";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { z } from "zod";
 import type { Command, Event } from "./protocol";
+import { parseDump, png, svg, type Pos } from "./screen";
 
 export const SERVER = "anvim";
 const TIMEOUT_MS = 10_000;
 
 type Response = Extract<Command, { type: "editor_response" }>;
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };
+type ImageResult = { content: ({ type: "text"; text: string } | { type: "image"; data: string; mimeType: string })[] };
 
 const text = (s: string, isError = false): Result => ({
   content: [{ type: "text", text: s }],
@@ -27,12 +32,17 @@ export class EditorBridge {
   ) {}
 
   request(method: string, params: Record<string, unknown>): Promise<Result> {
+    return this.call(method, params).then((res) => (res.error != null ? text(res.error, true) : text(res.result ?? "")));
+  }
+
+  // The editor's raw answer, for a tool that builds its own result.
+  call(method: string, params: Record<string, unknown>): Promise<{ result?: string; error?: string }> {
     const req = this.next++;
     return new Promise((resolve) => {
       const finish = (res: { result?: string; error?: string }) => {
         clearTimeout(timer);
         this.pending.delete(req);
-        resolve(res.error != null ? text(res.error, true) : text(res.result ?? ""));
+        resolve(res);
       };
       const timer = setTimeout(
         () => finish({ error: `Neovim did not answer ${method} within ${this.timeoutMs / 1000} s.` }),
@@ -59,8 +69,56 @@ const lsp = "It asks the language servers running in the user's editor.";
 // The tools only read code and move the editor's view.
 const readOnly = { annotations: { readOnlyHint: true } };
 
-export function editorTools(bridge: EditorBridge) {
+// The user's screen as their terminal shows it. Neovim's TUI writes the dump,
+// and the plugin answers with the default colors and the cursor (0-based),
+// which the dump lacks.
+async function screenshot(bridge: EditorBridge): Promise<Result | ImageResult> {
+  const dir = mkdtempSync(join(tmpdir(), "anvim-screenshot-"));
+  const files = { dump: join(dir, "screen.cat"), svg: join(dir, "screen.svg"), png: join(dir, "screen.png") };
+  const res = await bridge.call("screenshot", { path: files.dump });
+  if (res.error != null) return text(res.error, true);
+  try {
+    const info = JSON.parse(res.result ?? "{}") as { fg?: number; bg?: number; cursor?: Pos };
+    const screen = parseDump(readFileSync(files.dump, "utf8"));
+    writeFileSync(files.svg, svg(screen.cells, { fg: info.fg ?? 0xffffff, bg: info.bg ?? 0 }, info.cursor));
+    const why = await png(files.svg, files.png, screen.cols, screen.rows);
+    const lines = screen.cells.map((row) => row.map((c) => c.text).join("").trimEnd());
+    const cursor = info.cursor ? ` The cursor is at row ${info.cursor.row + 1}, column ${info.cursor.col + 1}.` : "";
+    const summary = [
+      `The user's screen has ${screen.rows} rows and ${screen.cols} columns.${cursor}`,
+      "```",
+      ...lines,
+      "```",
+      why
+        ? `There is no PNG: ${why} The terminal output and an SVG are in ${dir}.`
+        : `The terminal output, an SVG and the PNG are in ${dir}.`,
+    ].join("\n");
+    if (why) return text(summary);
+    return {
+      content: [
+        { type: "image", data: readFileSync(files.png).toString("base64"), mimeType: "image/png" },
+        { type: "text", text: summary },
+      ],
+    };
+  } catch (err) {
+    return text(`Could not read the screenshot in ${dir}: ${err}`, true);
+  }
+}
+
+export function editorTools(bridge: EditorBridge, opts: { debug?: boolean } = {}) {
   const call = (method: string) => (args: Record<string, unknown>) => bridge.request(method, args);
+  // The screenshot tool is for anvim's own development, so only --debug adds it.
+  const debug = opts.debug
+    ? [
+        tool(
+          "screenshot",
+          "Take a picture of the user's anvim screen as their terminal shows it. It returns a PNG and the screen's text. Images that the terminal draws, such as PNG files in the code window, are not in it.",
+          {},
+          () => screenshot(bridge),
+          readOnly,
+        ),
+      ]
+    : [];
   return [
     tool(
       "show_user",
@@ -116,12 +174,13 @@ export function editorTools(bridge: EditorBridge) {
       call("lsp_workspace_symbols"),
       readOnly,
     ),
+    ...debug,
   ];
 }
 
-export function editorServer(bridge: EditorBridge): McpSdkServerConfigWithInstance {
+export function editorServer(bridge: EditorBridge, opts: { debug?: boolean } = {}): McpSdkServerConfigWithInstance {
   // Always loaded, so the tools never hide behind tool search.
-  return createSdkMcpServer({ name: SERVER, tools: editorTools(bridge), alwaysLoad: true });
+  return createSdkMcpServer({ name: SERVER, tools: editorTools(bridge, opts), alwaysLoad: true });
 }
 
 // Read-only tools need no permission prompt. Trust comes from the server's

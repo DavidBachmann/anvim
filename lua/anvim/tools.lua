@@ -719,7 +719,79 @@ local function diagnostics(params, done)
   check()
 end
 
+-- The fg and bg of cells that use the default colors. Without a Normal bg, the
+-- terminal shows its own, which anvim asked for with OSC 11.
+local function default_colors()
+  local function get()
+    return api.nvim_get_hl(0, { name = "Normal", link = false })
+  end
+  local code = layout.wins.code
+  local normal = code and api.nvim_win_is_valid(code) and api.nvim_win_call(code, get) or get()
+  local dark = vim.o.background == "dark"
+  return normal.fg or (dark and 0xd0d0d0 or 0x303030),
+    normal.bg or require("anvim").term_bg() or (dark and 0x000000 or 0xffffff)
+end
+
+-- The cursor's screen cell, 0-based. ui2 draws the command line outside the
+-- current window, so the cursor is unknown there.
+local function screen_cursor()
+  if api.nvim_get_mode().mode:sub(1, 1) == "c" then
+    return
+  end
+  local win = api.nvim_get_current_win()
+  local pos = api.nvim_win_get_cursor(win)
+  local cell = vim.fn.screenpos(win, pos[1], pos[2] + 1)
+  if cell.row > 0 then
+    return { row = cell.row - 1, col = cell.curscol - 1 }
+  end
+end
+
+-- Neovim's TUI writes the screen as terminal output to params.path. It runs
+-- in a process of its own, so the file appears a moment later. It is whole
+-- once its size stays the same over two polls.
+local function screenshot(params, done)
+  if not require("anvim.config").options.debug then
+    return done(nil, "The screenshot tool works only when anvim runs with --debug.")
+  end
+  local tui = vim.iter(api.nvim_list_uis()):any(function(ui)
+    return ui.stdout_tty
+  end)
+  if not tui then
+    return done(nil, "No terminal shows this Neovim, so there is no screen to take a picture of.")
+  end
+  if type(params.path) ~= "string" or not vim.startswith(params.path, "/") then
+    return done(nil, "The screenshot needs an absolute path.")
+  end
+  if type(api.nvim__screenshot) ~= "function" then
+    return done(nil, "This Neovim has no nvim__screenshot().")
+  end
+  local fg, bg = default_colors()
+  local answer = vim.json.encode({ fg = fg, bg = bg, cursor = screen_cursor() })
+  -- The TUI keeps the attr that it printed last, and the dump moves its
+  -- cursor. Without the reset before, the first cells can lack their colors.
+  -- Without the reset after, the next draw can have the wrong colors. A
+  -- termguicolors change resets both, also when the value stays the same.
+  vim.cmd("noautocmd let &termguicolors = &termguicolors")
+  api.nvim__screenshot(params.path)
+  vim.cmd("noautocmd let &termguicolors = &termguicolors")
+  local start, last = vim.uv.now(), -1
+  local function check()
+    local stat = vim.uv.fs_stat(params.path)
+    local size = stat and stat.size or -1
+    if size > 0 and size == last then
+      return done(answer)
+    end
+    if vim.uv.now() - start >= M.budget_ms then
+      return done(nil, "The terminal did not write the screenshot in time.")
+    end
+    last = size
+    vim.defer_fn(guard(done, check), 100)
+  end
+  vim.defer_fn(guard(done, check), 100)
+end
+
 local handlers = {
+  screenshot = screenshot,
   show_user = show_user,
   diagnostics = diagnostics,
   lsp_definition = lsp_definition,

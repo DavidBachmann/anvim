@@ -1,5 +1,5 @@
 #!/bin/sh
-# Usage: anvim [--model <model>] [--effort <level>] [--mode <mode>] [--no-sandbox] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
+# Usage: anvim [--model <model>] [--effort <level>] [--mode <mode>] [--no-sandbox] [--debug] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
 # The permission mode is default, acceptEdits, plan or bypassPermissions. It is
 # bypassPermissions unless --mode or ANVIM_MODE says otherwise: Claude runs
 # tools without asking. The sandbox limits where its Bash commands write, and
@@ -9,9 +9,10 @@
 # Claude Code settings for the model, else the model's. Claude's Bash
 # commands run in Claude Code's sandbox, which lets them write only in the
 # project, a temp dir and the caches of npm, bun and go build.
-# --no-sandbox (ANVIM_SANDBOX=0) turns it off. When the repo's lockfiles
-# changed since the last install, anvim runs scripts/install first.
-# ANVIM_NO_INSTALL=1 skips that.
+# --no-sandbox (ANVIM_SANDBOX=0) turns it off. --debug (ANVIM_DEBUG=1) is for
+# anvim's own development: it gives Claude a tool that takes a picture of the
+# screen. When the repo's lockfiles changed since the last install, anvim runs
+# scripts/install first. ANVIM_NO_INSTALL=1 skips that.
 root=$(cd "$(dirname "$(realpath "$0")")/.." && pwd)
 
 is_session_id() {
@@ -64,6 +65,11 @@ while [ "$n" -gt 0 ]; do
       shift
       n=$((n - 1))
       ;;
+    --debug)
+      ANVIM_DEBUG=1
+      shift
+      n=$((n - 1))
+      ;;
     -c | --continue)
       ANVIM_CONTINUE=1
       shift
@@ -94,6 +100,7 @@ while [ "$n" -gt 0 ]; do
 done
 [ -n "$ANVIM_MODEL" ] && export ANVIM_MODEL
 [ -n "$ANVIM_SANDBOX" ] && export ANVIM_SANDBOX
+[ -n "$ANVIM_DEBUG" ] && export ANVIM_DEBUG
 if [ -n "$mode" ] || [ -n "$ANVIM_MODE" ]; then
   case "$ANVIM_MODE" in
     default | acceptEdits | plan | bypassPermissions) export ANVIM_MODE ;;

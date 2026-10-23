@@ -5,21 +5,11 @@
 import { decodeMultiStream, encode } from "@msgpack/msgpack";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { png, svg, type Attr } from "../../sidecar/src/screen";
 
+export type { Attr };
 export const root = resolve(import.meta.dir, "../..");
-const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
-export type Attr = {
-  foreground?: number;
-  background?: number;
-  special?: number;
-  reverse?: boolean;
-  bold?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-  undercurl?: boolean;
-  strikethrough?: boolean;
-};
 export type Cell = { text: string; hl: number };
 export type Pos = { row: number; col: number };
 // The screen at one flush. Rows and columns are 0-based grid cells. `changed`
@@ -61,9 +51,10 @@ export class Ui {
     // The child must not see the user's anvim state, or a Neovim it runs in.
     // Without the cmux variables, it posts no notifications to the user's terminal.
     // A shell profile can set ANVIM_MODE, ANVIM_EFFORT or ANVIM_SANDBOX, and opts.env sets the child's.
+    // A debug anvim passes ANVIM_DEBUG to Claude's shell, which runs the tests.
     const env: Record<string, string> = {};
     for (const [key, value] of Object.entries(process.env)) {
-      const cleared = /^(XDG_|NVIM|LAZY_|CMUX_|ANVIM_MODE$|ANVIM_EFFORT$|ANVIM_SANDBOX$)/.test(key);
+      const cleared = /^(XDG_|NVIM|LAZY_|CMUX_|ANVIM_MODE$|ANVIM_EFFORT$|ANVIM_SANDBOX$|ANVIM_DEBUG$)/.test(key);
       if (value !== undefined && !cleared) env[key] = value;
     }
     env.NVIM_APPNAME = "anvim";
@@ -324,66 +315,18 @@ export class Ui {
   }
 
   svg(): string {
-    const cw = 9.6;
-    const ch = 20;
-    const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
-    const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const w = Math.ceil((this.grid[0]?.length ?? 0) * cw);
-    const h = this.grid.length * ch;
-    const parts = [
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" font-family="JetBrainsMono Nerd Font, Menlo, monospace" font-size="16">`,
-      `<rect width="${w}" height="${h}" fill="${hex(this.defaults.bg)}"/>`,
-    ];
-    this.grid.forEach((row, r) => {
-      let start = 0;
-      for (let c = 1; c <= row.length; c++) {
-        if (c < row.length && row[c]!.hl === row[start]!.hl) continue;
-        const a = this.attrs.get(row[start]!.hl)?.rgb ?? {};
-        let fg = a.foreground ?? this.defaults.fg;
-        let bg = a.background ?? this.defaults.bg;
-        if (a.reverse) [fg, bg] = [bg, fg];
-        const x = start * cw;
-        const y = r * ch;
-        const n = c - start;
-        if (bg !== this.defaults.bg) parts.push(`<rect x="${x}" y="${y}" width="${n * cw}" height="${ch}" fill="${hex(bg)}"/>`);
-        const text = row
-          .slice(start, c)
-          .map((x) => x.text)
-          .join("");
-        if (text.trim()) {
-          const deco = [a.underline || a.undercurl ? "underline" : "", a.strikethrough ? "line-through" : ""].join(" ").trim();
-          parts.push(
-            `<text x="${x}" y="${y + 15}" fill="${hex(fg)}" xml:space="preserve" textLength="${n * cw}" lengthAdjust="spacingAndGlyphs"` +
-              (a.bold ? ` font-weight="bold"` : "") +
-              (a.italic ? ` font-style="italic"` : "") +
-              (deco ? ` text-decoration="${deco}"` : "") +
-              `>${xml(text)}</text>`,
-          );
-        }
-        start = c;
-      }
-    });
-    parts.push(
-      `<rect x="${this.cursor.col * cw}" y="${this.cursor.row * ch}" width="${cw}" height="${ch}" fill="none" stroke="${hex(this.defaults.fg)}"/>`,
-      "</svg>",
-    );
-    return parts.join("\n");
+    const cells = this.grid.map((row) => row.map((c) => ({ text: c.text, attr: this.attrs.get(c.hl)?.rgb })));
+    return svg(cells, this.defaults, this.cursor);
   }
 
   // Writes <name>.txt, <name>.hl.txt, <name>.svg and <name>.png (via headless Chrome) to dir.
-  snap(dir: string, name: string) {
+  async snap(dir: string, name: string) {
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, `${name}.txt`), this.screen() + "\n");
     writeFileSync(join(dir, `${name}.hl.txt`), this.hlDump());
     const file = join(dir, `${name}.svg`);
     writeFileSync(file, this.svg());
-    const w = Math.ceil((this.grid[0]?.length ?? 0) * 9.6);
-    const h = this.grid.length * 20;
-    const png = join(dir, `${name}.png`);
-    Bun.spawnSync(
-      [CHROME, "--headless", "--disable-gpu", "--hide-scrollbars", `--screenshot=${png}`, `--window-size=${w},${h}`, `file://${file}`],
-      { stdout: "ignore", stderr: "ignore" },
-    );
+    await png(file, join(dir, `${name}.png`), this.grid[0]?.length ?? 0, this.grid.length);
   }
 
   // Quits Neovim, which stops the sidecar. Kills it if it hangs.

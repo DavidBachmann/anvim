@@ -15,6 +15,7 @@ return {
       resume = vim.env.ANVIM_RESUME,
       continue = vim.env.ANVIM_CONTINUE == "1",
       sandbox = vim.env.ANVIM_SANDBOX ~= "0",
+      debug = vim.env.ANVIM_DEBUG == "1",
       sidecar_cmd = replay and { "bun", root .. "/sidecar/src/replay.ts", replay, vim.env.ANVIM_REPLAY_SPEED or "1" },
     },
     config = function(_, opts)

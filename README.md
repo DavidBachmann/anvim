@@ -87,7 +87,7 @@ rm -rf ~/.local/share/anvim ~/.local/state/anvim ~/.cache/anvim ~/.config/anvim 
 ## Use
 
 ```sh
-anvim [--model <model>] [--effort <level>] [--mode <mode>] [--no-sandbox] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
+anvim [--model <model>] [--effort <level>] [--mode <mode>] [--no-sandbox] [--debug] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
 anvim --model haiku ~/dev/project
 anvim --effort high ~/dev/project               # low, medium, high, xhigh or max
 anvim --mode default ~/dev/project              # ask before Claude edits a file or runs a command
@@ -365,3 +365,5 @@ It first brings your install dir to the repo's commits, and then updates the plu
 Each test script first runs `scripts/test-deps`. It installs anvim's plugins at the lockfile's commits, with the same code as `scripts/install`, and mason's lua-language-server, into `.tests/anvim`. Its first run needs the network, and later runs work offline. `scripts/test` runs the Neovim specs in `tests/`, with test plugins of its own in `.tests/`. `scripts/test-stack` boots the real `init.lua` in a child Neovim, with the plugins from `.tests/anvim` and temporary state dirs. It checks that anvim installs and writes nothing there, nor in your main Neovim's dirs. `scripts/test-ui` embeds anvim with a UI attached and checks the frames it draws: splits that fold back, the cursor after a close, mouse drags, resizes, permission prompts typed at a user's pace, and a selection pinned while Claude reads elsewhere. Run `:checkhealth anvim` when something does not start.
 
 `tools/screen/screen.ts` drives anvim headless and saves text, highlight and PNG snapshots of the real screen. It boots the plugins in `.tests/anvim`, as the UI tests do. See the header of that file for its steps. It shares its UI client, `tools/screen/ui.ts`, with the UI tests. The log is at `~/.local/state/anvim/anvim.log`. A screen tool run keeps its own in a temp dir, and prints its path.
+
+`anvim --debug`, or `ANVIM_DEBUG=1`, is for work on anvim itself. It gives Claude the `mcp__anvim__screenshot` tool, which takes a picture of your anvim screen as your terminal shows it. The tool returns the screen's text and a PNG, which needs Google Chrome (`CHROME` names another binary). Images that the terminal draws, such as PNG files in the code window, are not in the picture.

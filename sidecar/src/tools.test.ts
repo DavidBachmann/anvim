@@ -12,8 +12,8 @@ function bridge(timeoutMs?: number) {
   return { b, sent };
 }
 
-async function connect(b: EditorBridge) {
-  const server = editorServer(b);
+async function connect(b: EditorBridge, opts?: { debug?: boolean }) {
+  const server = editorServer(b, opts);
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   await server.instance.connect(serverSide);
   const client = new Client({ name: "test", version: "0" });
@@ -65,6 +65,13 @@ describe("editor MCP server", () => {
     expect(byName.show_user!.inputSchema.required?.sort()).toEqual(["path", "start_line"]);
     expect(byName.diagnostics!.inputSchema.required ?? []).toEqual([]);
     for (const t of tools) expect(t.annotations?.readOnlyHint).toBe(true);
+  });
+
+  test("has the screenshot tool only with --debug", async () => {
+    const names = async (debug: boolean) =>
+      (await (await connect(bridge().b, { debug })).listTools()).tools.map((t) => t.name);
+    expect(await names(false)).not.toContain("screenshot");
+    expect(await names(true)).toContain("screenshot");
   });
 
   test("trusts only the in-process server that anvim registered", () => {

@@ -87,7 +87,8 @@ local function spawn(dir, personal, errors)
   for key in pairs(env) do
     -- Without the cmux variables, the child posts no notifications. A shell
     -- profile can set ANVIM_MODE, ANVIM_EFFORT or ANVIM_SANDBOX, and the child
-    -- runs in anvim's start mode, with the default effort and the sandbox.
+    -- runs in anvim's start mode, with the default effort and the sandbox. A
+    -- debug anvim passes ANVIM_DEBUG to Claude's shell, which runs the tests.
     if
       key:match("^XDG_")
       or key:match("^LAZY_")
@@ -96,6 +97,7 @@ local function spawn(dir, personal, errors)
       or key == "ANVIM_MODE"
       or key == "ANVIM_EFFORT"
       or key == "ANVIM_SANDBOX"
+      or key == "ANVIM_DEBUG"
     then
       env[key] = nil
     end

@@ -70,6 +70,7 @@ function M.start_command(opts)
     permission_mode_chosen = config.mode_chosen,
     sandbox = config.options.sandbox ~= false,
     append_system_prompt = config.options.append_system_prompt,
+    debug = config.options.debug,
   }, opts or {})
 end
 

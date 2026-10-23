@@ -81,7 +81,7 @@ async function main() {
     } else if (kind === "mouse") {
       const [button, action, row, col] = arg.split(",");
       await ui.inputMouse(button!, action!, Number(row), Number(col));
-    } else if (kind === "snap") ui.snap(out, arg);
+    } else if (kind === "snap") await ui.snap(out, arg);
     else if (kind === "record") await record(Number(arg));
     else if (kind === "waitfor") await ui.waitFor(arg, 20000);
     else throw new Error(`unknown step ${step}`);

@@ -228,7 +228,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
       PreToolUse: preToolUse(previews.hook, guard),
     },
     systemPrompt: { type: "preset", preset: "claude_code", append: cmd.append_system_prompt },
-    mcpServers: { [SERVER]: editorServer(editor) },
+    mcpServers: { [SERVER]: editorServer(editor, { debug: cmd.debug === true }) },
     canUseTool: permissions.canUseTool,
     stderr: (data) => {
       process.stderr.write(data);

@@ -191,6 +191,11 @@ local function wire()
   end)
 end
 
+---@return integer?
+function M.term_bg()
+  return term_bg
+end
+
 function M.setup(opts)
   config.setup(opts)
   -- Wrap transcript lines at spaces and punctuation, not inside paths.
