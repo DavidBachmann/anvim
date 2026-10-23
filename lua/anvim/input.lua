@@ -176,11 +176,14 @@ local function prompt_win()
   end
 end
 
+M.gutter = "%#AnvimPrompt#%{v:lnum == 1 && v:virtnum == 0 ? '❯ ' : '  '}"
+M.activity_bar = "%!v:lua.require'anvim.input'.activity()"
+
 function M.setup_win(win)
   winid = win
   local wo = vim.wo[win]
-  wo.statuscolumn = "%#AnvimPrompt#%{v:lnum == 1 && v:virtnum == 0 ? '❯ ' : '  '}"
-  wo.winbar = "%!v:lua.require'anvim.input'.activity()"
+  wo.statuscolumn = M.gutter
+  wo.winbar = M.activity_bar
   wo.winhighlight = "Normal:AnvimNormal,NormalNC:AnvimNormal,WinBar:AnvimNormal,WinBarNC:AnvimNormal"
   wo.number = false
   wo.relativenumber = false
@@ -698,6 +701,22 @@ function M.render()
 end
 
 function M.attach()
+  -- A window that opens from the prompt, such as a picker's preview, copies
+  -- the prompt's gutter and activity line.
+  api.nvim_create_autocmd({ "WinNew", "BufWinEnter" }, {
+    group = api.nvim_create_augroup("anvim.input.copies", {}),
+    callback = function()
+      local win = api.nvim_get_current_win()
+      if win ~= prompt_win() then
+        if vim.wo[win].statuscolumn == M.gutter then
+          vim.wo[win][0].statuscolumn = ""
+        end
+        if vim.wo[win].winbar == M.activity_bar then
+          vim.wo[win][0].winbar = ""
+        end
+      end
+    end,
+  })
   -- A turn that a prompt started counts its time from the send.
   sidecar.on("turn_start", function()
     if not state.busy then

@@ -18,6 +18,18 @@ describe("input", function()
     assert(state.busy, "a turn without a prompt is busy too")
     input.set_busy(false)
   end)
+
+  it("keeps its gutter and activity line out of a float that opens from it, as a picker's preview", function()
+    helpers.start()
+    require("anvim.layout").focus_input({ insert = false })
+    local buf = vim.api.nvim_create_buf(false, true)
+    local float = vim.api.nvim_open_win(buf, false, { relative = "editor", row = 1, col = 1, width = 20, height = 3 })
+    vim.api.nvim_win_set_buf(float, vim.api.nvim_create_buf(false, true))
+    local stc, winbar = vim.wo[float].statuscolumn, vim.wo[float].winbar
+    vim.api.nvim_win_close(float, true)
+    assert.are.same("", stc)
+    assert.are.same("", winbar)
+  end)
 end)
 
 describe("sidecar", function()
