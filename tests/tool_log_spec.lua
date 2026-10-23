@@ -155,18 +155,15 @@ describe("the main log", function()
       "  ⎿  1 tool call @09:05:11",
     }, stamped(transcript.buf()))
     assert.are.same({
-      "❯ Find the bug",
       "⏺ Read(a.lua) @09:05:07",
       "  ⎿  Read 4 lines",
       "⏺ Bash(ls) @09:05:09",
       "  ⎿  a.lua",
       "",
-      "❯ Find the bug",
       "⏺ Edit(a.lua) @09:05:11",
       "  ⎿  Added 1 line, removed 1 line",
     }, stamped(transcript.log_buf()))
     assert.are.same({ "AnvimResult" }, groups(transcript.buf(), "  ⎿  2 tool calls"))
-    assert.are.same({ "AnvimResult" }, groups(transcript.log_buf(), "❯ Find the bug"))
     assert.are.same({ "AnvimToolOk", "AnvimToolName" }, groups(transcript.log_buf(), "⏺ Read(a.lua)"))
     assert.are.same("anvim://tools", api.nvim_buf_get_name(transcript.log_buf()))
     assert.is_false(vim.bo[transcript.log_buf()].modifiable)
@@ -217,7 +214,6 @@ describe("the main log", function()
       "  ⎿  ☐ Step",
     }, chat())
     assert.are.same({
-      "❯ Go",
       "⏺ Bash(ls)",
       "  ⎿  ok",
       "⏺ Bash(pwd)",
@@ -225,15 +221,12 @@ describe("the main log", function()
       "⏺ Bash(id)",
       "  ⎿  ok",
       "",
-      "❯ Go",
       "⏺ Bash(a)",
       "  ⎿  ok",
       "",
-      "❯ Go",
       "⏺ Bash(b)",
       "  ⎿  ok",
       "",
-      "❯ Go",
       "⏺ Bash(c)",
       "  ⎿  ok",
     }, log())
@@ -252,7 +245,6 @@ describe("the main log", function()
     turn_end()
     assert.are.same({ "❯ Install it", "", "  ⎿  4 tool calls · 3 failed" }, chat())
     assert.are.same({
-      "❯ Install it",
       "⏺ Bash(npm i -g x)",
       "  ⎿  Sent back to Claude: runs outside the sandbox",
       "⏺ Bash(npm test)",
@@ -283,10 +275,9 @@ describe("the main log", function()
     assert.are.same({ alpha, "  ⎿  Read(alpha.js)", "     Edit(alpha.js)" }, item(log(), alpha))
     play(events, first_end)
     local lines = stamped(transcript.buf())
-    assert.are.same("  ⎿  3 tool calls @" .. transcript.time_of(transcript.log_buf(), 1), lines[3])
+    assert.are.same("  ⎿  3 tool calls @" .. transcript.time_of(transcript.log_buf(), 0), lines[3])
     assert(lines[5]:find("^⏺ All three subagents reported success"), lines[5])
     assert.are.same({
-      "❯ Edit the headers",
       "⏺ Agent(Edit alpha.js header)",
       "  ⎿  Done (2 tool uses · 37.1k tokens · 5.6s)",
       "⏺ Agent(Edit beta.js header)",
@@ -329,7 +320,6 @@ describe("the main log", function()
     }, vim.list_slice(chat(), 7, 8))
     play(events, j + 1)
     assert.are.same({
-      "❯ Mark the files",
       fast_line,
       "  ⎿  Done (2 tool uses · 35.8k tokens · 5.1s)",
       slow_line,
@@ -374,35 +364,12 @@ describe("the main log", function()
       "  ⎿  1 tool call",
     }, chat())
     assert.are.same({
-      "❯ Look around",
       "⏺ Explore(Look)",
       "  ⎿  Failed",
       "",
-      '⏺ Agent "Look" failed',
       "⏺ Bash(ls)",
       "  ⎿  ok",
     }, log())
-    assert.are.same({ "AnvimResult" }, groups(transcript.log_buf(), '⏺ Agent "Look" failed'))
-  end)
-
-  it("keeps the prompt as the head of calls after an agent's end that came while Claude worked", function()
-    transcript.user("Keep going")
-    local id = call("Agent", { description = "Side", subagent_type = "Explore", run_in_background = true })
-    sidecar.dispatch({
-      type = "agent_start",
-      agent_id = "mid1",
-      tool_use_id = id,
-      description = "Side",
-      subagent_type = "Explore",
-      depth = 1,
-      background = true,
-    })
-    result(id, false, "Async agent launched successfully.", { result = { status = "async_launched" } })
-    sidecar.dispatch({ type = "turn_start" })
-    sidecar.dispatch({ type = "agent_end", agent_id = "mid1", status = "completed", summary = "Done." })
-    result(call("Bash", { command = "ls" }), false)
-    turn_end()
-    assert.are.same({ "", "❯ Keep going", "⏺ Bash(ls)", "  ⎿  ok" }, vim.list_slice(log(), 4))
   end)
 
   it("marks the focused agent's line in the main log", function()
@@ -441,7 +408,6 @@ describe("the main log", function()
     }, vim.list_slice(all, 1, 9))
     assert(all[10]:find("^⏺ I tracked the three steps as tasks"), all[10])
     assert.are.same({
-      "❯ Do three steps",
       "⏺ ToolSearch(select:TaskCreate,TaskUpdate)",
       "  ⎿  Done",
       "⏺ Bash(wc -l notes.lua)",
@@ -501,7 +467,7 @@ describe("the main log", function()
       end
     end)
     assert.are.same("local api = vim.api", buf_lines(vim.fn.bufnr(file))[1], "the buffer shows the file on disk")
-    assert.are.same({ "⏺ Edit(matchparen.lua)", "  ⎿  Added 1 line, removed 0 lines" }, vim.list_slice(log(), 6, 7))
+    assert.are.same({ "⏺ Edit(matchparen.lua)", "  ⎿  Added 1 line, removed 0 lines" }, vim.list_slice(log(), 5, 6))
     assert.are.same("  ⎿  3 tool calls", chat()[3], "the block went, and the count line stays")
 
     helpers.capture_sends(function()
@@ -564,30 +530,27 @@ describe("the main log", function()
       "  ⎿  1 tool call @09:05:14",
     }, stamped(transcript.buf()))
     assert.are.same({
-      "❯ Old prompt",
       "⏺ Bash(ls) @09:05:08",
       "  ⎿  a.lua",
       "⏺ Bash(pwd) @09:05:09",
       "  ⎿  /x",
       "",
-      "❯ Next prompt",
       "⏺ Bash(sleep 9) @09:05:12",
       "  ⎿  Interrupted",
       "",
-      '⏺ Agent "bg" failed',
       "⏺ Bash(cat log) @09:05:14",
       "  ⎿  x",
     }, stamped(transcript.log_buf()))
   end)
 
-  it("counts a tool call that comes first at the chat's top, and gives it no head line", function()
+  it("counts a tool call that comes first at the chat's top", function()
     result(call("Bash", { command = "a" }), false)
     assert.are.same({ "  ⎿  1 tool call @09:05:07" }, stamped(transcript.buf()))
     assert.are.same({ "⏺ Bash(a) @09:05:07", "  ⎿  ok" }, stamped(transcript.log_buf()))
     transcript.user("Next")
     result(call("Bash", { command = "b" }), false)
     assert.are.same({ "  ⎿  1 tool call", "", "❯ Next", "", "  ⎿  1 tool call" }, chat())
-    assert.are.same({ "⏺ Bash(a)", "  ⎿  ok", "", "❯ Next", "⏺ Bash(b)", "  ⎿  ok" }, log())
+    assert.are.same({ "⏺ Bash(a)", "  ⎿  ok", "", "⏺ Bash(b)", "  ⎿  ok" }, log())
   end)
 
   it("starts a new run in the chat buffer that layout repair makes after a wipe", function()
@@ -604,7 +567,7 @@ describe("the main log", function()
     )
     result(call("Bash", { command = "b" }), false)
     assert.are.same({ "  ⎿  1 tool call" }, chat())
-    assert.are.same({ "❯ Go", "⏺ Bash(a)", "  ⎿  ok", "", "❯ Go", "⏺ Bash(b)", "  ⎿  ok" }, log())
+    assert.are.same({ "⏺ Bash(a)", "  ⎿  ok", "", "⏺ Bash(b)", "  ⎿  ok" }, log())
   end)
 
   it("leaves the calls drawn before a switch where they are, and later calls follow the flag", function()
@@ -618,6 +581,6 @@ describe("the main log", function()
       { "❯ Go", "", "  ⎿  1 tool call", "", "⏺ Bash(b)", "  ⎿  ok", "", "  ⎿  1 tool call" },
       chat()
     )
-    assert.are.same({ "❯ Go", "⏺ Bash(a)", "  ⎿  ok", "", "❯ Go", "⏺ Bash(c)", "  ⎿  ok" }, log())
+    assert.are.same({ "⏺ Bash(a)", "  ⎿  ok", "", "⏺ Bash(c)", "  ⎿  ok" }, log())
   end)
 end)

@@ -53,10 +53,6 @@ local logbuf
 -- The open run, which the next tool call joins.
 ---@type anvim.Run?
 local run
--- The first line of the item that started the turn: a prompt, or a
--- background agent's end row. It starts each run in the main log.
----@type string?
-local run_head
 ---@type table<string, anvim.Tool>
 local tools = {}
 -- The lines of background agents. Their tool call returns once the agent
@@ -678,16 +674,12 @@ local function tool_row(tool)
   return mark_row(tool.buf, tool.mark)
 end
 
--- Appends a tool line to the main log. The calls of a run follow each other.
--- A run starts after a blank line, with the first line of the item that
--- started its turn.
+-- Appends a tool line to the main log. The calls of a run follow each other,
+-- and a blank line starts a run. The prompts stay in the chat.
 ---@return integer row
 local function log_append(line, starts_run)
   local buf, row = M.log_buf(), 0
   local lines = { line }
-  if starts_run and run_head then
-    table.insert(lines, 1, run_head)
-  end
   with_modifiable(function()
     if is_empty(buf) then
       api.nvim_buf_set_lines(buf, 0, -1, false, lines)
@@ -698,11 +690,7 @@ local function log_append(line, starts_run)
     row = api.nvim_buf_line_count(buf)
     api.nvim_buf_set_lines(buf, row, row, false, lines)
   end, buf)
-  row = row + #lines - 1
-  if starts_run and run_head then
-    hl(buf, row - 1, 0, #run_head, "AnvimResult")
-  end
-  return row
+  return row + #lines - 1
 end
 
 -- The count line of a run, such as "⎿  7 tool calls · 1 failed". The first
@@ -768,7 +756,6 @@ end
 function M.user(text, context)
   -- A turn without text has no reply, rather than the last turn's.
   text_open, reply_done, reply, run = false, true, {}, nil
-  run_head = "❯ " .. vim.trim(text):match("^[^\n]*")
   local lines = vim.split(text, "\n", { plain = true })
   for i, line in ipairs(lines) do
     lines[i] = (i == 1 and "❯ " or "  ") .. line
@@ -1012,11 +999,6 @@ local function end_agent(tool, ev)
   local summary = M.short(first_line(ev.summary))
   if summary ~= "" then
     lines[2] = "  ⎿  " .. summary
-  end
-  -- An end while no turn runs starts a turn, whose calls answer the end. A
-  -- resumed session's past draws each end as a turn of its own.
-  if batch or not state.busy then
-    run_head = lines[1]
   end
   local row = append_item(lines)
   local buf = M.buf()
@@ -1401,7 +1383,7 @@ function M.clear()
     end
   end
   tools, held, todo, reply, reply_done, text_open, texts = {}, {}, nil, {}, true, false, {}
-  sent_back, run, run_head = {}, nil, nil
+  sent_back, run = {}, nil
   tasks = { order = {}, by_id = {} }
   for _, b in ipairs({ buf, log_loaded() }) do
     api.nvim_buf_clear_namespace(b, ns, 0, -1)
