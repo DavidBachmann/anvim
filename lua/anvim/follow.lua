@@ -86,13 +86,13 @@ local GUTTER = { "number", "relativenumber", "statuscolumn", "signcolumn" }
 
 ---@type anvim.Gutter?
 local review
--- The code window's gutter in follow mode, for one buffer. It has no line
--- numbers, and is as wide as the review gutter, so the text stays in place
--- when the mode changes. Its width stays while the buffer stays, because the
--- number column grows at 10, 100 and 1000 lines, and would push a growing
--- Write preview to the right. It is a 'statuscolumn' of anvim's own, because
+-- The code window's gutter in follow mode, for one buffer. It has absolute
+-- line numbers, and is as wide as the review gutter, so the text stays in
+-- place when the mode changes. Its width stays while the buffer stays, because
+-- the number column grows at 1000 lines, and would push a growing Write
+-- preview to the right. It is a 'statuscolumn' of anvim's own, because
 -- snacks' statuscolumn can keep the old width for a frame.
----@type { win: integer, buf: integer, width: integer, options: anvim.Gutter }?
+---@type { win: integer, buf: integer, options: anvim.Gutter }?
 local gutter
 -- A click that leaves follow mode changes the gutter at SafeState, before
 -- the redraw. Neovim maps a click to a column with the drawn grid only while
@@ -123,17 +123,24 @@ function M.review_options()
   return review
 end
 
--- The width of the review gutter for the buffer in `win`, as Neovim sizes it
--- for the widest line number. Another 'statuscolumn' than snacks' counts as
--- Neovim's own columns.
+-- The number column has room for 3 digits from the start, so a Write preview
+-- of a new file can grow to 999 lines in a gutter that keeps its width.
+local DIGITS = 3
+
+-- The review gutter for the buffer in `win`, as Neovim sizes it for the
+-- widest line number: its width, the columns that its numbers have, and the
+-- least 'numberwidth' that gives them room for DIGITS digits. Another
+-- 'statuscolumn' than snacks' counts as Neovim's own columns.
 ---@param win integer
-function M.review_width(win)
+---@return { width: integer, room: integer, numberwidth: integer }
+local function review_gutter(win)
   local o = M.review_options()
   local buf = api.nvim_win_get_buf(win)
   local digits = 0
   if o.number or o.relativenumber then
     -- 'relativenumber' alone counts up to the window's height.
     digits = #tostring(o.number and api.nvim_buf_line_count(buf) or vim.fn.winheight(win))
+    digits = math.max(digits, DIGITS)
   end
   local numberwidth = vim.wo[win].numberwidth
   local signs = o.signcolumn == "yes" and 1 or tonumber(o.signcolumn:match("^yes:(%d)")) or 0
@@ -142,25 +149,49 @@ function M.review_width(win)
   end
   -- 'foldcolumn' "auto" counts as no column.
   local folds = tonumber(vim.wo[win].foldcolumn) or 0
+  local others, width, least = folds + 2 * signs, 0, DIGITS + 1
   if o.statuscolumn:find("snacks.statuscolumn", 1, true) then
     -- A sign on each side of the number, and a space after it.
     local shown = o.signcolumn ~= "no"
     local left = shown and vim.b[buf].snacks_statuscolumn_left ~= false and 2 or 0
     local right = shown and vim.b[buf].snacks_statuscolumn_right ~= false and 2 or 0
-    local width = left + right + (digits > 0 and digits + 1 or 0)
     -- Neovim draws a 'statuscolumn' at least as wide as its own columns.
-    return math.max(width, (digits > 0 and numberwidth or 0) + folds + 2 * signs)
+    width = math.max(left + right + (digits > 0 and digits + 1 or 0), (digits > 0 and numberwidth or 0) + others)
+    least = left + right + DIGITS + 1 - others
+    others = left + right
+  else
+    width = (digits > 0 and math.max(digits, numberwidth - 1) + 1 or 0) + others
   end
-  return (digits > 0 and math.max(digits, numberwidth - 1) + 1 or 0) + folds + 2 * signs
+  if digits == 0 then
+    return { width = width, room = 0, numberwidth = 1 }
+  end
+  return { width = width, room = width - others - 1, numberwidth = least }
 end
 
--- Blanks and up to two sign columns, at the right, next to the text. A click
--- on a 'statuscolumn' runs only its click function, so that enters the window.
+---@param win integer
+function M.review_width(win)
+  return review_gutter(win).width
+end
+
+-- Each line's absolute number, right-aligned, then a space and up to two sign
+-- columns at the right, next to the text. The sign columns take the columns
+-- that review mode does not give its numbers. Without numbers in review, the
+-- gutter has blanks instead. A number that does not fit, a wrapped row and a
+-- virtual line show a space. The expression gives ' ', not '', because Neovim
+-- does not pad an empty item. Neovim draws the number in LineNr, or in
+-- CursorLineNr on the cursor's line. A click on a 'statuscolumn' runs only its
+-- click function, so that enters the window.
 ---@param width integer
+---@param room integer
 ---@return anvim.Gutter
-local function follow_options(width)
-  local signs = math.min(math.floor(width / 2), 2)
-  local column = (" "):rep(width - 2 * signs) .. (signs > 0 and "%s" or "")
+local function follow_options(width, room)
+  local signs = math.min(math.floor((width - (room > 0 and room + 1 or 0)) / 2), 2)
+  local field = width - 2 * signs
+  local column = (" "):rep(field)
+  if room > 0 then
+    column = ("%%%d{v:virtnum == 0 && len(v:lnum) < %d ? v:lnum : ' '} "):format(field - 1, field)
+  end
+  column = column .. (signs > 0 and "%s" or "")
   return {
     number = false,
     relativenumber = false,
@@ -189,16 +220,16 @@ end
 local function follow_gutter(win)
   local buf = api.nvim_win_get_buf(win)
   if not (gutter and gutter.win == win and gutter.buf == buf) then
-    local width = M.review_width(win)
-    gutter = { win = win, buf = buf, width = width, options = follow_options(width) }
+    local columns = review_gutter(win)
+    gutter = { win = win, buf = buf, options = follow_options(columns.width, columns.room) }
   end
   return gutter.options
 end
 
 -- Code wraps as the user chose, and text always wraps. The window's global
 -- value is the choice, so a float that opens from the code window, such as a
--- picker's preview, wraps as code does. The follow gutter has no line
--- numbers, so a mark starts each wrapped row of code. An empty local
+-- picker's preview, wraps as code does. A wrapped row has no line number,
+-- so a mark starts each wrapped row of code. An empty local
 -- 'showbreak' would show the global one, and "NONE" shows none.
 ---@param win integer
 local function apply_wrap(win)
@@ -225,6 +256,12 @@ function M.apply(win)
   end
   if mode ~= "follow" then
     gutter = nil
+  end
+  -- Only this buffer in this window, so a window that opens from the code
+  -- window with another buffer keeps the config's value.
+  local numberwidth = review_gutter(win).numberwidth
+  if vim.wo[win][0].numberwidth < numberwidth then
+    vim.wo[win][0].numberwidth = numberwidth
   end
   for name, value in pairs(mode == "follow" and follow_gutter(win) or M.review_options()) do
     if vim.wo[win][name] ~= value then

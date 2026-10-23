@@ -31,15 +31,16 @@ local function numbers(win)
   }
 end
 
--- The bare specs run without snacks' statuscolumn. Their files have fewer
--- than 1000 lines, so review's columns are 4 for the numbers and 2 for a sign.
-local NONE = {
-  number = false,
-  relativenumber = false,
-  statuscolumn = "%@v:lua.require'anvim.follow'.click_gutter@  %s%T",
-  signcolumn = "yes:2",
-}
+-- The bare specs run without snacks' statuscolumn.
 local REVIEW = { number = true, relativenumber = true, statuscolumn = "", signcolumn = "yes" }
+
+-- The code window's 'statuscolumn' as Neovim builds it for line `lnum`.
+-- Without a UI nothing draws, so 'textoff' has only Neovim's own columns.
+local function gutter_at(lnum)
+  local code = layout.wins.code
+  local got = api.nvim_eval_statusline(vim.wo[code].statuscolumn, { winid = code, use_statuscol_lnum = lnum })
+  return got.str, got.width
+end
 
 local function to_code(path)
   vim.cmd.stopinsert()
@@ -77,13 +78,14 @@ describe("mode", function()
     vim.cmd.stopinsert()
   end)
 
-  it("is follow in the prompt and review in the code window, with numbers only in review", function()
+  it("is follow in the prompt and review in the code window, with absolute numbers in follow", function()
     fresh()
     assert.are.same("review", follow.mode())
     assert.are.same(REVIEW, numbers())
     to_prompt()
     assert.are.same("follow", follow.mode())
-    assert.are.same(NONE, numbers())
+    assert.is_false(vim.wo[layout.wins.code].number or vim.wo[layout.wins.code].relativenumber)
+    assert.are.same({ "  3   ", 6 }, { gutter_at(3) })
     to_code()
     assert.are.same("review", follow.mode())
     assert.are.same(REVIEW, numbers())
@@ -92,7 +94,6 @@ describe("mode", function()
   it("gives follow mode a gutter as wide as review's, which keeps its width while the buffer grows", function()
     fresh()
     local code = layout.wins.code
-    -- Without a UI nothing draws, so only Neovim's own columns have a width.
     local function review()
       return vim.fn.getwininfo(code)[1].textoff
     end
@@ -104,9 +105,10 @@ describe("mode", function()
       assert.are.same(review(), follow.review_width(code), vim.inspect(wo))
       vim.wo[code].numberwidth, vim.wo[code].foldcolumn = 4, "0"
     end
+    local width = review()
     to_prompt()
     local gutter = vim.wo[code].statuscolumn
-    assert.are.same(NONE.statuscolumn, gutter)
+    assert.are.same(width, select(2, gutter_at(1)))
     -- A preview that writes 1000 lines and more, while following.
     local buf = api.nvim_win_get_buf(code)
     vim.bo[buf].modifiable = true
@@ -114,11 +116,14 @@ describe("mode", function()
     vim.bo[buf].modifiable = false
     vim.cmd.doautocmd("SafeState")
     assert.are.same(gutter, vim.wo[code].statuscolumn)
+    assert.are.same({ "999   ", width }, { gutter_at(999) })
+    -- A number that does not fit shows none, and the gutter keeps its width.
+    assert.are.same({ (" "):rep(width), width }, { gutter_at(1000) })
     to_code()
     assert.are.same(7, review())
     assert.are.same(review(), follow.review_width(code))
     to_prompt()
-    assert.are.same("%@v:lua.require'anvim.follow'.click_gutter@   %s%T", vim.wo[code].statuscolumn)
+    assert.are.same({ "1000   ", 7 }, { gutter_at(1000) })
     to_code()
     vim.cmd.edit({ bang = true })
   end)

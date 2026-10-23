@@ -176,7 +176,7 @@ test("a click on the code window's gutter from the prompt goes to that line, as 
   expect(await ui.exec_lua(`return vim.api.nvim_get_current_line()`)).toBe("sec!ond line");
 });
 
-test("a click from the prompt lands on the character under the mouse after the file grew past 9 lines while following", async () => {
+test("a click from the prompt lands on the character under the mouse after the file grew past 999 lines while following", async () => {
   const short = Array.from({ length: 5 }, (_, i) => `local short${i + 1} = ${i + 1}`).join("\n");
   anvim = await start({ files: { "short.lua": `${short}\n` } });
   const { ui } = anvim;
@@ -191,7 +191,7 @@ test("a click from the prompt lands on the character under the mouse after the f
   await ui.exec_lua(`
     local buf = vim.api.nvim_win_get_buf(require("anvim.layout").wins.code)
     local lines = {}
-    for i = 6, 12 do
+    for i = 6, 1005 do
       lines[#lines + 1] = ("local short%d = %d"):format(i, i)
     end
     vim.bo[buf].modifiable = true
@@ -210,7 +210,7 @@ test("a click from the prompt lands on the character under the mouse after the f
   await ui.inputMouse("left", "release", code.row + 1, code.col + col);
   await anvim.waitWhere("code", "n");
   await ui.drain();
-  // Review mode's numbers need one more column now.
+  // Review mode's numbers need a fourth digit now.
   expect(await textoff()).toBe(following + 1);
   expect(await ui.exec_lua(`return vim.api.nvim_win_get_cursor(0)`)).toEqual([2, "local short".length]);
 });

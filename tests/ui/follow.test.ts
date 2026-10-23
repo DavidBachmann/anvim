@@ -1,6 +1,7 @@
-// Follow mode hides the code window's line numbers, so a Write preview that
-// grows past 9 lines never pushes its text to the right. Review mode shows
-// them, and the switch shows in the frame of the cursor's move.
+// Follow mode shows absolute line numbers in a gutter of a fixed width, so a
+// Write preview that grows past 9 lines never pushes its text to the right.
+// Review mode shows the config's numbers, and the switch shows in the frame of
+// the cursor's move.
 import { afterEach, expect, test } from "bun:test";
 import type { Frame } from "../../tools/screen/ui.ts";
 import { type Anvim, type Box, cells, quiet, start } from "./helpers.ts";
