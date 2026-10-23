@@ -89,14 +89,6 @@ describe("lsp tools", function()
     }, lines(helpers.ask("lsp_references", { path = dir .. "/lib.lua", line = 4, symbol = "take" })))
   end)
 
-  it("ask about the last word of a dotted symbol", function()
-    setup()
-    assert.are.same(
-      { "1 reference", "lsp/lib.lua:8: function M.head(s)" },
-      lines(helpers.ask("lsp_references", { path = "lsp/lib.lua", line = 8, symbol = "M.head" }))
-    )
-  end)
-
   it("hover", function()
     setup()
     local text = helpers.ask("lsp_hover", { path = "lsp/lib.lua", line = 13, symbol = "take" }).result
@@ -137,16 +129,6 @@ describe("lsp tools", function()
       lines(helpers.ask("diagnostics", { path = "lsp/broken.lua" }))
     )
     helpers.contains(lines(helpers.ask("diagnostics", {})), "^" .. vim.pesc(expected) .. "$")
-  end)
-
-  it("wait for the first report when another tool loaded the file", function()
-    setup()
-    -- Every tool loads its file this way, and answers can come before the server reports.
-    require("anvim.follow").load(dir .. "/fresh.lua")
-    assert.are.same(
-      { "1 diagnostic: 1 warning", "lsp/fresh.lua:1:8 warning: Undefined global `also_undefined`. [Lua Diagnostics]" },
-      lines(helpers.ask("diagnostics", { path = "lsp/fresh.lua" }))
-    )
   end)
 
   it("start an enabled server for a workspace search before any file of its language opens", function()

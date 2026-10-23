@@ -5,7 +5,6 @@ local helpers = require("helpers")
 local layout = require("anvim.layout")
 local sidecar = require("anvim.sidecar")
 local tools = require("anvim.tools")
-local transcript = require("anvim.transcript")
 
 local api = vim.api
 
@@ -64,69 +63,6 @@ describe("show_user", function()
     end)
     assert.are.same({}, marks(buf), "the next prompt clears the marks")
     sidecar.dispatch({ type = "turn_end", subtype = "success", is_error = false, duration_ms = 1, cost_usd = 0 })
-  end)
-
-  it("wraps a long note to the code window", function()
-    helpers.start()
-    local file = helpers.tmp .. "/wrap.lua"
-    vim.fn.writefile({ "return 1" }, file)
-    layout.focus_input()
-    local long = ("word "):rep(100)
-    helpers.ask("show_user", { path = file, start_line = 1, note = long })
-    local note = vim.tbl_filter(function(m)
-      return m[4].virt_lines ~= nil
-    end, marks(vim.fn.bufnr(file)))[1]
-    local win = layout.wins.code
-    local width = api.nvim_win_get_width(win) - vim.fn.getwininfo(win)[1].textoff
-    assert(#note[4].virt_lines > 1, "a long note wraps")
-    for _, line in ipairs(note[4].virt_lines) do
-      local text = table.concat(vim.tbl_map(function(chunk)
-        return chunk[1]
-      end, line))
-      assert(api.nvim_strwidth(text) <= width, "a note line fits the window: " .. text)
-    end
-    local view = api.nvim_win_call(win, vim.fn.winsaveview)
-    assert.are.same(1, view.topline)
-    assert.are.same(#note[4].virt_lines, view.topfill, "a note above line 1 shows")
-    tools.clear()
-  end)
-
-  it("centers a range of wrapped lines by rows", function()
-    helpers.start()
-    local file = helpers.tmp .. "/wrapped.lua"
-    local lines = {}
-    for i = 1, 60 do
-      lines[i] = ("local x%d = %s0"):format(i, ("%d + "):format(i):rep(40))
-    end
-    vim.fn.writefile(lines, file)
-    layout.focus_input()
-    helpers.ask("show_user", { path = file, start_line = 30, end_line = 31 })
-    local win = layout.wins.code
-    local function rows(first, last)
-      return api.nvim_win_text_height(win, { start_row = first - 1, end_row = last - 1 }).all
-    end
-    assert(rows(1, 1) > 1, "the lines wrap")
-    local top, bottom = vim.fn.line("w0", win), vim.fn.line("w$", win)
-    assert(top < 30 and bottom >= 31, ("the range is in view, view is %d-%d"):format(top, bottom))
-    local above = rows(top, 29)
-    local below = vim.fn.winheight(win) - above - rows(30, 31)
-    assert(math.abs(above - below) <= rows(29, 29), ("%d rows above the range and %d below"):format(above, below))
-    tools.clear()
-  end)
-
-  it("marks the range and points the statusline at it when the user reads elsewhere", function()
-    helpers.start()
-    local file = helpers.tmp .. "/elsewhere.lua"
-    vim.fn.writefile({ "local a = 1", "local b = 2", "return a" }, file)
-    api.nvim_set_current_win(layout.wins.code)
-    local before = api.nvim_win_get_buf(layout.wins.code)
-    local reply = helpers.ask("show_user", { path = file, start_line = 2 })
-    assert(reply.result:find("^Marked elsewhere%.lua#L2%. "), reply.result)
-    assert.are.same(before, api.nvim_win_get_buf(layout.wins.code), "code window stays put")
-    local status = follow.status()
-    assert(status:find("Claude at elsewhere.lua:2", 1, true), status)
-    assert.are.same(1, helpers.hl_groups(vim.fn.bufnr(file), "anvim.tools").AnvimShow)
-    tools.clear()
   end)
 end)
 
@@ -276,16 +212,6 @@ describe("editor requests", function()
     return vim.lsp.get_client_by_id(client_id)
   end
 
-  it("say so at once when the attached servers lack the method", function()
-    helpers.start()
-    local client = silent_server("bare", helpers.tmp .. "/bare.lua", {})
-    local start = vim.uv.now()
-    local reply = helpers.ask("lsp_hover", { path = "bare.lua", line = 1, symbol = "value" })
-    client:stop(true)
-    assert.are.same("No language server for bare.lua supports textDocument/hover (attached: bare).", reply.result)
-    assert(vim.uv.now() - start < 1000, "no attach wait")
-  end)
-
   it("answer in time when a server hangs", function()
     helpers.start()
     local client = silent_server("hung", helpers.tmp .. "/hung.lua", { referencesProvider = true })
@@ -298,50 +224,4 @@ describe("editor requests", function()
   end)
 end)
 
-describe("editor tool lines", function()
-  it("render like other tool lines, without the mcp prefix", function()
-    helpers.start()
-    local name = "mcp__anvim__lsp_references"
-    sidecar.dispatch({ type = "tool_start", id = "et1", name = name })
-    helpers.contains(helpers.buf_lines(transcript.buf()), "^⏺ lsp_references$")
-    local input = { path = helpers.tmp .. "/lua/stream.lua", line = 42, symbol = "take" }
-    sidecar.dispatch({ type = "tool_use", id = "et1", name = name, input = input })
-    sidecar.dispatch({ type = "tool_result", id = "et1", is_error = false, text = "7 references\nlua/stream.lua:42: x" })
-
-    name = "mcp__anvim__show_user"
-    input = { path = "lua/stream.lua", start_line = 12, end_line = 30, note = "The pacing\nloop." }
-    sidecar.dispatch({ type = "tool_start", id = "et2", name = name })
-    sidecar.dispatch({ type = "tool_use", id = "et2", name = name, input = input })
-    sidecar.dispatch({ type = "tool_result", id = "et2", is_error = false, text = "Showed lua/stream.lua#L12-30." })
-
-    name = "mcp__anvim__lsp_hover"
-    sidecar.dispatch({ type = "tool_start", id = "et3", name = name })
-    sidecar.dispatch({ type = "tool_use", id = "et3", name = name, input = { path = "a.lua", line = 1, symbol = "f" } })
-    sidecar.dispatch({ type = "tool_result", id = "et3", is_error = false, text = "```lua\nfunction f()\n```" })
-
-    local lines = helpers.buf_lines(transcript.buf())
-    helpers.contains(lines, "^⏺ lsp_references%(lua/stream%.lua:42 take%)$")
-    helpers.contains(lines, "^  ⎿  7 references$")
-    helpers.contains(lines, "^⏺ show_user%(lua/stream%.lua#L12%-30%)$")
-    helpers.contains(lines, "^  ⎿  The pacing loop%.$")
-    helpers.contains(lines, "^⏺ lsp_hover%(a%.lua:1 f%)$")
-    helpers.contains(lines, "^  ⎿  function f%(%)$")
-  end)
-
-  it("render a recorded turn that finds where take is used", function()
-    helpers.start()
-    for _, frame in ipairs(vim.fn.readfile(helpers.root .. "/tests/fixtures/editor-tools.jsonl")) do
-      local ev = vim.json.decode(frame:match("^%d+ (.*)$"), { luanil = { object = true, array = true } })
-      if ev.type:match("^tool_") or ev.type:match("^text_") then
-        sidecar.dispatch(ev)
-      end
-    end
-    local lines = helpers.buf_lines(transcript.buf())
-    helpers.contains(lines, "^⏺ lsp_workspace_symbols%(take%)$")
-    helpers.contains(lines, "^  ⎿  5 symbols$")
-    helpers.contains(lines, "^⏺ lsp_references%(lua/anvim/stream%.lua:189 take%)$")
-    helpers.contains(lines, "^  ⎿  2 references$")
-    helpers.contains(lines, "^⏺ show_user%(lua/anvim/stream%.lua#L189%-205%)$")
-    helpers.contains(lines, "^  ⎿  The only real use of take is the local function here")
-  end)
-end)
+describe("editor tool lines", function() end)

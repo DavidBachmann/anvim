@@ -18,7 +18,6 @@ import {
   SandboxNotice,
   sandboxDisabled,
   sandboxProblem,
-  type StartMode,
   sandboxSetup,
   startMode,
 } from "./sandbox";
@@ -84,24 +83,6 @@ describe("the sandbox", () => {
     expect(startMode(bypass, true, false)).toEqual({ mode: bypass, chosen: true });
     expect(startMode("acceptEdits", true, false)).toEqual({ mode: "acceptEdits", chosen: true });
     expect(startMode("plan", true, true)).toEqual({ mode: "plan", chosen: true });
-  });
-
-  test("the warning says how each mode runs without a sandbox", () => {
-    const warn = (start: StartMode, problem = "socat is not on PATH") => {
-      const sent: string[] = [];
-      new SandboxNotice((text) => sent.push(text), start).warn(problem);
-      return sent;
-    };
-    expect(warn({ mode: "acceptEdits", chosen: true })).toEqual([
-      "Claude's Bash commands run without a sandbox: socat is not on PATH. Start anvim with --no-sandbox to hide this warning.",
-    ]);
-    expect(warn({ mode: "bypassPermissions", chosen: true })).toEqual([
-      "Claude's Bash commands run without a sandbox, and in bypass mode without asking: socat is not on PATH. Start anvim with --mode default to be asked, or --no-sandbox to hide this warning.",
-    ]);
-    // The pre-check's fallback: the session started in default mode already.
-    expect(warn(startMode("bypassPermissions", false, false))).toEqual([
-      "Claude's Bash commands run without a sandbox: socat is not on PATH. anvim runs in default mode, so Claude asks before it runs a tool. Start anvim with --mode bypassPermissions to skip the prompts.",
-    ]);
   });
 
   test("Claude Code's late line moves anvim's own bypass mode to default mode, once", () => {

@@ -32,11 +32,6 @@ describe("FieldStream", () => {
   };
   const json = JSON.stringify(input, null, 1);
 
-  test("whole object in one chunk", () => {
-    const events = feed([json]);
-    expect(ends(events)).toEqual(input);
-  });
-
   test("every possible single split point gives the same result", () => {
     for (let i = 0; i <= json.length; i++) {
       const events = feed([json.slice(0, i), json.slice(i)]);

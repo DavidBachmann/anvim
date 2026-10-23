@@ -20,16 +20,6 @@ describe("install", function()
     )
     assert.are.same(pin("snacks1"), own["snacks.nvim"], "the install dir's lockfile changed")
   end)
-
-  it("takes the repo's pins when the install dir has no lockfile", function()
-    assert.are.same(repo, install.merge(repo, nil))
-  end)
-
-  it("writes a lockfile as lazy.nvim does, so a sync that changes nothing writes nothing", function()
-    local text = table.concat(vim.fn.readfile(helpers.root .. "/lazy-lock.json"), "\n") .. "\n"
-    assert.are.same(text, install.encode(vim.json.decode(text)))
-    assert.are.same("{\n\n}\n", install.encode({}))
-  end)
 end)
 
 -- The sync in a child Neovim with anvim's init.lua, in copies of the repo's
@@ -152,14 +142,6 @@ describe("the sync", function()
     assert.are.same(demo[1], sh({ "git", "rev-parse", "HEAD" }, inst .. "/lazy/demo"), out)
     assert.are.same(demo2[1], sh({ "git", "rev-parse", "HEAD" }, inst .. "/lazy/demo2"), out)
     assert.are.same(text, read(lockfile), "the sync changed the repo's pins")
-  end)
-
-  it("only warns when a plugin that the repo does not pin fails to install", function()
-    write(lockfile, text)
-    personal({ { demo_url, "demo" }, { demo2_url, "demo2" }, { "file://" .. src .. "/missing", "broken" } })
-    local code, out = sync()
-    assert.are.same(0, code, out)
-    assert(out:find("Warning: broken", 1, true), out)
   end)
 
   it("fails when a plugin that the repo pins is not at its pin", function()

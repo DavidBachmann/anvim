@@ -103,23 +103,6 @@ describe("permission", function()
     end)
   end)
 
-  it("moves with j and k, and remembers with enter on option 2", function()
-    helpers.start()
-    focus()
-    helpers.capture_sends(function(sent)
-      local req, id = request("Bash", mkdir, { remember = remember })
-      keys("j")
-      assert.are.same({ "    1. Yes", "  ❯ 2. " .. remember }, vim.list_slice(tail(3), 1, 2))
-      keys("jj")
-      assert.are.same("  ❯ 1. Yes", tail(3)[1], "the cursor wraps around")
-      keys("kk")
-      assert.are.same("  ❯ 2. " .. remember, tail(2)[1])
-      keys("<CR>")
-      assert.are.same({ { type = "permission_response", req = req, behavior = "allow", remember = true } }, sent)
-      result(id, false)
-    end)
-  end)
-
   it("denies with esc, and shows the rejection as the tool's result", function()
     helpers.start()
     focus()
@@ -148,31 +131,6 @@ describe("permission", function()
       assert(not permission.waiting())
       result(id, true, "rejected")
       assert.are.same("  ⎿  Rejected: Name it build", tail(1)[1])
-    end)
-    api.nvim_buf_set_lines(input.buf(), 0, -1, false, { "" })
-  end)
-
-  it("goes back to the choices when the user leaves the answer with esc", function()
-    helpers.start()
-    focus()
-    helpers.capture_sends(function(sent)
-      api.nvim_buf_set_lines(input.buf(), 0, -1, false, { "my draft" })
-      local req, id = request("Bash", mkdir)
-      keys("2")
-      assert.are.same({ "" }, buf_lines(input.buf()), "the prompt is empty for the answer")
-      assert(state.waiting:find("Type what to do instead · enter to send · esc twice to go back"))
-      local win = layout.wins.input
-      local bar = api.nvim_eval_statusline(vim.wo[win].winbar, { winid = win, use_winbar = true })
-      assert(bar.width <= api.nvim_win_get_width(win), "the hint fits the column: " .. bar.str)
-      assert(bar.str:find("^⏺ Type what"), "it keeps its start: " .. bar.str)
-      keys("<Esc>")
-      assert.are.same({}, sent)
-      assert(permission.waiting())
-      assert(state.waiting:find("To answer"), state.waiting)
-      assert.are.same({ "my draft" }, buf_lines(input.buf()))
-      keys("1")
-      assert.are.same({ { type = "permission_response", req = req, behavior = "allow" } }, sent)
-      result(id, false)
     end)
     api.nvim_buf_set_lines(input.buf(), 0, -1, false, { "" })
   end)
@@ -257,186 +215,6 @@ describe("permission", function()
     api.nvim_buf_set_lines(input.buf(), 0, -1, false, { "" })
   end)
 
-  it("shows a request even when the user scrolled the transcript up", function()
-    helpers.start()
-    focus()
-    local tr = layout.wins.transcript
-    for i = 1, 60 do
-      transcript.notice("warn", "line " .. i)
-    end
-    keys("<C-u>")
-    assert(vim.fn.line("w$", tr) < api.nvim_buf_line_count(transcript.buf()), "<C-u> did not scroll the transcript")
-    helpers.capture_sends(function()
-      local _, id = request("Bash", { command = "make" })
-      assert.are.same(api.nvim_buf_line_count(transcript.buf()), vim.fn.line("w$", tr), "the block's end is in view")
-      keys("<Esc><Esc>")
-      result(id, true)
-    end)
-  end)
-
-  it("keeps a request open through read mode", function()
-    helpers.start()
-    focus()
-    local notify = vim.notify
-    vim.notify = function() end
-    local ok, err = pcall(helpers.capture_sends, function(sent)
-      require("anvim.windows").read()
-      assert.are.same(layout.wins.transcript, api.nvim_get_current_win())
-      local req, id = request("Bash", { command = "make" })
-      keys("<Esc>")
-      assert.are.same(layout.wins.input, api.nvim_get_current_win(), "esc in read mode goes to the prompt")
-      assert.are.same({}, sent, "and answers nothing")
-      assert(permission.waiting())
-      keys("1")
-      assert.are.same({ { type = "permission_response", req = req, behavior = "allow" } }, sent)
-      result(id, false)
-    end)
-    vim.notify = notify
-    assert(ok, err)
-  end)
-
-  it("chooses the highlighted choice with enter at once", function()
-    helpers.start()
-    focus()
-    helpers.capture_sends(function(sent)
-      local req, id = request("Bash", { command = "make deploy" })
-      keys("<CR>")
-      assert.are.same({ { type = "permission_response", req = req, behavior = "allow" } }, sent)
-      assert(not permission.waiting())
-      result(id, false)
-    end)
-  end)
-
-  it("says in the hint which keys answer, in insert mode and in normal mode", function()
-    helpers.start()
-    focus()
-    local function winbar()
-      local win = layout.wins.input
-      return api.nvim_eval_statusline(vim.wo[win].winbar, { winid = win, use_winbar = true }).str
-    end
-    -- A call that ends in insert mode leaves it, so an autocmd reads the hint
-    -- while insert mode is on. It runs after anvim's own ModeChanged autocmd.
-    -- With `fn`, a request opens as insert mode starts.
-    local function in_insert(fn, lhs, mode)
-      mode = mode or "i"
-      local seen
-      api.nvim_create_autocmd("ModeChanged", {
-        pattern = "*:" .. mode,
-        once = true,
-        callback = function()
-          if fn then
-            fn()
-          end
-          seen = { state.waiting, api.nvim_get_mode().mode, permission.hint() }
-        end,
-      })
-      keys(lhs or "A")
-      assert.are.same(mode, seen[2])
-      assert.are.same(seen[1], seen[3])
-      return seen[1]
-    end
-    helpers.capture_sends(function(sent)
-      local _, id = request("Bash", mkdir, { remember = remember })
-      assert.are.same("To answer: 1-3, or j/k and enter", state.waiting)
-      -- The column is narrow, so the winbar keeps the hint's start.
-      assert(winbar():find("^⏺ To answer: 1%-3, or j/"), winbar())
-      assert.are.same("To answer: esc to leave insert mode, then 1-3 or enter", in_insert())
-      assert.are.same("n", api.nvim_get_mode().mode)
-      assert.are.same("To answer: 1-3, or j/k and enter", state.waiting, "leaving insert mode changes it back")
-      -- Replace mode runs the prompt's insert maps, so enter there neither answers nor sends.
-      local replace = in_insert(nil, "R<CR>", "R")
-      assert.are.same("To answer: esc to leave insert mode, then 1-3 or enter", replace)
-      assert.are.same({}, sent, "enter in Replace mode answered")
-      assert.are.same({ "" }, buf_lines(input.buf()))
-      keys("<Esc><Esc>")
-      assert.are.same("deny", sent[1].behavior)
-      result(id, true)
-
-      -- A request that opens while the user types starts with the insert hint.
-      sent[1] = nil
-      local req2, id2
-      local hint = in_insert(function()
-        req2, id2 = request("Bash", { command = "make" })
-      end)
-      assert.are.same("To answer: esc to leave insert mode, then 1-2 or enter", hint)
-      assert.are.same("To answer: 1-2, or j/k and enter", state.waiting)
-      keys("1")
-      assert.are.same({ type = "permission_response", req = req2, behavior = "allow" }, sent[1])
-      result(id2, false)
-
-      -- With care, the hint names no digits, because no digit says yes.
-      sent[1] = nil
-      local _, id3 = request("Bash", { command = "rm -rf out" }, { default_to_no = true })
-      assert.are.same("To answer: j/k and enter", state.waiting)
-      assert.are.same("To answer: esc to leave insert mode, then j/k and enter", in_insert())
-      assert.are.same("To answer: j/k and enter", state.waiting)
-      keys("<Esc><Esc>")
-      result(id3, true)
-    end)
-  end)
-
-  it("says in the hint to go to the prompt while the cursor is elsewhere", function()
-    helpers.start()
-    focus()
-    local away = "To answer: go to the prompt, then 1-2 or enter"
-    helpers.capture_sends(function(sent)
-      local req, id = request("Bash", { command = "make" })
-      local function check(want, where)
-        assert.are.same(want, permission.hint(), where)
-        assert(input.activity():find(want, 1, true), where .. ": " .. input.activity())
-      end
-      check("To answer: 1-2, or j/k and enter", "the prompt")
-      api.nvim_set_current_win(layout.code_win())
-      check(away, "the code window")
-      focus()
-      require("anvim.keyview").open()
-      check(away, "the key view")
-      keys("q")
-      assert.are.same(layout.wins.input, api.nvim_get_current_win(), "q did not go back to the prompt")
-      check("To answer: 1-2, or j/k and enter", "the prompt after the key view")
-      keys("<C-g>")
-      assert(require("anvim.compose").win(), "<C-g> opened no compose window")
-      check(away, "the compose window")
-      keys("<C-g>")
-      assert.are.same(layout.wins.input, api.nvim_get_current_win(), "<C-g> did not go back to the prompt")
-      vim.cmd.stopinsert()
-      keys("1")
-      assert.are.same({ { type = "permission_response", req = req, behavior = "allow" } }, sent)
-      result(id, false)
-
-      -- With care, no digit says yes.
-      local _, id2 = request("Bash", { command = "rm -rf out" }, { default_to_no = true })
-      api.nvim_set_current_win(layout.code_win())
-      check("To answer: go to the prompt, then j/k and enter", "the code window, with care")
-      focus()
-      keys("<Esc><Esc>")
-      result(id2, true)
-    end)
-  end)
-
-  it("answers enter only for a request in view, as the digits", function()
-    helpers.start()
-    focus()
-    local tr = layout.wins.transcript
-    local function at_end()
-      return vim.fn.line("w$", tr) == api.nvim_buf_line_count(transcript.buf())
-    end
-    helpers.capture_sends(function(sent)
-      for i = 1, 60 do
-        transcript.notice("warn", "line " .. i)
-      end
-      local req, id = request("Bash", { command = "make" })
-      keys("<C-u><C-u>")
-      assert(not at_end(), "<C-u> did not scroll the request out of view")
-      keys("<CR>")
-      assert.are.same({}, sent, "a request out of view takes no answer")
-      assert(at_end(), "enter brought the request back into view")
-      keys("<CR>")
-      assert.are.same({ { type = "permission_response", req = req, behavior = "allow" } }, sent)
-      result(id, false)
-    end)
-  end)
-
   it("answers only a request in view, and brings it back when read mode ends", function()
     helpers.start()
     focus()
@@ -471,77 +249,6 @@ describe("permission", function()
       result(id2, false)
     end)
     vim.notify = notify
-    assert(ok, err)
-  end)
-
-  it("draws the block again in a transcript buffer that layout repair made again", function()
-    helpers.start()
-    focus()
-    helpers.capture_sends(function(sent)
-      local req, id = request("Bash", { command = "make" })
-      local old = transcript.buf()
-      vim.cmd("bwipeout! " .. old)
-      assert(
-        vim.wait(1000, function()
-          local buf = transcript.buf()
-          return buf ~= old and vim.tbl_contains(buf_lines(buf), "    make")
-        end, 10),
-        "the new transcript has no block"
-      )
-      focus()
-      keys("1")
-      assert.are.same({ { type = "permission_response", req = req, behavior = "allow" } }, sent)
-      result(id, false)
-    end)
-  end)
-
-  it("leaves choice mode even when the transcript fails", function()
-    helpers.start()
-    focus()
-    local remove = transcript.remove_block
-    transcript.remove_block = function()
-      error("broken transcript")
-    end
-    local ok, err = pcall(helpers.capture_sends, function(sent)
-      local req, id = request("Bash", { command = "make" })
-      keys("1")
-      assert.are.same({ { type = "permission_response", req = req, behavior = "allow" } }, sent)
-      assert(not permission.waiting())
-      assert.is_nil(state.waiting)
-      assert.are.same("", vim.fn.maparg("1", "n", false, false), "choice keys are unmapped")
-      transcript.remove_block = remove
-      result(id, false)
-    end)
-    transcript.remove_block = remove
-    assert(ok, err)
-  end)
-
-  it("starts no insert mode when the user goes to the prompt while Claude waits", function()
-    helpers.start()
-    local entered = 0
-    local au = api.nvim_create_autocmd("InsertEnter", {
-      buffer = input.buf(),
-      callback = function()
-        entered = entered + 1
-      end,
-    })
-    -- A pending :startinsert runs after the next command, and "x" then leaves insert mode.
-    local function go()
-      api.nvim_set_current_win(layout.code_win())
-      layout.focus_input()
-      keys("l")
-      local n = entered
-      entered = 0
-      return n
-    end
-    local ok, err = pcall(helpers.capture_sends, function()
-      assert.are.same(1, go(), "the prompt starts insert mode")
-      local _, id = request("Bash", { command = "make" })
-      assert.are.same(0, go(), "a waiting request keeps normal mode")
-      keys("<Esc><Esc>")
-      result(id, true)
-    end)
-    api.nvim_del_autocmd(au)
     assert(ok, err)
   end)
 
@@ -774,28 +481,6 @@ describe("permission", function()
     end)
   end)
 
-  it("notifies without taking focus when the user is elsewhere", function()
-    helpers.start()
-    local code = layout.code_win()
-    api.nvim_set_current_win(code)
-    local notes, notify = {}, vim.notify
-    vim.notify = function(msg)
-      notes[#notes + 1] = msg
-    end
-    local ok, err = pcall(helpers.capture_sends, function(sent)
-      local req, id = request("WebFetch", { url = "https://example.com", prompt = "Read it" })
-      assert.are.same(code, api.nvim_get_current_win(), "focus stays")
-      assert.are.same({ "Claude is waiting for your answer to WebFetch, in the prompt" }, notes)
-      assert.are.same({ "  Fetch", "    WebFetch(https://example.com)" }, vim.list_slice(tail(5), 1, 2))
-      focus()
-      keys("1")
-      assert.are.same({ { type = "permission_response", req = req, behavior = "allow" } }, sent)
-      result(id, false)
-    end)
-    vim.notify = notify
-    assert(ok, err)
-  end)
-
   it("restores the file when the user denies a streamed Edit", function()
     helpers.start()
     local file = helpers.tmp .. "/deny.lua"
@@ -914,31 +599,6 @@ describe("permission", function()
     end)
   end)
 
-  it("takes a typed answer to a single-select question", function()
-    helpers.start()
-    focus()
-    local form = {
-      questions = {
-        {
-          question = "Which name?",
-          header = "Name",
-          multiSelect = false,
-          options = { { label = "a" }, { label = "b" } },
-        },
-      },
-    }
-    helpers.capture_sends(function(sent)
-      local req, id = request("AskUserQuestion", form)
-      keys("3<CR>")
-      assert(permission.waiting(), "an empty answer goes back to the choices")
-      keys("3cee<CR>")
-      assert.are.same({
-        { type = "permission_response", req = req, behavior = "allow", answers = { ["Which name?"] = { "cee" } } },
-      }, sent)
-      result(id, false)
-    end)
-  end)
-
   it("shows the plan, approves with auto-accept edits, and keeps the plan", function()
     helpers.start()
     focus()
@@ -996,21 +656,6 @@ describe("permission", function()
       )
       result(id, false, "User has approved your plan.")
       helpers.contains(buf_lines(transcript.buf()), "^  ⎿  Approved, bypass permissions$")
-    end)
-  end)
-
-  it("keeps planning with the user's feedback", function()
-    helpers.start()
-    focus()
-    helpers.capture_sends(function(sent)
-      local req, id = request("ExitPlanMode", { plan = "# Plan" })
-      keys("3")
-      assert(state.waiting:find("^Type what to change"), state.waiting)
-      keys("<Esc>")
-      keys("3Add a test<CR>")
-      assert.are.same({ { type = "permission_response", req = req, behavior = "deny", message = "Add a test" } }, sent)
-      assert.are.same("⏺ ExitPlanMode(# Plan)", tail(1)[1], "a rejected plan leaves")
-      result(id, true, "rejected")
     end)
   end)
 

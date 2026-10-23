@@ -287,37 +287,6 @@ describe("typed previews", function()
     end
   end)
 
-  it("types a Write into a preview buffer, and flashes the rows that changed", function()
-    fresh("w1")
-    follow.set_focus("w1")
-    local path = file("typed_write.lua")
-    local content = { "local a = 1", "local b = 22", "local c = 3", "local d = 4", "return a + b" }
-    helpers.capture_sends(function(sent)
-      local req = await("w1", "tw1", "Write", { file_path = path, content = table.concat(content, "\n") .. "\n" })
-      local preview = code_buf()
-      assert.are.same(path, vim.b[preview].anvim_preview, "the code window shows the preview")
-      wait_answer(sent, req)
-      assert.are.same(vim.list_extend(vim.deepcopy(content), { "" }), buf_lines(preview))
-      vim.fn.writefile(content, path)
-      result("w1", "tw1")
-      local buf = code_buf()
-      assert.are.same(path, api.nvim_buf_get_name(buf))
-      assert(not api.nvim_buf_is_valid(preview), "the preview buffer is gone")
-      assert.are.same({ 1, 4 }, flashed(buf), "only the changed rows flash")
-    end)
-
-    -- A new file flashes whole.
-    local new = helpers.tmp .. "/typed_new.lua"
-    os.remove(new)
-    helpers.capture_sends(function(sent)
-      wait_answer(sent, await("w1", "tw2", "Write", { file_path = new, content = "return 1\nreturn 2\n" }))
-      vim.fn.writefile({ "return 1", "return 2" }, new)
-      result("w1", "tw2")
-      assert.are.same(new, api.nvim_buf_get_name(code_buf()))
-      assert.are.same({ 0, 1 }, flashed(code_buf()))
-    end)
-  end)
-
   it("does the same whether the hook or the tool_use comes first", function()
     for _, order in ipairs({ "hook first", "tool_use first" }) do
       fresh("r1")

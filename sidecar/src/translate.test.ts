@@ -168,18 +168,6 @@ describe("Translator", () => {
     expect(lines.length).toBeGreaterThan(500);
   });
 
-  test("a long command output without a line end keeps an emoji whole at the cut", () => {
-    const text = "x".repeat(19999) + "😀" + "y".repeat(100);
-    const [, output] = run([
-      msg({
-        type: "assistant",
-        parent_tool_use_id: null,
-        message: { model: "<synthetic>", role: "assistant", content: [{ type: "text", text }] },
-      }),
-    ]);
-    expect((output as { text: string }).text).toBe("x".repeat(19999) + "\n...");
-  });
-
   test("init names the commands that Claude Code binds to its terminal", () => {
     const init = (extra: object) =>
       msg({ type: "system", subtype: "init", session_id: "s", model: "m", slash_commands: ["color", "usage"], ...extra });

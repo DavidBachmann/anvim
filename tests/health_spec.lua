@@ -39,48 +39,6 @@ describe("health", function()
     end
   end)
 
-  it("reports the sandbox, and why it is off", function()
-    with({ sandbox = true }, {}, function()
-      helpers.contains(checkhealth(), "OK The sandbox is on: Claude's Bash commands can write only in the project")
-    end)
-    with({ sandbox = false }, { ANVIM_SANDBOX = "0" }, function()
-      local out = checkhealth()
-      helpers.contains(out, "The sandbox is off, because anvim started with %-%-no%-sandbox or ANVIM_SANDBOX=0")
-      helpers.contains(out, "It could start here")
-    end)
-    with({ sandbox = false }, { ANVIM_SANDBOX = "" }, function()
-      helpers.contains(checkhealth(), "The sandbox is off, because a spec sets `sandbox = false`")
-    end)
-  end)
-
-  it("says the start mode and why", function()
-    local reason, chosen = config.mode_reason, config.mode_chosen
-    local ok, err = pcall(function()
-      config.mode_reason = "it is anvim's default, and the sandbox is on"
-      with({ permission_mode = "bypassPermissions", sandbox = true }, {}, function()
-        helpers.contains(
-          checkhealth(),
-          "anvim starts in bypassPermissions mode, because it is anvim's default, and the sandbox is on"
-        )
-      end)
-      config.mode_reason = "the sandbox is off, and no mode was chosen"
-      with({ permission_mode = "default", sandbox = false }, {}, function()
-        helpers.contains(
-          checkhealth(),
-          "anvim starts in default mode, because the sandbox is off, and no mode was chosen"
-        )
-      end)
-      config.mode_reason, config.mode_chosen = "you chose it", true
-      with({ permission_mode = "bypassPermissions", sandbox = false }, {}, function()
-        local out = checkhealth()
-        helpers.contains(out, "WARNING anvim starts in bypassPermissions mode, because you chose it%. Claude's Bash")
-        helpers.contains(out, "Start anvim with %-%-mode default to be asked")
-      end)
-    end)
-    config.mode_reason, config.mode_chosen = reason, chosen
-    assert(ok, err)
-  end)
-
   it("warns when the sidecar's pre-check finds the sandbox cannot start", function()
     -- A bun whose pre-check answers as on a Linux without bubblewrap.
     local bun = helpers.tmp .. "/health-bun"

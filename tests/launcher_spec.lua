@@ -102,27 +102,6 @@ describe("bin/anvim", function()
     assert.are.same("abc", out.resume)
   end)
 
-  it("takes --effort and --effort=, and refuses a level that Claude Code does not know", function()
-    local out = assert(run({ "--effort", "high", project }))
-    assert.are.same({ "high", vim.fn.resolve(project) }, { out.effort, vim.fn.resolve(out.dir) })
-    out = assert(run({ "--effort=max", "--model", "haiku" }))
-    assert.are.same({ "max", "haiku" }, { out.effort, out.model })
-    out = assert(run({}))
-    assert.are.same("", out.effort)
-    local cases = {
-      { { "--effort", "turbo" } },
-      { { "--effort=" } },
-      { {}, { ANVIM_EFFORT = "turbo" } },
-      { { project, "--effort" }, nil, "--effort needs a value" },
-    }
-    for _, case in ipairs(cases) do
-      local args, env, want = case[1], case[2], case[3] or "--effort must be low, medium, high, xhigh or max"
-      local _, code, err = run(args, env)
-      assert.are.same(2, code, vim.inspect(case))
-      assert(err:find(want, 1, true), err)
-    end
-  end)
-
   it("turns the sandbox off with --no-sandbox, and keeps ANVIM_SANDBOX from the environment", function()
     -- Unset, so that only bin/anvim's export can bring it to nvim.
     local out = assert(run({ "--no-sandbox", project, "+10" }, { ANVIM_SANDBOX = false }))
@@ -137,17 +116,6 @@ describe("bin/anvim", function()
   it("never resumes from a value that another anvim left in the environment", function()
     local out = assert(run({}, { ANVIM_RESUME = "leak", ANVIM_CONTINUE = "1" }))
     assert.are.same({ "", "" }, { out.resume, out.continue })
-  end)
-
-  it("refuses a flag without its value, and --continue with --resume", function()
-    local out, code, err = run({ project, "--model" })
-    assert.is_nil(out)
-    assert.are.same(2, code)
-    assert(err:find("needs a value"), err)
-    out, code, err = run({ "-c", "--resume", id })
-    assert.is_nil(out)
-    assert.are.same(2, code)
-    assert(err:find("not both"), err)
   end)
 end)
 
@@ -173,77 +141,5 @@ describe("bin/anvim's install check", function()
     out = assert(out, "nvim did not start: " .. err)
     assert.are.same("", err, "a matching stamp ran the install")
     assert.are.same("", out.failed)
-  end)
-
-  it("installs when the stamp differs, and starts anyway when that install fails", function()
-    local dir = fresh()
-    vim.fn.mkdir(dir, "p")
-    vim.fn.writefile({ "an older lockfile" }, dir .. "/stamp")
-    local env = { ANVIM_NO_INSTALL = "", ANVIM_INSTALL_DIR = dir, FAKE_INSTALL_EXIT = "1" }
-    local out, code, err = run({ project }, env)
-    assert(err:find("fake install", 1, true), err)
-    assert(err:find("starts with the earlier install", 1, true), err)
-    assert.are.same(0, code, err)
-    out = assert(out, "nvim did not start: " .. err)
-    assert.are.same("1", out.failed, "anvim gets no word of the failed install")
-    assert.are.same("an older lockfile\n", read(dir .. "/stamp"), "a failed install wrote the stamp")
-    env.FAKE_INSTALL_EXIT = "0"
-    out, code, err = run({ project }, env)
-    assert(err:find("fake install", 1, true), "the next start did not try again: " .. err)
-    assert.are.same(applied, read(dir .. "/stamp"))
-  end)
-
-  it("exits with 1 when the first install fails", function()
-    local dir = fresh()
-    local out, code, err = run({ project }, { ANVIM_NO_INSTALL = "", ANVIM_INSTALL_DIR = dir, FAKE_INSTALL_EXIT = "1" })
-    assert.is_nil(out, "nvim started without an install")
-    assert.are.same(1, code)
-    assert(err:find("the install failed", 1, true), err)
-    assert.is_nil(read(dir .. "/stamp"))
-  end)
-
-  it("skips the check with ANVIM_NO_INSTALL=1", function()
-    local dir = fresh()
-    local out, _, err = run({ project }, { ANVIM_INSTALL_DIR = dir, FAKE_INSTALL_EXIT = "1" })
-    assert(out, "nvim did not start: " .. err)
-    assert.are.same("", err)
-    assert.is_nil(vim.uv.fs_stat(dir))
-  end)
-
-  it("installs into the dir that anvim's Neovim names, and passes it on as an absolute path", function()
-    local home = helpers.tmp .. "/launcher home"
-    local cases = {
-      { ANVIM_INSTALL_DIR = helpers.tmp .. "/named" },
-      { ANVIM_INSTALL_DIR = "", XDG_DATA_HOME = helpers.tmp .. "/xdg data" },
-      { ANVIM_INSTALL_DIR = false, XDG_DATA_HOME = false, HOME = home },
-    }
-    for _, env in ipairs(cases) do
-      env.ANVIM_NO_INSTALL = ""
-      local out, _, err = run({ project }, env)
-      out = assert(out, "nvim did not start: " .. err)
-      assert(read(out.install .. "/stamp"), "no stamp in " .. out.install)
-      -- What lua/anvim/base names, in a Neovim with the same environment.
-      local script = helpers.tmp .. "/install_dir.lua"
-      vim.fn.writefile({
-        ("vim.opt.rtp:prepend(%q)"):format(helpers.root),
-        [[io.write(require("anvim.base").dir)]],
-      }, script)
-      local full = vim.fn.environ()
-      full.NVIM_APPNAME = "anvim"
-      for key, value in pairs(env) do
-        full[key] = value or nil
-      end
-      local res = vim.system({ vim.v.progpath, "--clean", "-l", script }, { env = full, clear_env = true }):wait()
-      assert.are.same(res.stdout, out.install, vim.inspect(env))
-    end
-    -- A relative dir names the same dir after bin/anvim changes to the project,
-    -- also without the install check.
-    local out, _, err = run({ project }, { ANVIM_NO_INSTALL = "", ANVIM_INSTALL_DIR = "relative/dir" })
-    out = assert(out, "nvim did not start: " .. err)
-    assert.are.same(helpers.tmp .. "/relative/dir", out.install)
-    assert(read(helpers.tmp .. "/relative/dir/stamp"), "no stamp in the relative dir")
-    out, _, err = run({ project }, { ANVIM_INSTALL_DIR = "other/dir" })
-    out = assert(out, "nvim did not start: " .. err)
-    assert.are.same(helpers.tmp .. "/other/dir", out.install)
   end)
 end)

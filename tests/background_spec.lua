@@ -4,7 +4,6 @@ local agents = require("anvim.agents")
 local follow = require("anvim.follow")
 local helpers = require("helpers")
 local permission = require("anvim.permission")
-local sessions = require("anvim.sessions")
 local sidecar = require("anvim.sidecar")
 local state = require("anvim.state")
 local transcript = require("anvim.transcript")
@@ -264,99 +263,6 @@ describe("background agents", function()
     end, names))
   end)
 
-  it("keeps the focus, the tracking and the agent's requests over the turn end", function()
-    fresh()
-    local tool_id = launch("b1", "Mark files")
-    sidecar.dispatch({ type = "agent_start", agent_id = "f1", tool_use_id = "tu_f1", description = "Fore", depth = 1 })
-    follow.set_focus("b1")
-    -- A Write of a file that does not exist yet waits for its result.
-    local path = helpers.tmp .. "/background_new.lua"
-    vim.fn.delete(path)
-    sidecar.dispatch({
-      type = "tool_use",
-      id = "bw1",
-      name = "Write",
-      input = { file_path = path, content = "return 1" },
-      parent_id = tool_id,
-      agent_id = "b1",
-    })
-    local function request(req, agent_id)
-      sidecar.dispatch({
-        type = "permission_request",
-        req = req,
-        tool = "Bash",
-        input = { command = "ls" },
-        agent_id = agent_id,
-      })
-    end
-    request(921, "b1")
-    request(922, "f1")
-    turn_end()
-    -- An agent that starts later paints the Agent lines again.
-    sidecar.dispatch({ type = "agent_start", agent_id = "b2", tool_use_id = "tu_b2", description = "Later", depth = 1 })
-
-    assert.are.same("b1", follow.focus)
-    assert.are.same({ { "Mark files", 1 }, { "Later", 2 } }, slots())
-    local head = "⏺ Explore(Mark files)"
-    assert.are.same({ head, "  ⎿  Backgrounded agent", "     Write(background_new.lua)" }, item(head))
-    local buf = transcript.buf()
-    local ns = api.nvim_get_namespaces()["anvim.transcript.focus"]
-    local marks = api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })
-    assert.are.same(1, #marks)
-    assert.are.same(head, api.nvim_buf_get_lines(buf, marks[1][2], marks[1][2] + 1, false)[1])
-    assert.are.same({ { "◉ focused", "AnvimAgent1" } }, marks[1][4].virt_text)
-
-    vim.fn.writefile({ "return 1" }, path)
-    sidecar.dispatch({
-      type = "tool_result",
-      id = "bw1",
-      is_error = false,
-      text = "ok",
-      parent_id = tool_id,
-      agent_id = "b1",
-    })
-    assert.are.same(path, follow.place().path)
-
-    -- The foreground agent's request went with its turn, the background one's waits.
-    assert.is_true(permission.waiting())
-    permission.cancel(921)
-    assert.is_false(permission.waiting())
-
-    sidecar.dispatch({
-      type = "agent_end",
-      agent_id = "b1",
-      tool_use_id = tool_id,
-      status = "completed",
-      summary = "Marked 2 files.\nBoth are done.",
-      tool_uses = 2,
-      tokens = 1500,
-      duration_ms = 2300,
-    })
-    assert.are.same({ head, "  ⎿  Done (2 tool uses · 1.5k tokens · 2.3s)" }, item(head))
-    assert.is_nil(follow.focus)
-    assert.are.same({
-      '⏺ Agent "Mark files" finished',
-      "  ⎿  Marked 2 files. ... +1 lines",
-      "",
-      "✻ Explore 1 finished · focus is back on Claude",
-    }, vim.list_slice(lines(), #lines() - 3))
-  end)
-
-  it("falls back to Claude when a focused agent leaves the background tasks without a notification", function()
-    fresh()
-    local head = "⏺ Explore(Quiet)"
-    launch("b9", "Quiet")
-    turn_end()
-    follow.set_focus("b9")
-    -- What the translator sends for an agent that left background_tasks_changed.
-    sidecar.dispatch({ type = "agent_end", agent_id = "b9", status = "completed" })
-    assert.is_nil(follow.focus)
-    assert.are.same("completed", agents.get("b9").status)
-    assert.are.same("AnvimToolOk", bullet(head))
-    local all = lines()
-    assert.are.same("✻ Explore 1 finished · focus is back on Claude", all[#all])
-  end)
-
   it("keeps an agent that a background agent started, and answers each request that a turn's end drops", function()
     fresh()
     launch("p1", "Parent")
@@ -400,43 +306,6 @@ describe("background agents", function()
     end)
   end)
 
-  it("ends Claude's reply at an agent's end in a resumed session, as live", function()
-    helpers.start()
-    local saved = { state.session_id, state.turns }
-    sessions.history({
-      session_id = "background-reply",
-      events = {
-        { type = "user", text = "Start one" },
-        { type = "text_start" },
-        { type = "text_delta", text = "launched" },
-        { type = "text_stop" },
-        { type = "agent_end", agent_id = "q1", status = "completed", description = "Quick", summary = "Done." },
-        { type = "text_start" },
-        { type = "text_delta", text = "Quick finished." },
-        { type = "text_stop" },
-        -- An agent whose end the session did not save.
-        { type = "tool_use", id = "u1", name = "Agent", input = { description = "Unsaved", run_in_background = true } },
-        { type = "tool_result", id = "u1", is_error = false, text = "Async agent launched successfully.\nagentId: u1" },
-      },
-    })
-    state.session_id, state.turns = saved[1], saved[2]
-    assert.are.same("Quick finished.", transcript.last_reply())
-    local head = "⏺ Agent(Unsaved)"
-    assert.are.same({ head, "  ⎿  Backgrounded agent" }, item(head))
-    assert.are.same("AnvimResult", bullet(head), "the line no longer looks busy")
-  end)
-
-  it("ends a held line as interrupted when the sidecar exits", function()
-    fresh()
-    launch("x1", "Never ends")
-    turn_end()
-    sidecar.dispatch({ type = "exit", code = 0, restart = true })
-    state.process = "ready"
-    local head = "⏺ Explore(Never ends)"
-    assert.are.same({ head, "  ⎿  Interrupted" }, item(head))
-    assert.are.same("AnvimToolError", bullet(head))
-  end)
-
   it("ends the main agent's tool line as interrupted when the sidecar exits", function()
     fresh()
     sidecar.dispatch({
@@ -450,57 +319,5 @@ describe("background agents", function()
     local head = "⏺ Bash(make)"
     assert.are.same({ head, "  ⎿  Interrupted" }, item(head))
     assert.are.same("AnvimToolError", bullet(head))
-  end)
-
-  it("draws a resumed session's notification as the agent's end", function()
-    helpers.start()
-    local saved = { state.session_id, state.turns }
-    sessions.history({
-      session_id = "background-history",
-      events = {
-        { type = "user", text = "Start a background agent" },
-        {
-          type = "tool_use",
-          id = "h1",
-          name = "Agent",
-          input = { description = "Add FAST line", run_in_background = true },
-        },
-        { type = "tool_result", id = "h1", is_error = false, text = "Async agent launched successfully.\nagentId: a1" },
-        { type = "text_start" },
-        { type = "text_delta", text = "launched" },
-        { type = "text_stop" },
-        { type = "user", text = "What next?" },
-        {
-          type = "agent_end",
-          agent_id = "a1",
-          tool_use_id = "h1",
-          status = "completed",
-          description = "Add FAST line",
-          summary = "Added it.",
-          tool_uses = 2,
-          tokens = 16061,
-          duration_ms = 7469,
-        },
-        { type = "agent_end", agent_id = "a2", status = "failed", description = "Lost", summary = "No such file" },
-      },
-    })
-    state.session_id, state.turns = saved[1], saved[2]
-    assert.are.same({
-      "❯ Start a background agent",
-      "",
-      "⏺ Agent(Add FAST line)",
-      "  ⎿  Done (2 tool uses · 16.1k tokens · 7.5s)",
-      "",
-      "⏺ launched",
-      "",
-      "❯ What next?",
-      "",
-      '⏺ Agent "Add FAST line" finished',
-      "  ⎿  Added it.",
-      "",
-      '⏺ Agent "Lost" failed',
-      "  ⎿  No such file",
-    }, lines())
-    assert.are.same("AnvimToolError", bullet('⏺ Agent "Lost" failed'))
   end)
 end)

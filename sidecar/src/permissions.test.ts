@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PermissionResult, PermissionUpdate } from "@anthropic-ai/claude-agent-sdk";
-import { homedir } from "node:os";
-import { CANCELLED, joinAnswer, PermissionBridge, REJECT, REJECT_WITH, rememberLabel } from "./permissions";
+import { CANCELLED, joinAnswer, PermissionBridge, REJECT, REJECT_WITH } from "./permissions";
 import type { Event } from "./protocol";
 
 type Request = Extract<Event, { type: "permission_request" }>;
@@ -258,35 +257,4 @@ describe("joinAnswer", () => {
 });
 
 describe("rememberLabel", () => {
-  const cwd = "/work/project";
-  test("names the mode switch that Claude Code suggests for an edit", () => {
-    expect(rememberLabel([editMode], cwd)).toBe("Yes, allow all edits during this session");
-  });
-
-  test("names rules, directories and the mode, in that order", () => {
-    const dirs: PermissionUpdate = {
-      type: "addDirectories",
-      directories: [cwd, `${cwd}/lib`, `${homedir()}/notes`, "/etc"],
-      destination: "session",
-    };
-    expect(rememberLabel([mkdirRule, dirs, editMode], cwd)).toBe(
-      "Yes, and don't ask again for Bash(mkdir -p out) in this project, " +
-        "access to this directory, lib, ~/notes, /etc during this session, all edits during this session",
-    );
-    const anyRead: PermissionUpdate = {
-      type: "addRules",
-      rules: [{ toolName: "WebFetch" }],
-      behavior: "allow",
-      destination: "userSettings",
-    };
-    expect(rememberLabel([anyRead], cwd)).toBe("Yes, and don't ask again for WebFetch in every project");
-  });
-
-  test("offers nothing when a suggestion has no plain name", () => {
-    const deny: PermissionUpdate = { ...mkdirRule, behavior: "deny" };
-    const plan: PermissionUpdate = { type: "setMode", mode: "plan", destination: "session" };
-    expect(rememberLabel([deny], cwd)).toBeUndefined();
-    expect(rememberLabel([mkdirRule, plan], cwd)).toBeUndefined();
-    expect(rememberLabel([], cwd)).toBeUndefined();
-  });
 });

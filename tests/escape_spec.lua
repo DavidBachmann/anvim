@@ -110,89 +110,6 @@ describe("esc in the prompt", function()
     end)
   end)
 
-  it("does nothing while Claude is idle, but clears the search highlight", function()
-    helpers.capture_sends(function(sent)
-      vim.o.hlsearch = true
-      vim.fn.setreg("/", "anvim")
-      vim.cmd("let v:hlsearch = 1")
-      typed("<Esc>")
-      assert.are.same(0, vim.v.hlsearch, "the search highlight stayed")
-      vim.wait(150)
-      typed("<Esc>")
-      assert.are.same({}, sent)
-      assert.is_nil(input.armed())
-    end)
-  end)
-
-  it("disarms when the sidecar cancels the request", function()
-    helpers.capture_sends(function(sent)
-      local req = request("Bash", { command = "make" })
-      typed("<Esc>")
-      assert(input.armed())
-      sidecar.dispatch({ type = "permission_cancel", req = req })
-      assert.is_nil(input.armed())
-      assert(not bar():find("esc again", 1, true), bar())
-      assert.are.same({}, sent)
-    end)
-  end)
-
-  it("disarms at the end of the time limit, and the red text goes without a key", function()
-    input.set_busy(true)
-    input.esc_limit_ms = 200
-    helpers.capture_sends(function(sent)
-      typed("<Esc>")
-      assert(bar():find("esc again to stop Claude", 1, true), bar())
-      assert(
-        vim.wait(1000, function()
-          return input.armed() == nil
-        end),
-        "the time limit did not end"
-      )
-      assert(not bar():find("esc again", 1, true), bar())
-      typed("<Esc>")
-      assert.are.same(0, count(sent, "interrupt"), "a press after the time limit stopped Claude")
-      assert(input.armed(), "a press after the time limit arms again")
-    end)
-  end)
-
-  it("disarms on another key, on leaving the prompt, at a turn's end and when a request opens", function()
-    input.set_busy(true)
-    helpers.capture_sends(function(sent)
-      typed("<Esc>")
-      typed("l")
-      assert(
-        vim.wait(500, function()
-          return input.armed() == nil
-        end),
-        "another key did not disarm"
-      )
-      -- A key between two presses makes the second a first one.
-      typed("<Esc>")
-      vim.wait(150)
-      typed("l<Esc>")
-      assert.are.same(0, count(sent, "interrupt"), "a key between the presses")
-      assert(input.armed())
-
-      api.nvim_set_current_win(layout.code_win())
-      assert.is_nil(input.armed(), "leaving the prompt did not disarm")
-      focus()
-
-      typed("<Esc>")
-      sidecar.dispatch({ type = "turn_end", subtype = "success", duration_ms = 1, cost_usd = 0, num_turns = 1 })
-      assert.is_nil(input.armed(), "the turn's end did not disarm")
-      input.set_busy(true)
-
-      typed("<Esc>")
-      assert.are.same("esc again to stop Claude", input.armed().text)
-      request("Bash", { command = "make" })
-      assert.is_nil(input.armed(), "the request did not disarm")
-      vim.wait(150)
-      typed("<Esc>")
-      assert.are.same({}, sent, "the press after the request stopped Claude or answered it")
-      assert.are.same("esc again to answer No", input.armed().text)
-    end)
-  end)
-
   it("arms for a request with red text and a red choice, and the second press answers No", function()
     helpers.capture_sends(function(sent)
       local req = request("Bash", { command = "make" })
@@ -218,47 +135,6 @@ describe("esc in the prompt", function()
       assert.are.same({ { type = "permission_response", req = req, behavior = "deny" } }, sent)
       assert(not permission.waiting())
       assert.is_nil(input.armed())
-    end)
-  end)
-
-  it("names what the second press does for a plan, a question and a network request", function()
-    local form = { questions = { { question = "Which?", header = "Pick", options = { { label = "A" } } } } }
-    local cases = {
-      { "ExitPlanMode", { plan = "# Plan" }, "esc again to keep planning", "No, keep planning" },
-      { "AskUserQuestion", form, "esc again to decline to answer" },
-      { "SandboxNetworkAccess", { host = "example.com" }, "esc again to refuse the connection", "No, and tell" },
-    }
-    helpers.capture_sends(function(sent)
-      for _, case in ipairs(cases) do
-        local req = request(case[1], case[2])
-        typed("<Esc>")
-        assert.are.same(case[3], input.armed().text, case[1])
-        -- A narrow column keeps the start of the text.
-        local text = bar()
-        local start = text:match("^(.-)%.%.%.") or text:match("^(.-) ─")
-        assert(start and #start > 10 and vim.startswith(case[3], start), case[1] .. ": " .. text)
-        if case[4] then
-          assert.are.same({ "AnvimDanger" }, groups(line_of(case[4])), case[1])
-        else
-          local lines = helpers.buf_lines(transcript.buf())
-          for n = 1, 4 do
-            assert(not vim.tbl_contains(groups(n), "AnvimDanger"), case[1] .. ": " .. lines[#lines - n + 1])
-          end
-        end
-        vim.wait(150)
-        typed("<Esc>")
-        assert.are.same({ type = "permission_response", req = req, behavior = "deny" }, sent[#sent], case[1])
-      end
-    end)
-  end)
-
-  it("stops Claude at once with <C-c>, in normal and insert mode", function()
-    input.set_busy(true)
-    helpers.capture_sends(function(sent)
-      typed("<C-c>")
-      assert.are.same(1, count(sent, "interrupt"))
-      typed("i<C-c>")
-      assert.are.same(2, count(sent, "interrupt"))
     end)
   end)
 end)

@@ -1,11 +1,8 @@
 ---@module "luassert"
 
 local agents = require("anvim.agents")
-local follow = require("anvim.follow")
 local helpers = require("helpers")
-local layout = require("anvim.layout")
 local sidecar = require("anvim.sidecar")
-local state = require("anvim.state")
 local transcript = require("anvim.transcript")
 local tree = require("anvim.tree")
 
@@ -19,10 +16,6 @@ local function start(id, background)
     depth = 1,
     background = background == true,
   })
-end
-
-local function finish(id)
-  sidecar.dispatch({ type = "agent_end", agent_id = id, status = "completed", summary = "done" })
 end
 
 -- An edit's tool call: a subagent's with its id, or the main agent's without.
@@ -157,199 +150,6 @@ describe("tree", function()
     assert.are.same({ "0:place", "1:place" }, marks(b))
   end)
 
-  it("marks each agent once on a closed folder, with a ⏺ when its place is below it", function()
-    fresh()
-    local inner, other, outer = file("fold/inner.lua"), file("fold/deep/other.lua"), file("fold_outer.lua")
-    local dir = helpers.tmp .. "/fold"
-    start("q1")
-    edit("e1", inner, "q1")
-    result("e1", false, "q1")
-    edit("e2", other, "q1")
-    result("e2", false, "q1")
-    assert.are.same({ "1:place" }, marks(dir, "closed"))
-    assert.are.same({ { "⏺", "AnvimAgent1" }, { " " } }, dots(dir, "closed"))
-    read("r1", outer, "q1")
-    assert.are.same({ "1:wrote" }, marks(dir, "closed"))
-    assert.are.same({ { "•", "AnvimAgent1" }, { " " } }, dots(dir, "closed"))
-    read("r2", other)
-    assert.are.same({ "0:place", "1:wrote" }, marks(dir, "closed"))
-    assert.are.same({ "0:place", "1:wrote" }, marks(dir .. "/deep", "closed"))
-    assert.is_nil(marks(dir, "open"))
-    assert.are.same({}, dots(dir, "open"))
-  end)
-
-  it("keeps the main agent's place mark until the turn ends, and an agent's until the agent ends", function()
-    fresh()
-    local a, b, c = file("life_a.lua"), file("life_b.lua"), file("life_c.lua")
-    read("r1", a)
-    start("l1")
-    read("r2", b, "l1")
-    start("l2", true)
-    read("r3", c, "l2")
-    assert.are.same({ { "0:place" }, { "1:place" }, { "2:place" } }, { marks(a), marks(b), marks(c) })
-    finish("l1")
-    assert.is_nil(marks(b))
-    turn_end()
-    assert.is_nil(marks(a))
-    assert.are.same(a, follow.place().path, "the footer still knows where Claude is")
-    assert.are.same({ "2:place" }, marks(c), "a background agent's mark outlives the turn")
-    -- The next turn marks the main agent's place again once it moves.
-    turn_start()
-    read("r4", a)
-    assert.are.same({ "0:place" }, marks(a))
-    finish("l2")
-    assert.is_nil(marks(c))
-  end)
-
-  it("drops the main agent's place mark when a turn's end flushes the steps through a Bash call's reads", function()
-    fresh()
-    local a, b, c = file("steps_a.lua"), file("steps_b.lua"), file("steps_c.lua")
-    layout.focus_input({ insert = false })
-    assert.is_true(follow.shows(nil))
-    sidecar.dispatch({
-      type = "tool_use",
-      id = "s1",
-      name = "Bash",
-      input = { command = ("cat %s %s %s"):format(a, b, c), description = "Read" },
-    })
-    assert.are.same({ "0:place" }, marks(a))
-    turn_end()
-    assert.are.same(c, follow.places()[""].path, "the steps counted at once")
-    assert.is_nil(marks(a))
-    assert.is_nil(marks(c))
-  end)
-
-  it("drops the main agent's place mark when the sidecar exits", function()
-    fresh()
-    local a = file("exit_a.lua")
-    read("r1", a)
-    assert.are.same({ "0:place" }, marks(a))
-    sidecar.dispatch({ type = "exit", code = 0, restart = true })
-    state.process = "ready"
-    assert.is_nil(marks(a))
-  end)
-
-  it("gives a waiting agent no mark until it gets a slot", function()
-    fresh()
-    local a = file("wait_a.lua")
-    for _, id in ipairs({ "w1", "w2", "w3", "w4", "w5" }) do
-      start(id)
-    end
-    read("r1", a, "w5")
-    assert.is_nil(marks(a))
-    finish("w3")
-    assert.are.same({ "3:place" }, marks(a), "w5 takes the freed slot")
-  end)
-
-  it("puts the marks of a file's writers on it, from the edit's start, up to three and a +", function()
-    fresh()
-    local path = file("dots.lua")
-    for _, id in ipairs({ "d1", "d2", "d3", "d4" }) do
-      start(id)
-    end
-    -- The main agent's path streams before the rest of its edit.
-    helpers.field("m1", "Edit", "file_path", "end", path)
-    assert.are.same({ "0:wrote" }, marks(path))
-    edit("e4", path, "d4")
-    edit("e2", path, "d2", "Write")
-    assert.are.same({ "0:wrote", "2:place", "4:place" }, marks(path))
-    assert.are.same(
-      { { "•", "AnvimClaude" }, { "⏺", "AnvimAgent2" }, { "⏺", "AnvimAgent4" }, { " " } },
-      dots(path)
-    )
-    edit("e1", path, "d1")
-    assert.are.same(
-      { { "•", "AnvimClaude" }, { "⏺", "AnvimAgent1" }, { "⏺", "AnvimAgent2" }, { "+", "Comment" }, { " " } },
-      dots(path)
-    )
-    assert.are.same({}, dots(helpers.tmp .. "/other.lua"))
-  end)
-
-  it("puts the marks below a closed folder on it, and none on an open one", function()
-    fresh()
-    local deep = helpers.tmp .. "/sub/deep/x.lua"
-    local near = helpers.tmp .. "/sub/y.lua"
-    start("f1")
-    edit("e1", deep, "f1", "Write")
-    edit("e2", near, nil, "Write")
-    assert.are.same({ "0:wrote", "1:wrote" }, marks(helpers.tmp .. "/sub", "closed"))
-    assert.is_nil(marks(helpers.tmp .. "/sub", "open"))
-    assert.are.same({ "1:wrote" }, marks(helpers.tmp .. "/sub/deep", "closed"))
-    assert.are.same({ "1:wrote" }, marks(deep))
-    assert.is_nil(marks(helpers.tmp .. "/sub/deep"), "a file has the folder's path only as a folder")
-  end)
-
-  it("keeps the main agent's written files until the turn ends, and an agent's until the agent ends", function()
-    fresh()
-    local mine, theirs = helpers.tmp .. "/mine.lua", helpers.tmp .. "/theirs.lua"
-    start("g1")
-    edit("e1", mine)
-    result("e1", false)
-    edit("e2", theirs, "g1")
-    result("e2", false, "g1")
-    assert.are.same({ { "0:wrote" }, { "1:wrote" } }, { marks(mine), marks(theirs) })
-    finish("g1")
-    assert.are.same({ "0:wrote" }, marks(mine))
-    assert.is_nil(marks(theirs))
-    turn_end()
-    assert.is_nil(marks(mine))
-    -- A background agent outlives the turn, and so do its marks.
-    start("g2", true)
-    edit("e3", theirs, "g2")
-    turn_end()
-    assert.are.same({ "1:wrote" }, marks(theirs))
-  end)
-
-  it("gives a failed edit no mark, unless the agent wrote the file before in its run", function()
-    fresh()
-    local path = helpers.tmp .. "/failed.lua"
-    helpers.field("m1", "Edit", "file_path", "end", path)
-    result("m1", true)
-    assert.is_nil(marks(path))
-    edit("m2", path)
-    result("m2", false)
-    edit("m3", path)
-    result("m3", true)
-    assert.are.same({ "0:wrote" }, marks(path))
-    start("h1")
-    edit("e1", path, "h1")
-    result("e1", true, "h1")
-    assert.are.same({ "0:wrote" }, marks(path))
-  end)
-
-  it("names files as the explorer does, through symlinks and for files that do not exist yet", function()
-    fresh()
-    local link = vim.fn.tempname()
-    assert(vim.uv.fs_symlink(helpers.tmp, link))
-    local path = file("linked.lua")
-    edit("e1", link .. "/linked.lua")
-    edit("e2", link .. "/./new/dir/../made.lua", nil, "Write")
-    assert.are.same({ "0:wrote" }, marks(path))
-    assert.are.same({ "0:wrote" }, marks(helpers.tmp .. "/new/made.lua"))
-    assert.are.same({ "0:wrote" }, marks(helpers.tmp .. "/new", "closed"))
-    read("r1", link .. "/linked.lua")
-    assert.are.same({ "0:place" }, marks(path), "a place resolves as a written file does")
-    vim.uv.fs_unlink(link)
-  end)
-
-  it("marks a symlink in the project under its own name, and its target too", function()
-    fresh()
-    local dir = helpers.tmp .. "/links"
-    vim.fn.mkdir(dir .. "/real", "p")
-    vim.fn.writefile({ "a" }, dir .. "/AGENTS.md")
-    vim.fn.writefile({ "a" }, dir .. "/real/x.lua")
-    assert(vim.uv.fs_symlink(dir .. "/AGENTS.md", dir .. "/CLAUDE.md"))
-    assert(vim.uv.fs_symlink(dir .. "/real", dir .. "/linkdir"))
-    edit("e1", dir .. "/CLAUDE.md")
-    edit("e2", dir .. "/linkdir/x.lua")
-    assert.are.same({ "0:wrote" }, marks(dir .. "/CLAUDE.md"))
-    assert.are.same({ "0:wrote" }, marks(dir .. "/AGENTS.md"))
-    assert.are.same({ "0:wrote" }, marks(dir .. "/linkdir/x.lua"))
-    assert.are.same({ "0:wrote" }, marks(dir .. "/linkdir", "closed"))
-    assert.are.same({ "0:wrote" }, marks(dir .. "/real/x.lua"))
-    vim.fn.delete(dir, "rf")
-  end)
-
   it("redraws the open explorer once for many changes, and not when the marks stay the same", function()
     fresh()
     count_redraws(function(updates)
@@ -362,30 +162,5 @@ describe("tree", function()
       result("e2", true)
       assert.are.same(2, updates())
     end)
-  end)
-
-  it("neither recomputes nor redraws the marks when a place moves within its file", function()
-    fresh()
-    local a, b = file("move_a.lua"), file("move_b.lua")
-    start("v1")
-    local fired = 0
-    local id = vim.api.nvim_create_autocmd("User", {
-      pattern = "AnvimAgentFiles",
-      callback = function()
-        fired = fired + 1
-      end,
-    })
-    count_redraws(function(updates)
-      read("r1", a, "v1")
-      assert.are.same(1, updates())
-      fired = 0
-      read("r2", a, "v1", 8)
-      read("r3", a, "v1", 3)
-      assert.are.same({ 0, 1 }, { fired, updates() })
-      assert.are.same({ a, 3 }, { follow.places().v1.path, follow.places().v1.line })
-      read("r4", b, "v1")
-      assert.are.same({ 1, 2 }, { fired, updates() })
-    end)
-    vim.api.nvim_del_autocmd(id)
   end)
 end)

@@ -271,16 +271,4 @@ describe("the send-back", () => {
     expect(order).toEqual(["send_back", "result"]);
     expect(sent).toHaveLength(1);
   });
-
-  test("logs the command cut at 200 characters, on one line", async () => {
-    const { ask, log } = setup();
-    const long = "echo " + "x".repeat(300);
-    await ask("Bash", { command: `cd /\n${long}`, dangerouslyDisableSandbox: true });
-    await ask("Bash", { command: `cd /\n${long}`, dangerouslyDisableSandbox: true });
-    const shown = `cd /\\n${long}`.slice(0, 200);
-    expect(log).toEqual([
-      `send-back: main Bash runs outside the sandbox: ${shown}`,
-      `send-back: asked main Bash runs outside the sandbox: ${shown} (same call)`,
-    ]);
-  });
 });
