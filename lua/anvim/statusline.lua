@@ -1,7 +1,8 @@
 -- The global statusline. On the left: anvim's name, Vim's mode, or FOLLOW in
 -- follow mode, the permission mode's label, the git branch, and the file with
 -- its diagnostics. On the right: whether Claude waits, the git diff counts,
--- the model and its effort, where Claude is, and the cursor's place. 'statusline' is
+-- how full the context window is, the model and its effort, where Claude is,
+-- and the cursor's place. 'statusline' is
 -- "%!v:lua.require'anvim.statusline'.render()", so Neovim runs render() each
 -- time it draws the statusline.
 local M = {}
@@ -220,6 +221,7 @@ local function waiting(win)
 end
 
 ---@class anvim.StatusSession
+---@field context string? How full the context window is, as a meter.
 ---@field model string
 ---@field effort string
 ---@field status string Where Claude is.
@@ -234,7 +236,16 @@ local function session()
     return nil
   end
   local state = require("anvim.state")
+  local percent = state.context and tonumber(state.context.percent)
+  local context
+  if percent then
+    percent = math.floor(math.min(math.max(percent, 0), 100))
+    local filled = math.floor(percent / 10)
+    local meter = ("▰"):rep(filled) .. on_c("Comment") .. ("▱"):rep(10 - filled)
+    context = ("%s%%#AnvimStatusC# %d%%%%"):format(meter, percent)
+  end
   return {
+    context = context,
     model = input.model_label(state.model or require("anvim.config").options.model),
     effort = state.effort and (" · " .. state.effort) or "",
     status = follow.status(false, follow.mode()),
@@ -248,7 +259,7 @@ end
 -- branch, because the code window's tab bar names it too. The branch is cut
 -- to the columns that are left, and only then do the cursor's place and
 -- anvim's name go.
-local drops = { "jump", "effort", "model", "short", "file", "branch", "place", "brand" }
+local drops = { "jump", "effort", "model", "context", "short", "file", "branch", "place", "brand" }
 
 -- With no row for the command line, the macro recording shows here.
 local function recording()
@@ -331,6 +342,9 @@ local function render()
     out[#out + 1] = "%#AnvimStatusC#%="
     local r = vim.list_extend({}, right)
     if s then
+      if s.context and not cut.context then
+        r[#r + 1] = " " .. s.context .. " "
+      end
       local model = (cut.model and "" or s.model) .. (cut.effort and "" or s.effort)
       if model ~= "" then
         r[#r + 1] = " " .. esc(model) .. " "

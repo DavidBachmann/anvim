@@ -531,16 +531,9 @@ function M.activity()
     local hint = ("(%s · esc twice to stop)"):format(transcript.duration(elapsed, true))
     text = ("%%#AnvimClaude#%s %s %%#Comment#%s "):format(frame, (verb:gsub("%%", "%%%%")), hint)
     width = vim.fn.strdisplaywidth(("%s %s %s "):format(frame, verb, hint))
-  elseif config.options.input.turn_stats and (state.last_turn or state.context) then
-    local parts = {}
-    if state.last_turn then
-      parts[1] = ("%s · $%.2f"):format(transcript.duration(state.last_turn.duration_ms), state.cost_usd)
-    end
-    if state.context and tonumber(state.context.percent) then
-      parts[#parts + 1] = ("%d%%%% context"):format(state.context.percent)
-    end
-    local info = table.concat(parts, " · ") .. " "
-    text, width = "%#Comment#" .. info, api.nvim_strwidth((info:gsub("%%%%", "%%")))
+  elseif config.options.input.turn_stats and state.last_turn then
+    local info = ("%s · $%.2f "):format(transcript.duration(state.last_turn.duration_ms), state.cost_usd)
+    text, width = "%#Comment#" .. info, api.nvim_strwidth(info)
   end
   return text .. "%#AnvimRule#" .. ("─"):rep(math.max(0, win_width(vim.g.statusline_winid) - width))
 end

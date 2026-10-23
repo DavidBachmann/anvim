@@ -41,16 +41,19 @@ describe("statusline", function()
     assert.is_nil(statusline.error)
   end)
 
-  it("shows anvim, the mode, the branch, the model, the effort and where Claude is", function()
+  it("shows anvim, the mode, the branch, the context meter, the model, the effort and where Claude is", function()
     helpers.start()
     layout.focus_input({ insert = false })
-    local saved = { state.branch, state.model, state.effort, state.permission_mode, vim.o.columns }
+    local saved = { state.branch, state.model, state.effort, state.permission_mode, vim.o.columns, state.context }
     local ok, err = pcall(function()
       state.branch, state.model, state.effort, vim.o.columns = "main", "claude-opus-5-5", "xhigh", 200
+      state.context = { percent = 64, tokens = 640000, max = 1000000 }
       local line = text(layout.wins.input)
       local brand, block, branch = line:find("^ anvim "), line:find(" FOLLOW ", 1, true), line:find(" main ", 1, true)
       assert(brand and block and branch and brand < block and block < branch, line)
-      assert(line:find(" Opus 5.5 · xhigh ", 1, true), line)
+      local meter, model =
+        line:find(" ▰▰▰▰▰▰▱▱▱▱ 64% ", 1, true), line:find(" Opus 5.5 · xhigh ", 1, true)
+      assert(meter and model and meter < model, line)
       assert(line:find(" ◉ following ", 1, true), line)
       assert(not line:find("mode on", 1, true), "the start mode shows no label: " .. line)
       state.permission_mode = "plan"
@@ -65,7 +68,7 @@ describe("statusline", function()
       assert(rule ~= "" and rule:gsub("─", "") == "", "a rule closes the prompt")
       assert(not footer:find("Opus", 1, true), footer)
     end)
-    state.branch, state.model, state.effort, state.permission_mode, vim.o.columns = unpack(saved, 1, 5)
+    state.branch, state.model, state.effort, state.permission_mode, vim.o.columns, state.context = unpack(saved, 1, 6)
     assert(ok, err)
   end)
 
