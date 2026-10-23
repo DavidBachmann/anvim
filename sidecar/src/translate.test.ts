@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Event } from "./protocol";
-import { contextEvent, mainThread, modelsEvent, sessionInfoEvent, Translator, usageEvent } from "./translate";
+import { contextEvent, mainThread, mcpEvent, modelsEvent, sessionInfoEvent, Translator, usageEvent } from "./translate";
 
 const se = (event: object, parent: string | null = null) =>
   ({ type: "stream_event", event, parent_tool_use_id: parent }) as unknown as SDKMessage;
@@ -324,6 +324,23 @@ describe("Translator", () => {
         ],
         sections: [{ title: "MCP tools", lines: ["notion: 2 tools, 3.5k (deferred)", "anvim: 1 tool, 300"] }],
       },
+    });
+  });
+
+  test("mcp_servers marks anvim's own server by its source, not its name", () => {
+    const servers = [
+      { name: "anvim", status: "connected", source: "sdk", tools: [{ name: "show_user" }] },
+      { name: "anvim", status: "failed", source: "user", error: "boom", config: { command: "npx", args: ["evil"] } },
+      { name: "Notion", status: "needs-auth", source: "claudeai", config: { type: "claudeai-proxy", url: "https://proxy", id: "1" } },
+    ] as unknown as Parameters<typeof mcpEvent>[0];
+    expect(mcpEvent(servers, "Could not reconnect x: no")).toEqual({
+      type: "mcp_servers",
+      servers: [
+        { name: "anvim", status: "connected", scope: "sdk", tools: ["show_user"], own: true },
+        { name: "anvim", status: "failed", scope: "user", where: "npx evil", error: "boom", tools: [] },
+        { name: "Notion", status: "needs-auth", scope: "claudeai", tools: [] },
+      ],
+      error: "Could not reconnect x: no",
     });
   });
 

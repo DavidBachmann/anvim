@@ -9,7 +9,7 @@ describe("settings", function()
     helpers.start()
   end)
 
-  it("/status shows the login, <Tab> shows the usage and the context, and q closes the window", function()
+  it("/status shows the login, <Tab> goes through the usage, the context and MCP, and q closes the window", function()
     local layout = require("anvim.layout")
     vim.api.nvim_set_current_win(layout.wins.input)
     local buf
@@ -56,6 +56,25 @@ describe("settings", function()
     lines = helpers.buf_lines(buf)
     assert(helpers.contains(lines, "^ ⛁ ⛶   claude%-opus%-5%-5 · 10k/1m tokens %(1%%%)$"))
     assert(helpers.contains(lines, "^       ⛁ Memory files: 10k tokens"))
+
+    helpers.capture_sends(function(sent)
+      vim.api.nvim_feedkeys(vim.keycode("<Tab>"), "mx", false)
+      sidecar.dispatch({
+        type = "mcp_servers",
+        servers = {
+          { name = "anvim", status = "connected", scope = "sdk", tools = { "show_user" }, own = true },
+          { name = "notion", status = "disabled", scope = "claudeai", tools = {} },
+        },
+      })
+      lines = helpers.buf_lines(buf)
+      assert(helpers.contains(lines, "^ ✔ anvim   connected · 1 tool  sdk$"))
+      assert.are.same(1, vim.api.nvim_win_get_cursor(0)[1])
+      vim.api.nvim_feedkeys(vim.keycode("<CR>"), "mx", false)
+      assert(helpers.contains(helpers.buf_lines(buf), "^     show_user$"))
+      vim.api.nvim_feedkeys("Gt", "mx", false)
+      assert.are.same({ type = "mcp_action", action = "enable", server = "notion" }, sent[#sent])
+      assert(helpers.contains(helpers.buf_lines(buf), "^ Turning on notion%.%.%.$"))
+    end)
 
     vim.api.nvim_feedkeys("q", "mx", false)
     assert.are.same(-1, vim.fn.bufwinid(buf))

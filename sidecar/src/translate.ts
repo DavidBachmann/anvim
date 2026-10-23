@@ -8,7 +8,8 @@ import type {
   SlashCommand as SdkSlashCommand,
 } from "@anthropic-ai/claude-agent-sdk";
 import { FieldStream } from "./fieldstream";
-import type { ContextMark, Event, UsageSection } from "./protocol";
+import type { ContextMark, Event, McpServer, UsageSection } from "./protocol";
+import { isEditorTool } from "./tools";
 
 const MAX_TEXT = 2000;
 // A subagent's reply can be long.
@@ -496,6 +497,25 @@ export function contextEvent(c: ContextAnswer): Event {
       sections: contextSections(c),
     },
   };
+}
+
+function mcpServer(s: McpServerStatus): McpServer {
+  const c = s.config as { type?: string; command?: string; args?: string[]; url?: string } | undefined;
+  // A claude.ai connector's URL is Claude Code's proxy, which says nothing.
+  const where = c?.command ? [c.command, ...(c.args ?? [])].join(" ") : c?.type !== "claudeai-proxy" ? c?.url : undefined;
+  return {
+    name: s.name,
+    status: s.status,
+    ...(s.source ?? s.scope ? { scope: s.source ?? s.scope } : {}),
+    ...(where ? { where } : {}),
+    ...(s.error ? { error: s.error } : {}),
+    tools: (s.tools ?? []).map((t) => t.name),
+    ...(isEditorTool(s.source ? { name: s.name, source: s.source } : undefined) ? { own: true } : {}),
+  };
+}
+
+export function mcpEvent(servers: McpServerStatus[], error?: string): Event {
+  return { type: "mcp_servers", servers: servers.map(mcpServer), ...(error ? { error } : {}) };
 }
 
 const MCP_STATUS: [McpServerStatus["status"], string][] = [

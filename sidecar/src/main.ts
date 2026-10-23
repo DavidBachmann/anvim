@@ -15,7 +15,7 @@ import type { Command, EffortLevel, Event } from "./protocol";
 import { preToolUse, SandboxGuard, SandboxNotice, sandboxSetup, startMode } from "./sandbox";
 import * as sessions from "./sessions";
 import { EditorBridge, editorServer, SERVER } from "./tools";
-import { commandsEvent, contextEvent, modelsEvent, sessionInfoEvent, Translator, usageEvent } from "./translate";
+import { commandsEvent, contextEvent, mcpEvent, modelsEvent, sessionInfoEvent, Translator, usageEvent } from "./translate";
 
 const record = process.env.ANVIM_RECORD;
 
@@ -339,6 +339,33 @@ export async function handle(cmd: Command): Promise<void> {
           emit(contextEvent(await q.getContextUsage({ detail: "full" })));
         } catch (err) {
           emit({ type: "context_usage", error: String((err as Error)?.message ?? err) });
+        }
+      });
+      return;
+    case "mcp_servers":
+      await control(async (q) => {
+        try {
+          emit(mcpEvent(await q.mcpServerStatus()));
+        } catch (err) {
+          emit({ type: "mcp_servers", error: String((err as Error)?.message ?? err) });
+        }
+      });
+      return;
+    case "mcp_action":
+      await control(async (q) => {
+        let error: string | undefined;
+        try {
+          // The editor tools are anvim's, and the session needs them.
+          if (cmd.server === SERVER) throw new Error("anvim's own server always runs");
+          if (cmd.action === "reconnect") await q.reconnectMcpServer(cmd.server);
+          else await q.toggleMcpServer(cmd.server, cmd.action === "enable");
+        } catch (err) {
+          error = `Could not ${cmd.action} ${cmd.server}: ${(err as Error)?.message ?? err}`;
+        }
+        try {
+          emit(mcpEvent(await q.mcpServerStatus(), error));
+        } catch (err) {
+          emit({ type: "mcp_servers", error: error ?? String((err as Error)?.message ?? err) });
         }
       });
       return;

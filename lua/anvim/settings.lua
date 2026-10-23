@@ -1,7 +1,7 @@
--- Claude Code's Settings dialog in a float, with Status, Usage and Context
--- tabs. /status, /usage and /context open it. Claude Code's /usage and
--- /context in the SDK print text, which would go into Claude's context, and
--- its /status does not run there.
+-- Claude Code's Settings dialog in a float, with Status, Usage, Context and
+-- MCP tabs. /status, /usage, /context and /mcp open it. Claude Code's /usage,
+-- /context and /mcp in the SDK print text, which would go into Claude's
+-- context, and its /status does not run there.
 local keys = require("anvim.keys")
 local sidecar = require("anvim.sidecar")
 local state = require("anvim.state")
@@ -13,10 +13,17 @@ local ns = api.nvim_create_namespace("anvim.settings")
 -- Room for the context grid and its legend side by side.
 local WIDTH = 88
 local BAR = 50
-local TABS = { "status", "usage", "context" }
-local NAMES = { status = "Status", usage = "Usage", context = "Context" }
+local TABS = { "status", "usage", "context", "mcp" }
+local NAMES = { status = "Status", usage = "Usage", context = "Context", mcp = "MCP" }
 -- The request that answers each tab.
-local REQUESTS = { status = "session_info", usage = "usage", context = "context_usage" }
+local REQUESTS = { status = "session_info", usage = "usage", context = "context_usage", mcp = "mcp_servers" }
+local STATUS = {
+  connected = { "✔", "DiagnosticOk", "connected" },
+  failed = { "✗", "DiagnosticError", "failed" },
+  ["needs-auth"] = { "△", "DiagnosticWarn", "needs sign-in" },
+  pending = { "◌", "Comment", "connecting" },
+  disabled = { "○", "Comment", "off" },
+}
 -- Claude Code's theme colors, as highlight groups. The rest are grey.
 local COLORS = {
   claude = "AnvimClaude",
@@ -30,11 +37,18 @@ local COLORS = {
 
 ---@type snacks.win?
 local win
----@type "status"|"usage"|"context"
+---@type "status"|"usage"|"context"|"mcp"
 local tab = "status"
+-- The tab that the window showed last.
+local drawn
 -- The answers since the window opened, by tab: the event, or nil while it loads.
 ---@type table<string, table>
 local answers = {}
+-- The MCP servers that show their tools, the server of each line (0-based),
+-- and what the tab says over its list.
+local expanded = {} ---@type table<string, true>
+local server_rows = {} ---@type table<integer, string>
+local note ---@type [string, string]?
 
 local function valid()
   return win ~= nil and win:valid()
@@ -47,7 +61,7 @@ local Text = {}
 Text.__index = Text
 
 function Text.new()
-  return setmetatable({ lines = {}, marks = {} }, Text)
+  return setmetatable({ lines = {}, marks = {}, servers = {}, heads = {} }, Text)
 end
 
 ---@param chunks string|{[1]: string, [2]: string?}[]
@@ -151,6 +165,55 @@ local function render_context(t, ctx)
   end
 end
 
+-- One line for each server, as in Claude Code's /mcp. <CR> shows what a
+-- server runs and its tools under it.
+local function render_mcp(t, ev)
+  if note or ev.error then
+    t:add({ note or { ev.error, "DiagnosticError" } })
+    t:add("")
+  end
+  local wide = 0
+  for _, s in ipairs(ev.servers) do
+    wide = math.max(wide, math.min(api.nvim_strwidth(s.name), 32))
+  end
+  for _, s in ipairs(ev.servers) do
+    local st = STATUS[s.status] or { "?", "Comment", s.status }
+    local words = st[3]
+    if s.status == "connected" then
+      words = ("%s · %d tool%s"):format(words, #s.tools, #s.tools == 1 and "" or "s")
+    end
+    t.heads[s.name] = #t.lines
+    t.servers[#t.lines] = s.name
+    t:add({
+      { st[1], st[2] },
+      { " " .. s.name .. (" "):rep(math.max(wide - api.nvim_strwidth(s.name), 0) + 2) },
+      { words, st[2] },
+      { s.scope and ("  " .. s.scope) or "", "Comment" },
+    })
+    if expanded[s.name] then
+      local function more(text, group)
+        t.servers[#t.lines] = s.name
+        t:add({ { "    " .. text, group or "AnvimResult" } })
+      end
+      if s.own then
+        more("anvim's editor tools, which always run")
+      end
+      if s.where then
+        more(s.where)
+      end
+      if s.error then
+        more(s.error, "DiagnosticError")
+      end
+      if s.status == "needs-auth" then
+        more("Sign in with /mcp in Claude Code's terminal.", "DiagnosticWarn")
+      end
+      for _, tool in ipairs(s.tools) do
+        more(tool)
+      end
+    end
+  end
+end
+
 -- Claude Code's answer may lack a row, such as the organization of an API
 -- key. While it loads, its rows show dots.
 local function render_status(t, info)
@@ -178,14 +241,16 @@ end
 local function render()
   local t = Text.new()
   local ev = answers[tab]
-  if ev and ev.error then
+  if ev and ev.error and not ev.servers then
     t:add({ { "Claude Code did not answer: " .. ev.error, "DiagnosticError" } })
   elseif tab == "status" then
     render_status(t, ev and ev.info)
   elseif ev and tab == "usage" then
     render_usage(t, ev.usage)
-  elseif ev then
+  elseif ev and tab == "context" then
     render_context(t, ev.context)
+  elseif ev then
+    render_mcp(t, ev)
   else
     t:add({ { "Loading...", "AnvimResult" } })
   end
@@ -203,12 +268,28 @@ local function title()
   return chunks
 end
 
+-- The server of the line under the cursor, in the MCP tab.
+local function server_at_cursor()
+  if tab ~= "mcp" or not valid() or drawn ~= "mcp" then
+    return
+  end
+  local name = server_rows[api.nvim_win_get_cursor(win.win)[1] - 1]
+  for _, s in ipairs(answers.mcp and answers.mcp.servers or {}) do
+    if s.name == name then
+      return s
+    end
+  end
+end
+
 local function draw()
   if not valid() then
     return
   end
   local buf = win.buf
+  -- The cursor stays on its server when the list changes.
+  local keep = server_at_cursor()
   local t = render()
+  server_rows = t.servers
   -- A margin of one cell on each side, as in Claude Code's dialogs.
   for i, line in ipairs(t.lines) do
     t.lines[i] = line == "" and line or " " .. line
@@ -220,16 +301,65 @@ local function draw()
   for _, m in ipairs(t.marks) do
     api.nvim_buf_set_extmark(buf, ns, m[1], m[2] + 1, { end_col = m[3] + 1, hl_group = m[4] })
   end
-  win:set_title(title())
+  win.opts.title = title()
+  local keys_hint = tab == "mcp" and "<CR> tools · r reconnect · t on or off · " or ""
+  win.opts.footer = { { " " .. keys_hint .. "<Tab> next tab · q close ", "FloatFooter" } }
+  win.opts.wo.cursorline = tab == "mcp"
   local height = api.nvim_win_text_height(win.win, {}).all
   win.opts.height = math.max(math.min(height, vim.o.lines - 4), 1)
   win:update()
-  api.nvim_win_set_cursor(win.win, { 1, 0 })
+  local row = keep and t.heads[keep.name]
+  if not row and drawn == tab then
+    row = math.min(api.nvim_win_get_cursor(win.win)[1], #t.lines) - 1
+  end
+  if not row then
+    row = next(t.heads) and math.huge or 0
+    for _, head in pairs(t.heads) do
+      row = math.min(row, head)
+    end
+  end
+  api.nvim_win_set_cursor(win.win, { row + 1, 0 })
+  drawn = tab
 end
 
 local function request()
   answers[tab] = nil
   sidecar.send({ type = REQUESTS[tab] })
+end
+
+-- <CR> in the MCP tab: shows or hides the server's tools.
+function M.tools()
+  local s = server_at_cursor()
+  if s then
+    expanded[s.name] = not expanded[s.name] or nil
+    draw()
+  end
+end
+
+---@param action "reconnect"|"enable"|"disable"
+local function act(action, s)
+  if s.own then
+    note = { "anvim's own server always runs.", "DiagnosticWarn" }
+  else
+    local verb = ({ reconnect = "Reconnecting", enable = "Turning on", disable = "Turning off" })[action]
+    note = { ("%s %s..."):format(verb, s.name), "AnvimResult" }
+    sidecar.send({ type = "mcp_action", action = action, server = s.name })
+  end
+  draw()
+end
+
+function M.reconnect()
+  local s = server_at_cursor()
+  if s then
+    act("reconnect", s)
+  end
+end
+
+function M.toggle()
+  local s = server_at_cursor()
+  if s then
+    act(s.status == "disabled" and "enable" or "disable", s)
+  end
 end
 
 ---@param step integer 1 for the next tab, -1 for the one before.
@@ -248,13 +378,13 @@ function M.close()
   end
 end
 
----@param name "status"|"usage"|"context"
+---@param name "status"|"usage"|"context"|"mcp"
 function M.open(name)
   if not sidecar.running() then
     vim.notify("anvim: Claude is not running. :AnvimRestart starts it", vim.log.levels.WARN)
     return
   end
-  tab, answers = name, {}
+  tab, answers, drawn, note = name, {}, nil, nil
   if not valid() then
     win = Snacks.win({
       position = "float",
@@ -284,6 +414,9 @@ function M.open(name)
     keys.set("settings", "n", "<S-Tab>", function()
       M.switch(-1)
     end, { buffer = win.buf, nowait = true })
+    keys.set("settings", "n", "<CR>", M.tools, { buffer = win.buf, nowait = true })
+    keys.set("settings", "n", "r", M.reconnect, { buffer = win.buf, nowait = true })
+    keys.set("settings", "n", "t", M.toggle, { buffer = win.buf, nowait = true })
     -- A click or a window key elsewhere closes it, as it closes the key view.
     win:on("WinLeave", function(self)
       vim.schedule(function()
@@ -308,6 +441,9 @@ function M.attach()
   for name, type in pairs(REQUESTS) do
     sidecar.on(type, function(ev)
       answers[name] = ev
+      if name == "mcp" then
+        note = nil
+      end
       if name == tab then
         draw()
       end

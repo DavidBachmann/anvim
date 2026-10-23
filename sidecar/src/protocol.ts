@@ -27,6 +27,17 @@ export type ContextView = {
   legend: (ContextMark & { text: string; dim?: boolean })[];
   sections: UsageSection[];
 };
+// The MCP tab: a server, its status and where it comes from. own marks
+// anvim's editor tools, which always run.
+export type McpServer = {
+  name: string;
+  status: string;
+  scope?: string;
+  where?: string;
+  error?: string;
+  tools: string[];
+  own?: boolean;
+};
 // The Status tab's lines that Claude Code knows. mcp counts the servers by status.
 export type SessionInfo = { version?: string; login?: string; organization?: string; email?: string; mcp: string };
 
@@ -69,6 +80,9 @@ export type Command =
   | { type: "session_info" }
   // Answered with a context_usage event.
   | { type: "context_usage" }
+  // Both are answered with an mcp_servers event.
+  | { type: "mcp_servers" }
+  | { type: "mcp_action"; action: "reconnect" | "enable" | "disable"; server: string }
   | { type: "preview_done"; req: number }
   // The answer to an editor_request: plain text for Claude, or an error.
   | { type: "editor_response"; req: number; result?: string; error?: string }
@@ -254,6 +268,8 @@ export type Event =
   | { type: "prompt_state"; id: string; state: string }
   // The email of Claude Code's login, at start.
   | { type: "account"; email?: string }
+  // The MCP servers, for the MCP tab. After an action that failed, error says why.
+  | { type: "mcp_servers"; servers?: McpServer[]; error?: string }
   // The answer to context_usage, for the Context tab.
   | { type: "context_usage"; context?: ContextView; error?: string }
   // The answer to session_info, for the Status tab.

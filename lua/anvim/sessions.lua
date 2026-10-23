@@ -481,6 +481,9 @@ function M.command(text)
   elseif name == "/context" then
     require("anvim.settings").open("context")
     return true
+  elseif name == "/mcp" and arg == "" then
+    require("anvim.settings").open("mcp")
+    return true
   end
   local reason = name and require("anvim.completion").unusable(name:sub(2), arg)
   if reason then
@@ -518,6 +521,11 @@ local own_commands = {
   { name = "status", description = "Show the login, the model and the session" },
   { name = "usage", description = "Show the plan's limits and what used them" },
   { name = "context", description = "Show what fills Claude's context window" },
+  {
+    name = "mcp",
+    description = "Show the MCP servers, and reconnect them or turn them on or off",
+    argument_hint = "[reconnect|enable|disable [<server>|all]]",
+  },
 }
 
 local function add_commands()
