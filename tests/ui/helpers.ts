@@ -170,18 +170,6 @@ export class Anvim {
     await this.waitWhere("input", "i");
   }
 
-  // Closes the completion menu, which would take <CR>. It shows as the user
-  // types prose too.
-  async hideMenu() {
-    await this.ui.drain();
-    await this.ui.exec_lua(`
-      if vim.fn.pumvisible() == 1 then
-        vim.api.nvim_feedkeys(vim.keycode("<C-e>"), "n", false)
-      end
-    `);
-    await this.ui.waitFor(async () => (await this.ui.exec_lua<number>(`return vim.fn.pumvisible()`)) === 0);
-  }
-
   // Types text one key at a time, at a user's pace.
   async type(text: string, ms = 50) {
     for (const char of text) {

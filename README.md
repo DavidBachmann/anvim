@@ -187,9 +187,9 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 | `PageUp`, `PageDown` | Scroll the transcript |
 | `@`, `/` | Complete a file, or a slash command at the start, in insert mode |
 | `?` | Show every key of anvim, in normal mode or in an empty prompt |
-| `Ctrl-Space`, `Ctrl-E` | Show and close the completion menu, in insert mode |
+| `Ctrl-Space`, `Ctrl-E` | Show and close the completion menu, in insert mode. `Ctrl-Space` also completes words from the open files |
 | `Ctrl-N`, `Ctrl-P`, `Up`, `Down` | Next and previous item, while the menu is open |
-| `Ctrl-Y`, `Enter` | Accept the highlighted item. A word menu that opens as you type highlights none, so `Enter` sends |
+| `Ctrl-Y`, `Enter` | Accept the highlighted item |
 
 ### Compose window
 

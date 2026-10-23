@@ -62,7 +62,8 @@ describe("completion", function()
     )
     assert(by_abbr(select(2, complete("@")))["matchparen.lua"], "the whole project after a lone @")
     assert.is_nil(completion.context(0, "mail me@comp"))
-    start, list = complete("mail me@comp")
+    assert.are.same({}, select(2, complete("mail me@comp")), "no words as the user types")
+    start, list = complete("mail me@comp", nil, true)
     assert.are.same(#"mail me@", start)
     for _, item in ipairs(list) do
       assert(not item.word:find("^@"), item.word)
@@ -93,7 +94,7 @@ describe("completion", function()
     -- The typed name filters the list.
     assert.are.same({ "/resume", "/review" }, vim.fn.sort(vim.tbl_keys(by_abbr(select(2, complete("/re"))))))
     for _, case in ipairs({ { "say /re" }, { "/re", 2 } }) do
-      for _, item in ipairs(select(2, complete(case[1], case[2]))) do
+      for _, item in ipairs(select(2, complete(case[1], case[2], true))) do
         assert(not item.word:find("^/"), item.word)
       end
     end

@@ -24,8 +24,6 @@ function ask(req: number, command: string) {
   );
 }
 
-const hideMenu = () => anvim!.hideMenu();
-
 test("a no with a reason after a click away leaves the prompt where typing stopped", async () => {
   anvim = await start();
   const { ui } = anvim;
@@ -47,7 +45,6 @@ test("a no with a reason after a click away leaves the prompt where typing stopp
   await ui.input("2");
   await anvim.waitWhere("input", "i");
   await anvim.type("no");
-  await hideMenu();
   // The guard: a pause after the last typed character.
   await Bun.sleep(500);
   await ui.input("<CR>");

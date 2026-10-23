@@ -1,6 +1,6 @@
--- Completion in the prompt and the compose window, in Neovim's own menu, as
--- the user types: files and directories after `@`, slash commands at the
--- start of the prompt, and elsewhere words from the windows' buffers.
+-- Completion in the prompt and the compose window, in Neovim's own menu: as
+-- the user types, files and directories after `@` and slash commands at the
+-- start of the prompt. <C-Space> also gives words from the windows' buffers.
 local state = require("anvim.state")
 
 local M = {}
@@ -388,13 +388,17 @@ local typed = false
 local updated_for
 -- Whether the last update showed the menu.
 local shown = false
+-- Whether the menu shows words. Only <C-Space> opens it, and it then follows
+-- the typed word.
+local words = false
 
 -- The kind of the menu, its 0-based start column and its items for the text
 -- before the cursor.
 ---@param row integer 0-based
 ---@param manual? boolean From <C-Space>: words also without a typed part of one.
+---@param more? boolean A word menu shows: words for a typed part of one.
 ---@return "file"|"command"|nil kind, integer start, table[] items
-function M.items(row, before, manual)
+function M.items(row, before, manual, more)
   local kind, start, token = M.context(row, before)
   if kind == "command" then
     return kind, start, M.command_items(token)
@@ -410,7 +414,7 @@ function M.items(row, before, manual)
     return kind, start, files and M.file_items(files, token) or {}
   end
   token = before:match(WORD_CHAR .. "*$")
-  return nil, #before - #token, (token ~= "" or manual) and M.word_items(token) or {}
+  return nil, #before - #token, (manual or more and token ~= "") and M.word_items(token) or {}
 end
 
 -- Shows the menu for the text before the cursor, or closes it when nothing
@@ -430,12 +434,10 @@ function M.update(manual)
     return
   end
   typed, updated_for = false, now
-  local kind, start, items = M.items(row, before, manual)
+  local kind, start, items = M.items(row, before, manual, words)
   shown = #items > 0
+  words = shown and not kind
   if shown then
-    -- A word menu that opens as the user types highlights no item, so that
-    -- Enter after prose sends it. <C-n> or <Down> picks a word.
-    vim.bo.completeopt = (kind or manual) and "menuone,noinsert,popup" or "menuone,noselect,popup"
     vim.fn.complete(start + 1, items)
   elseif vim.fn.pumvisible() == 1 then
     vim.fn.complete(#before + 1, {})
@@ -480,14 +482,14 @@ function M.setup(buf)
     typed = true
   end)
   on("InsertEnter", function()
-    typed, shown = false, false
+    typed, shown, words = false, false, false
     with_files(function() end)
   end)
   -- Insert mode goes on in a window that a key or a click enters, such as the
   -- compose window, and so would the completion. What the user typed here
   -- opens no menu there.
   on("WinLeave", function()
-    typed, shown = false, false
+    typed, shown, words = false, false, false
     if api.nvim_get_mode().mode:sub(1, 1) == "i" and vim.fn.complete_info({ "mode" }).mode ~= "" then
       vim.fn.complete(vim.fn.col("."), {})
     end
@@ -497,6 +499,7 @@ function M.setup(buf)
   on("CompleteDone", function()
     local reason = vim.v.event.reason
     shown = shown and reason ~= "accept" and reason ~= "cancel"
+    words = words and shown
     local data = vim.v.completed_item.user_data
     if reason == "accept" and type(data) == "table" and data.anvim == "dir" then
       M.show(buf)
