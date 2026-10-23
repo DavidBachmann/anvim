@@ -173,12 +173,14 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 
 | Key | Action |
 | --- | --- |
-| `Enter` | Send, and go back to normal mode |
+| `Enter` | Send, and go back to normal mode. On the selected agent count, open the Agent Overview |
 | `Shift-Enter`, `Alt-Enter` | New line, in insert mode |
 | `Esc`, a pause, `Esc`, in normal mode | Stop Claude |
 | `Ctrl-C`, `:AnvimStop` | Stop Claude at once |
 | `Shift-Tab` | Cycle the permission mode |
 | `Ctrl-G` | Write the prompt in a large window |
+| `j`, `Down` on the last line, in normal mode | Select the agent count in the footer, while agents run |
+| `k`, `Up`, `Esc` | End the selection of the agent count |
 | `Up` on the first line, `Down` on the last | Go back and forth through past prompts, in insert mode |
 | `Ctrl-P`, `Ctrl-N` | Go back and forth through past prompts, in normal mode |
 | `Ctrl-U`, `Ctrl-D`, `Ctrl-B`, `Ctrl-F` | Scroll the transcript, in normal mode |
@@ -233,7 +235,7 @@ These keys work in the prompt, in normal mode, while Claude waits for your answe
 | `<leader>j`, `<leader>cj` | Jump to where Claude, or the focused subagent, is |
 | `<leader>c1` to `<leader>c4` | Focus the subagent with that number, so follow mode follows it |
 | `<leader>c0` | Focus Claude, the main agent, again |
-| `<leader>ca` | Pick an agent to focus, with its place in the preview |
+| `<leader>ca` | Open the Agent Overview: pick an agent to focus, with its place in the preview |
 | `<leader>ct`, `:AnvimTrail` | Pick a place from Claude's trail |
 | `<leader>cf` | Pick one of the last 25 files of Claude or the followed subagent |
 | `<leader>cr`, `:AnvimTranscript` | Read the transcript: put the cursor in it to yank and search |
@@ -262,9 +264,9 @@ Claude's todo list stays at the end of the transcript, under the newest output, 
 
 ## Subagents
 
-Claude can start subagents, such as Explore, and several at once. Each running subagent gets a number from 1 to 4 and a color of its own, and anvim names it by its type and that number, such as `Explore 2`. The bullet of its line in the tool pane has that color while it runs. The footer under the prompt has a dot in each running subagent's color, and their count: `⏺⏺⏺ 3 agents`. In the explorer, an agent's dots in its color show where it works, up to three agents and then `+`. A `⏺` marks the file that the agent reads or writes now, and a `•` marks each other file that it wrote to. A closed folder shows each agent once: a `⏺` when the agent's current file is below it, else a `•`. A subagent's dots go when it ends, and Claude's own dots last until its turn ends.
+Claude can start subagents, such as Explore, and several at once. Each running subagent gets a number from 1 to 4 and a color of its own, and anvim names it by its type and that number, such as `Explore 2`. The bullet of its line in the tool pane has that color while it runs. The footer under the prompt has a dot in each running subagent's color, and their count: `⏺⏺⏺ 3 agents ↓`. In normal mode, `j` or `Down` on the prompt's last line selects the count, and `Enter` then opens the Agent Overview. `k`, `Up` and `Esc` end the selection. Any other key ends it too, and then does its usual work. In the explorer, an agent's dots in its color show where it works, up to three agents and then `+`. A `⏺` marks the file that the agent reads or writes now, and a `•` marks each other file that it wrote to. A closed folder shows each agent once: a `⏺` when the agent's current file is below it, else a `•`. A subagent's dots go when it ends, and Claude's own dots last until its turn ends.
 
-Follow mode follows one agent at a time, at first Claude itself. `<leader>c2` focuses subagent 2, and `<leader>c0` focuses Claude again. `<leader>ca` lists Claude and the running subagents, with what each one does, its tool uses and its place, which the preview shows. While a subagent has focus, the code window goes where that subagent reads and edits, and the other agents' moves leave it alone. The tool pane shows that subagent's own tool calls, and its bar names the agent in its color. The statusline says `◉ following Explore 2` in the agent's color, and the agent's dot in the footer is `◉`. Claude Code sends a subagent's edits whole, not as they are generated. So while you follow a subagent, anvim types its edits into the code window at a steady pace, in 2 s at most, before the file changes. The other agents never wait for that. When the subagent ends, focus goes back to Claude, the transcript says so, and the tool pane shows Claude's calls again. A permission request from a subagent names it in its color, such as `Edit file · Explore 2 (Find x)`.
+Follow mode follows one agent at a time, at first Claude itself. `<leader>c2` focuses subagent 2, and `<leader>c0` focuses Claude again. The Agent Overview (`<leader>ca`, or `Enter` on the selected agent count) lists Claude and the running subagents, with what each one does, its tool uses and its place, which the preview shows. While a subagent has focus, the code window goes where that subagent reads and edits, and the other agents' moves leave it alone. The tool pane shows that subagent's own tool calls, and its bar names the agent in its color. The statusline says `◉ following Explore 2` in the agent's color, and the agent's dot in the footer is `◉`. Claude Code sends a subagent's edits whole, not as they are generated. So while you follow a subagent, anvim types its edits into the code window at a steady pace, in 2 s at most, before the file changes. The other agents never wait for that. When the subagent ends, focus goes back to Claude, the transcript says so, and the tool pane shows Claude's calls again. A permission request from a subagent names it in its color, such as `Edit file · Explore 2 (Find x)`.
 
 A background subagent keeps working after Claude's turn ends. Its line in the tool pane says `Backgrounded agent`, lists its newest tool calls, and keeps its color and its number until it ends. Then its line shows its totals, and a row at the end of the transcript says `Agent "Find x" finished`, with its summary. When Claude is idle, it replies to each end in a turn of its own, as in Claude Code.
 

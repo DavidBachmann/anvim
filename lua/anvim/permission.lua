@@ -418,8 +418,8 @@ local mapped
 
 local function clear_keys()
   if mapped and api.nvim_buf_is_valid(mapped) then
-    for _, lhs in ipairs({ "1", "2", "3", "4", "5", "6", "7", "8", "9", "j", "k", "<Down>", "<Up>" }) do
-      pcall(vim.keymap.del, "n", lhs, { buffer = mapped })
+    for i = 1, 9 do
+      pcall(vim.keymap.del, "n", tostring(i), { buffer = mapped })
     end
   end
   mapped = nil
@@ -445,16 +445,21 @@ local function set_keys()
       choose(r, i, true)
     end)
   end
-  for _, lhs in ipairs({ "j", "<Down>" }) do
-    map(lhs, function(r)
-      move(r, 1)
-    end)
+end
+
+-- j, k, <Down> and <Up> in normal mode in the prompt (input.move()). It is
+-- false when no request waits, so the key does its usual work.
+---@param delta integer
+---@return boolean
+function M.move(delta)
+  local r = queue[1]
+  if not r then
+    return false
   end
-  for _, lhs in ipairs({ "k", "<Up>" }) do
-    map(lhs, function(r)
-      move(r, -1)
-    end)
+  if not typing then
+    move(r, delta)
   end
+  return true
 end
 
 -- A transcript error must not stop the request: the keys still answer it.
@@ -485,6 +490,7 @@ function show(r)
       r.opened = now()
     end)
     set_keys()
+    input.deselect()
     if not in_prompt() then
       local what = r.kind == "question" and "a question"
         or r.kind == "plan" and "a plan"

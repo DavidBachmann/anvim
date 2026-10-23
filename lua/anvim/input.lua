@@ -45,6 +45,11 @@ local esc_ns = api.nvim_create_namespace("anvim.input.esc")
 ---@type uv.uv_timer_t?
 local esc_timer
 
+-- The footer's agent count is selected: j on the last line selects it, and
+-- <CR> then opens the Agent Overview. The cursor stays in the prompt text.
+local selected = false
+local select_ns = api.nvim_create_namespace("anvim.input.select")
+
 -- Each label and its highlight.
 local mode_labels = {
   default = { "⏵ manual mode on", "AnvimModeManual" },
@@ -106,6 +111,13 @@ function M.buf()
       end)
     end
   end
+  -- While a request waits, these keys move through its choices. They have one
+  -- map, so a map of the permission module cannot replace or delete it.
+  for _, lhs in ipairs({ "j", "<Down>", "k", "<Up>" }) do
+    map("n", lhs, function()
+      M.move(lhs == "j" or lhs == "<Down>")
+    end)
+  end
   scroll("n", { "<C-u>", "<C-d>", "<C-b>", "<C-f>" })
   scroll({ "n", "i" }, { "<PageUp>", "<PageDown>" })
   keys.set("transcript", { "n", "i" }, "<LeftDrag>", function()
@@ -135,6 +147,7 @@ function M.buf()
         stopped, stopped_tick = api.nvim_win_get_cursor(0), vim.b[bufnr].changedtick
       end
       M.disarm()
+      M.deselect()
     end,
   })
   api.nvim_create_autocmd("InsertEnter", {
@@ -254,9 +267,16 @@ function M.shortcuts()
   return #lines == 1 and lines[1] == ""
 end
 
--- <CR> answers a waiting permission request, or sends the prompt.
+-- <CR> opens the Agent Overview from the selected agent count, answers a
+-- waiting permission request, or sends the prompt.
 function M.enter()
-  if not require("anvim.permission").key() then
+  if selected then
+    M.deselect()
+    local overview = require("anvim.overview")
+    if not overview.get() then
+      overview.open()
+    end
+  elseif not require("anvim.permission").key() then
     M.submit()
   end
 end
@@ -349,6 +369,10 @@ end
 function M.escape()
   -- The map hides the global <Esc>, which clears the search highlight.
   vim.cmd.nohlsearch()
+  if selected then
+    M.deselect()
+    return
+  end
   local action = require("anvim.permission").escape()
   if action == true then
     M.disarm()
@@ -530,7 +554,7 @@ function M.mode_label()
 end
 
 -- A dot in each running agent's color, with their count, under the prompt
--- text. The focused agent's dot is ◉.
+-- text. The focused agent's dot is ◉. The arrow says that j reaches the count.
 ---@return [string, string?][]
 function M.footer()
   local follow, agents = require("anvim.follow"), require("anvim.agents")
@@ -541,10 +565,87 @@ function M.footer()
       chunks[#chunks + 1] = { agent.id == follow.focus and "◉" or "⏺", agents.group(agent.slot) }
     end
   end
-  if #chunks > 1 then
-    chunks[#chunks + 1] = { (" %d agent%s"):format(#running, #running == 1 and "" or "s"), "AnvimChip" }
+  if #chunks == 1 then
+    return chunks
+  end
+  local count = ("%d agent%s ↓"):format(#running, #running == 1 and "" or "s")
+  vim.list_extend(chunks, { { " " }, { count, selected and "AnvimChipSelected" or "AnvimChip" } })
+  local hint = "  enter to open the Agent Overview"
+  if selected then
+    local width = 0
+    for _, chunk in ipairs(chunks) do
+      width = width + api.nvim_strwidth(chunk[1])
+    end
+    if width + api.nvim_strwidth(hint) <= win_width(prompt_win()) then
+      chunks[#chunks + 1] = { hint, "Comment" }
+    end
   end
   return chunks
+end
+
+-- Whether the footer shows the agent count.
+local function count_shown()
+  return #M.footer() > 1
+end
+
+---@return boolean
+function M.agents_selected()
+  return selected
+end
+
+-- Ends the selection of the agent count. It marks the footer for the next
+-- redraw and draws nothing now, so window events can call it.
+function M.deselect()
+  if selected then
+    selected = false
+    vim.on_key(nil, select_ns)
+    M.render()
+  end
+end
+
+-- These keys act on the selection themselves. Any other typed key ends it
+-- before it does its usual work.
+local select_keys = {}
+for _, lhs in ipairs({ "<CR>", "<Esc>", "j", "<Down>", "k", "<Up>" }) do
+  select_keys[vim.keycode(lhs)] = true
+end
+
+local function select_agents()
+  if selected then
+    return
+  end
+  selected = true
+  vim.on_key(function(_, typed)
+    if typed ~= "" and not select_keys[typed] then
+      M.deselect()
+    end
+  end, select_ns)
+  M.render()
+end
+
+-- j, k, <Down> and <Up> in normal mode. They move through a waiting
+-- request's choices. Otherwise they move by screen line without a count,
+-- as the base keymaps do. j on the last screen line selects the agent
+-- count, and k ends that selection.
+---@param down boolean
+function M.move(down)
+  if require("anvim.permission").move(down and 1 or -1) then
+    return
+  end
+  local count = vim.v.count
+  if count > 0 then
+    vim.cmd.normal({ count .. (down and "j" or "k"), bang = true })
+  elseif not down and selected then
+    M.deselect()
+  else
+    local win = api.nvim_get_current_win()
+    local before = api.nvim_win_get_cursor(win)
+    vim.cmd.normal({ down and "gj" or "gk", bang = true })
+    local stuck = vim.deep_equal(before, api.nvim_win_get_cursor(win))
+    if down and stuck and before[1] == api.nvim_buf_line_count(0) and count_shown() then
+      select_agents()
+    end
+  end
 end
 
 -- Neovim keeps the cursor line at the bottom of the window, which hides the
@@ -627,7 +728,13 @@ function M.attach()
   api.nvim_create_autocmd("User", {
     group = api.nvim_create_augroup("anvim.input.agents", {}),
     pattern = "AnvimAgents",
-    callback = M.render,
+    callback = function()
+      if selected and not count_shown() then
+        M.deselect()
+      else
+        M.render()
+      end
+    end,
   })
 end
 

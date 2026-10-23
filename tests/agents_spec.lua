@@ -127,7 +127,7 @@ describe("agents", function()
     assert.are.same("AnvimAgent3", bullet("^⏺ Agent%(Edit gamma%.js header%)"))
     local dots, text = footer()
     assert.are.same({ "AnvimAgent1", "AnvimAgent2", "AnvimAgent3" }, dots)
-    assert.are.same("  ⏺⏺⏺ 3 agents", text)
+    assert.are.same("  ⏺⏺⏺ 3 agents ↓", text)
 
     sidecar.dispatch(events[i])
     assert.are.same({ { beta, 2 }, { gamma, 3 } }, slots(), "beta and gamma keep their slots")
@@ -147,5 +147,68 @@ describe("agents", function()
     dots, text = footer()
     assert.are.same({}, dots)
     assert(not text:find("agent", 1, true), text)
+  end)
+
+  it("selects the agent count with j on the last prompt line, and enter opens the Agent Overview", function()
+    fresh()
+    local layout, overview = require("anvim.layout"), require("anvim.overview")
+    restore = function()
+      overview.close()
+      input.deselect()
+      sidecar.dispatch({ type = "permission_cancel", req = 951 })
+    end
+    sidecar.dispatch({ type = "agent_start", agent_id = "sel1", tool_use_id = "tu_sel1", subagent_type = "Explore" })
+    layout.focus_input({ insert = false })
+    vim.cmd.stopinsert()
+    local function keys(str)
+      api.nvim_feedkeys(vim.keycode(str), "mxt", false)
+    end
+    -- The count's chunk and its group.
+    local function count()
+      local ns = api.nvim_get_namespaces()["anvim.input"]
+      local mark = api.nvim_buf_get_extmarks(input.buf(), ns, 0, -1, { details = true })[1]
+      for _, chunk in ipairs(mark[4].virt_lines[#mark[4].virt_lines]) do
+        if chunk[1]:find("agent", 1, true) then
+          return chunk[1], chunk[2]
+        end
+      end
+    end
+    assert.are.same({ "1 agent ↓", "AnvimChip" }, { count() })
+
+    keys("j")
+    assert(input.agents_selected(), "j on the last line selects the count")
+    assert.are.same({ "1 agent ↓", "AnvimChipSelected" }, { count() })
+    keys("<CR>")
+    assert(overview.get(), "enter opens the Agent Overview")
+    assert(not input.agents_selected(), "enter ends the selection")
+    overview.close()
+    vim.wait(50)
+    layout.focus_input({ insert = false })
+
+    keys("j")
+    assert(input.agents_selected())
+    keys("k")
+    assert(not input.agents_selected(), "k ends the selection")
+    assert.are.same({ "1 agent ↓", "AnvimChip" }, { count() })
+
+    -- A request takes j for its choices, and gives it back when it closes.
+    local req = { command = "make" }
+    sidecar.dispatch({ type = "tool_start", id = "sel_tool", name = "Bash" })
+    sidecar.dispatch({ type = "tool_use", id = "sel_tool", name = "Bash", input = req })
+    sidecar.dispatch({ type = "permission_request", req = 951, tool_use_id = "sel_tool", tool = "Bash", input = req })
+    keys("j")
+    assert(not input.agents_selected(), "j moves through the choices while a request waits")
+    sidecar.dispatch({ type = "permission_cancel", req = 951 })
+    sidecar.dispatch({ type = "tool_result", id = "sel_tool", is_error = true, text = "cancelled" })
+    layout.focus_input({ insert = false })
+    keys("j")
+    assert(input.agents_selected(), "j selects the count again after the request")
+    -- While Claude works, a first <Esc> elsewhere would arm the stop.
+    input.set_busy(true)
+    keys("<Esc>")
+    local armed = input.armed()
+    input.set_busy(false)
+    assert(not input.agents_selected(), "esc ends the selection")
+    assert.is_nil(armed, "esc only ends the selection")
   end)
 end)

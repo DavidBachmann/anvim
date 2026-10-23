@@ -39,6 +39,8 @@ local highlights = {
   AnvimShow = { link = "Visual" },
   AnvimNote = { link = "DiagnosticInfo" },
   AnvimChip = { link = "Comment" },
+  -- The footer's agent count while j has selected it.
+  AnvimChipSelected = { link = "PmenuSel" },
   -- The Claude column's background is the tree's. The explorer's list maps
   -- NormalFloat to SnacksPickerList.
   AnvimNormal = { link = "SnacksPickerList" },
