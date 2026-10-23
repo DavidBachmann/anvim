@@ -21,6 +21,7 @@ local function unlock(buf)
     pcall(vim.keymap.del, "n", key, { buffer = buf })
   end
   require("anvim.refs").unmap(buf)
+  require("anvim.tabs").unmap(buf)
   api.nvim_clear_autocmds({ group = writes, buffer = buf })
 end
 
@@ -38,6 +39,7 @@ function M.lock(buf)
       require("anvim.keys").set("code", "n", key, talk, { buffer = buf })
     end
     require("anvim.refs").map(buf)
+    require("anvim.tabs").map(buf)
     -- A *Cmd autocmd replaces the write, so BufWritePre hooks such as format
     -- on save never run.
     local events = { "BufWriteCmd", "FileWriteCmd", "FileAppendCmd" }

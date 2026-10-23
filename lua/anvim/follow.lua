@@ -348,7 +348,10 @@ local function reveal_in_tree(path)
   end
 end
 
--- Shows buf in the code window with the cursor at line (1-based) and col (0-based).
+-- Shows buf in the code window with the cursor at line (1-based) and col
+-- (0-based). Without a line, the cursor goes where the window last had it
+-- in buf.
+---@param line integer?
 function M.show(buf, line, col)
   local win = layout.code_win()
   if api.nvim_win_get_buf(win) ~= buf then
@@ -361,8 +364,10 @@ function M.show(buf, line, col)
       reveal_in_tree(name)
     end
   end
-  line = math.max(1, math.min(line, api.nvim_buf_line_count(buf)))
-  api.nvim_win_set_cursor(win, { line, col or 0 })
+  if line then
+    line = math.max(1, math.min(line, api.nvim_buf_line_count(buf)))
+    api.nvim_win_set_cursor(win, { line, col or 0 })
+  end
 end
 
 ---@param quiet boolean? Only record the place.

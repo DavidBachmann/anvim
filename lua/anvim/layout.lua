@@ -343,8 +343,9 @@ local function open_code_win(buf)
   return win
 end
 
--- The code window's own options. Its winbar names its file, because the
--- statusline names the prompt's buffer while the cursor is there. Groups in a
+-- The code window's own options. Its winbar is the tab bar of tabs.lua. The
+-- bar names the code window's file, because the statusline names the
+-- prompt's buffer while the cursor is there. Groups in a
 -- winbar combine with WinBar, which often has the statusline's background.
 -- 'winhighlight' maps no other group, so a code window that split the prompt
 -- drops the prompt's background. Wrapped lines keep their indent.
@@ -368,15 +369,23 @@ function M.set_wrap(on)
   require("anvim.follow").apply(M.wins.code)
 end
 
+---@type string? The last error of the tab bar, which draws an empty winbar instead.
+M.winbar_error = nil
+
+-- Neovim empties a %! option that fails, and the code window would lose its
+-- winbar.
 function M.winbar_text()
-  local buf = api.nvim_win_get_buf(vim.g.statusline_winid)
-  local context = require("anvim.context")
-  local file = context.file(buf)
-  if not file then
-    return ""
+  local ok, text = pcall(require("anvim.tabs").render, vim.g.statusline_winid)
+  if ok then
+    return text
   end
-  local text = " " .. (context.relpath(file):gsub("%%", "%%%%"))
-  return vim.b[buf].anvim_preview and text .. "%#AnvimWinBarWriting# (writing)" or text
+  if not M.winbar_error then
+    vim.schedule(function()
+      vim.notify("anvim's tab bar failed: " .. text, vim.log.levels.ERROR)
+    end)
+  end
+  M.winbar_error = text
+  return ""
 end
 
 -- snacks' pickers jump into a window that shows a file, or else into one with

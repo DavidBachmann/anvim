@@ -112,7 +112,7 @@ For a long prompt, `Ctrl-G` in the prompt opens it in a large window in the midd
 
 Paste an image in the prompt, or drop an image file on the terminal, and the prompt shows a chip such as `[Image #1]`, as in Claude Code. The terminal pastes the image as the path of its file, and anvim sends the image itself to Claude with the prompt. Claude gets PNG, JPEG, GIF and WebP files up to 3.7 MB, and a notice names a file that it did not get.
 
-Only one window shows files, so anvim always knows which file you are looking at. The bar at the top of the code window names the file, relative to the working directory, and says `(writing)` while Claude writes a new file. A split, a picker's split action or `:diffsplit` opens the file in the code window instead. Help, quickfix, terminal and plugin windows open as usual. If you close the code window, the tool pane, the transcript or the prompt, anvim opens it again. `:q` in any of them quits anvim, also when other tabs are open.
+Only one window shows files, so anvim always knows which file you are looking at. The bar at the top of the code window has a tab for each of the last 5 files that Claude read, edited, wrote or showed you. A tab keeps its place when Claude comes back to its file, and a new file pushes out the one that Claude touched longest ago. A `•` in Claude's color marks a file that Claude edited, and `(writing)` marks a new file while Claude writes it. The tab of the file that the code window shows stands out. A file that is not in the bar, such as one that you opened, shows at the left, apart from the tabs. A click on a tab, or `Shift-H` and `Shift-L` in the code window, opens its file where you left it, or else where Claude was in it last. While you follow a subagent, the bar starts with the subagent's name and shows its files. A narrow code window drops tabs, first from the left, and shows how many it dropped on each side, such as `‹2`. When you resume a session, the bar shows Claude's last files of that session again. A split, a picker's split action or `:diffsplit` opens the file in the code window instead. Help, quickfix, terminal and plugin windows open as usual. If you close the code window, the tool pane, the transcript or the prompt, anvim opens it again. `:q` in any of them quits anvim, also when other tabs are open.
 
 In terminals with the kitty graphics protocol, such as Ghostty, cmux and kitty, the code window shows PNG images, and markdown files show their PNG images inline. Other image formats show as text.
 
@@ -130,7 +130,7 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 | --- | --- |
 | `<leader>?` | Show every key of anvim |
 | `Ctrl-H`, `Ctrl-J`, `Ctrl-K`, `Ctrl-L` | Go to the window on the left, below, above or on the right |
-| `Shift-H`, `Shift-L` | Previous and next buffer |
+| `Shift-H`, `Shift-L` | Previous and next buffer, outside the code window |
 | `j`, `k` | Move by screen line in wrapped text, by line with a count |
 | `Esc` | Clear the search highlight |
 | `<leader><space>`, `<leader>/`, `<leader>,` | Find files, grep, buffers |
@@ -156,6 +156,7 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 | `c` in visual mode | Put a reference to the selected lines in the prompt |
 | `c{motion}`, `cc` | Put a reference to the lines of the motion, or to the current line, in the prompt |
 | `<leader>cb` | Put a reference to the selection, or to the whole file, in the prompt |
+| `Shift-H`, `Shift-L` | Open the previous and next tab of the bar, around the ends. A click opens a tab |
 | `gd`, `gr`, `gI`, `gy`, `gD` | Definition, references, implementation, type definition, declaration, in a buffer with a language server |
 | `K` | Hover |
 | `gO` | List the file's symbols |

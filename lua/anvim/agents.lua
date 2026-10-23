@@ -252,7 +252,8 @@ function M.edit_line(path, input)
 end
 
 -- The path field of each edit tool.
-local edit_keys = { Edit = "file_path", Write = "file_path", NotebookEdit = "notebook_path" }
+M.edit_keys = { Edit = "file_path", Write = "file_path", NotebookEdit = "notebook_path" }
+local edit_keys = M.edit_keys
 
 local function start_edit(id, agent, path)
   if type(path) == "string" and not (edits[id] and edits[id].path == path) then

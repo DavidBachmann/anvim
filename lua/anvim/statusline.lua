@@ -432,7 +432,15 @@ function M.setup()
   -- without ModeChanged. The other events change what it shows.
   api.nvim_create_autocmd("User", {
     group = group,
-    pattern = { "AnvimStatus", "AnvimMode", "AnvimAgents", "AnvimPreviewStart", "AnvimPreviewEnd", "GitSignsUpdate" },
+    pattern = {
+      "AnvimStatus",
+      "AnvimMode",
+      "AnvimAgents",
+      "AnvimFiles",
+      "AnvimPreviewStart",
+      "AnvimPreviewEnd",
+      "GitSignsUpdate",
+    },
     callback = M.refresh,
   })
   api.nvim_create_autocmd(

@@ -106,6 +106,22 @@ function M.prompt(text)
   end
 end
 
+-- The newest entry whose path `match` accepts.
+---@param match fun(path: string): boolean
+---@return anvim.TrailEntry?
+function M.newest(match)
+  for i = #entries, 1, -1 do
+    if match(entries[i].path) then
+      return entries[i]
+    end
+  end
+end
+
+-- A resumed session replays its past into an empty trail.
+function M.clear()
+  entries, edits = {}, {}
+end
+
 local function line_length(path, lnum)
   local buf = vim.fn.bufnr(path)
   if buf > 0 and api.nvim_buf_is_loaded(buf) then

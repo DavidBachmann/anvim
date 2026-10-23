@@ -122,7 +122,30 @@ local draw = {
   end,
 }
 
+-- The trail and each agent's files hold the resumed session's past, so the
+-- code window's tab bar comes back. Only the main agent's calls are in it.
+local function replay_files(events)
+  local files, trail = require("anvim.files"), require("anvim.trail")
+  trail.clear()
+  files.clear()
+  for _, e in ipairs(events) do
+    local ok, err = pcall(function()
+      if e.type == "tool_use" then
+        trail.tool_use(e)
+        files.tool_use(e, e.time or false)
+      elseif e.type == "tool_result" then
+        trail.tool_result(e)
+        files.tool_result(e)
+      end
+    end)
+    if not ok then
+      sidecar.log(("history %s failed: %s"):format(e.type, err))
+    end
+  end
+end
+
 function M.history(ev)
+  replay_files(ev.events or {})
   transcript.clear()
   transcript.batch(function()
     for _, e in ipairs(ev.events or {}) do
