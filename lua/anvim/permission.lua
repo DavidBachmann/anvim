@@ -43,9 +43,9 @@ local queue = {}
 -- comes back afterwards.
 ---@type { r: anvim.Request, purpose: 'deny'|'other', draft: string[] }?
 local typing
--- How the prompt was when the first request in line opened: in insert mode or
--- not, and where the user stopped typing.
----@type { insert: boolean, at: [integer, integer]? }?
+-- Where the user stopped typing in the prompt, before a typed answer moved
+-- the cursor. It belongs to the first request in line.
+---@type { at: [integer, integer]? }?
 local before
 -- When the user last typed a character in the prompt, in ms.
 local typed = 0
@@ -506,49 +506,29 @@ local function end_typing()
   end
 end
 
--- Puts the prompt back as the user had it before the first request: insert
--- mode where they stopped typing, or normal mode.
+-- After the last request, the prompt is in normal mode, also when the user
+-- was typing before. A typed answer moved the cursor, so it goes back to
+-- where the user stopped typing, and an insert command goes on there.
 local function restore()
-  local was = before
+  local at = before and before.at
   before = nil
-  if not (was and in_prompt()) then
+  if not in_prompt() then
     return
   end
-  if not was.insert then
-    -- Typing an answer moved the cursor. The end of insert mode moves it
-    -- one left, so it goes back after that.
-    local at = was.at
-    if inserting() then
-      vim.cmd.stopinsert()
-      if at then
-        api.nvim_create_autocmd("InsertLeave", {
-          buffer = input.buf(),
-          once = true,
-          callback = function()
-            input.stop_at(at)
-          end,
-        })
-      end
-    elseif at then
-      input.stop_at(at)
+  if inserting() then
+    vim.cmd.stopinsert()
+    -- The end of insert mode moves the cursor one left, so it goes back after that.
+    if at then
+      api.nvim_create_autocmd("InsertLeave", {
+        buffer = input.buf(),
+        once = true,
+        callback = function()
+          input.stop_at(at)
+        end,
+      })
     end
-    return
-  end
-  if not was.at then
-    -- The ^ mark still marks where the user stopped typing.
-    input.resume()
-    return
-  end
-  -- Typing an answer moved the ^ mark, and Neovim cannot set it, so go to
-  -- the place saved before.
-  local buf = input.buf()
-  local at = was.at
-  local row = math.max(1, math.min(at[1], api.nvim_buf_line_count(buf)))
-  local line = api.nvim_buf_get_lines(buf, row - 1, row, false)[1]
-  local col = math.min(at[2], #line)
-  api.nvim_win_set_cursor(layout.wins.input, { row, col })
-  if not inserting() then
-    vim.cmd.startinsert({ bang = col >= #line })
+  elseif at then
+    input.stop_at(at)
   end
 end
 
@@ -732,7 +712,7 @@ function M.request(ev)
   end
   queue[#queue + 1] = r
   if #queue == 1 then
-    before = { insert = in_prompt() and inserting() }
+    before = {}
     show(r)
   end
 end

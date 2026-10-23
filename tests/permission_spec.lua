@@ -215,6 +215,30 @@ describe("permission", function()
     api.nvim_buf_set_lines(input.buf(), 0, -1, false, { "" })
   end)
 
+  it("leaves the prompt in normal mode after a send and after an answer, also when the user was typing", function()
+    helpers.start()
+    focus()
+    helpers.capture_sends(function(sent)
+      local req
+      api.nvim_create_user_command("AnvimSpecAsk", function()
+        req = request("Bash", { command = "make" })
+      end, {})
+      -- Each call ends insert mode, so the mode counts as the call reads it.
+      local mode = "<Cmd>let g:anvim_spec_mode = mode()<CR>"
+      keys("Ahello<CR>" .. mode)
+      assert.are.same("n", vim.g.anvim_spec_mode, "the send left insert mode")
+      assert.are.same("hello", sent[#sent].text)
+      keys("Adraft<Cmd>AnvimSpecAsk<CR><Esc>1" .. mode)
+      assert.are.same({ type = "permission_response", req = req, behavior = "allow" }, sent[#sent])
+      assert.are.same("n", vim.g.anvim_spec_mode, "the answer started insert mode")
+      assert.are.same({ "draft" }, buf_lines(input.buf()))
+    end)
+    api.nvim_del_user_command("AnvimSpecAsk")
+    vim.g.anvim_spec_mode = nil
+    api.nvim_buf_set_lines(input.buf(), 0, -1, false, { "" })
+    sidecar.dispatch({ type = "turn_end", subtype = "success", is_error = false, duration_ms = 1, cost_usd = 0 })
+  end)
+
   it("answers only a request in view, and brings it back when read mode ends", function()
     helpers.start()
     focus()

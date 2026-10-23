@@ -173,7 +173,7 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 
 | Key | Action |
 | --- | --- |
-| `Enter` | Send |
+| `Enter` | Send, and go back to normal mode |
 | `Shift-Enter`, `Alt-Enter` | New line, in insert mode |
 | `Esc`, a pause, `Esc`, in normal mode | Stop Claude |
 | `Ctrl-C`, `:AnvimStop` | Stop Claude at once |
@@ -286,7 +286,7 @@ When Claude needs your yes, the request appears at the bottom of the Claude colu
 
 The keys that answer are under [Permission requests](#permission-requests).
 
-While a request waits, normal mode in the prompt is for choosing. Typing your prompt never answers: if you are typing when a request opens, you keep typing, digits are text, and `Enter` keeps your prompt without sending it or answering. Press `Esc`, then choose. `Enter` chooses the highlighted option. The line above the prompt says which keys answer, and in insert mode it starts with `esc to leave insert mode`. A choice also does nothing within 0.4 s of the request opening or of the last character you typed. Going to the prompt while Claude waits leaves you in normal mode. After you answer, the prompt goes back to insert mode where you stopped typing, if you were typing.
+While a request waits, normal mode in the prompt is for choosing. Typing your prompt never answers: if you are typing when a request opens, you keep typing, digits are text, and `Enter` keeps your prompt without sending it or answering. Press `Esc`, then choose. `Enter` chooses the highlighted option. The line above the prompt says which keys answer, and in insert mode it starts with `esc to leave insert mode`. A choice also does nothing within 0.4 s of the request opening or of the last character you typed. Going to the prompt while Claude waits leaves you in normal mode. After you answer, the prompt stays in normal mode, also if you were typing before.
 
 `Esc` in normal mode in the prompt answers No, or stops Claude while Claude works. It acts only when you press it twice. The first press only arms it. The line above the prompt then says in red what the next press does, such as "esc again to stop Claude". The request shows that choice in red too. Press `Esc` again after a pause of at least 0.4 s and within 3 s. A press within the pause does nothing and starts the pause again, so a burst of `Esc` presses never stops Claude. A busy change, a new or changed request, any other key, leaving the prompt and the end of the 3 s limit take the red text away. The next `Esc` then starts over. `Ctrl-C` stops Claude at once.
 

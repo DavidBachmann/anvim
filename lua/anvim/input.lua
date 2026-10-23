@@ -275,6 +275,11 @@ function M.submit()
   if not require("anvim.sessions").command(text) then
     M.send(text)
   end
+  -- A send ends insert mode. A picker that a slash command opened has the
+  -- cursor now, and keeps its insert mode.
+  if api.nvim_get_current_win() == prompt_win() and api.nvim_get_mode().mode:sub(1, 1) == "i" then
+    vim.cmd.stopinsert()
+  end
 end
 
 function M.send(text)

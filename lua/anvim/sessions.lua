@@ -78,18 +78,6 @@ local function redraw()
   require("anvim.input").redraw()
 end
 
--- A picker that the prompt opened in insert mode gives insert mode back when
--- it closes, also after a cancel. The prompt is the window it goes back to.
----@return fun()
-local function from_prompt()
-  local insert = vim.api.nvim_get_mode().mode:sub(1, 1) == "i"
-  return function()
-    if insert then
-      require("anvim.input").resume()
-    end
-  end
-end
-
 -- What belongs to one session. A new session starts with none of it.
 local function forget()
   state.session_id, state.last_turn, state.cost_usd, state.context, state.turns = nil, nil, 0, nil, 0
@@ -291,7 +279,6 @@ end
 
 ---@param items table[]
 function M.show_picker(items)
-  local back = from_prompt()
   local ok, snacks = pcall(require, "snacks")
   if not (ok and snacks.picker) then
     vim.ui.select(items, {
@@ -303,7 +290,6 @@ function M.show_picker(items)
       if item then
         M.resume(item.id)
       end
-      back()
     end)
     return
   end
@@ -320,10 +306,6 @@ function M.show_picker(items)
       if item and not item.current then
         M.resume(item.id)
       end
-    end,
-    -- The picker gives the cursor back after this.
-    on_close = function()
-      vim.schedule(back)
     end,
   })
 end
@@ -399,7 +381,7 @@ end
 
 ---@param levels string[]
 function M.show_efforts(levels)
-  local current, back = chosen(), from_prompt()
+  local current = chosen()
   vim.ui.select(vim.list_extend({ "default" }, levels), {
     prompt = "Effort",
     format_item = function(level)
@@ -409,7 +391,6 @@ function M.show_efforts(levels)
     if choice then
       M.set_effort(choice ~= "default" and choice or nil)
     end
-    back()
   end)
 end
 
@@ -453,7 +434,6 @@ local function effort_command(arg)
 end
 
 function M.show_models(models)
-  local back = from_prompt()
   vim.ui.select(models, {
     prompt = "Model",
     format_item = function(m)
@@ -464,7 +444,6 @@ function M.show_models(models)
     if choice then
       M.set_model(choice)
     end
-    back()
   end)
 end
 
