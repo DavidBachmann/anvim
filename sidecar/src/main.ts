@@ -15,7 +15,7 @@ import type { Command, EffortLevel, Event } from "./protocol";
 import { preToolUse, SandboxGuard, SandboxNotice, sandboxSetup, startMode } from "./sandbox";
 import * as sessions from "./sessions";
 import { EditorBridge, editorServer, SERVER } from "./tools";
-import { commandsEvent, modelsEvent, sessionInfoEvent, Translator, usageEvent } from "./translate";
+import { commandsEvent, contextEvent, modelsEvent, sessionInfoEvent, Translator, usageEvent } from "./translate";
 
 const record = process.env.ANVIM_RECORD;
 
@@ -330,6 +330,15 @@ export async function handle(cmd: Command): Promise<void> {
           emit(usageEvent(await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET()));
         } catch (err) {
           emit({ type: "usage", error: String((err as Error)?.message ?? err) });
+        }
+      });
+      return;
+    case "context_usage":
+      await control(async (q) => {
+        try {
+          emit(contextEvent(await q.getContextUsage({ detail: "full" })));
+        } catch (err) {
+          emit({ type: "context_usage", error: String((err as Error)?.message ?? err) });
         }
       });
       return;

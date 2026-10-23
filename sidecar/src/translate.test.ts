@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Event } from "./protocol";
-import { mainThread, modelsEvent, sessionInfoEvent, Translator, usageEvent } from "./translate";
+import { contextEvent, mainThread, modelsEvent, sessionInfoEvent, Translator, usageEvent } from "./translate";
 
 const se = (event: object, parent: string | null = null) =>
   ({ type: "stream_event", event, parent_tool_use_id: parent }) as unknown as SDKMessage;
@@ -282,6 +282,49 @@ describe("Translator", () => {
     // Without a plan, there are no limits.
     const apiKey = { ...answer, subscription_type: null, rate_limits: null, behaviors: null };
     expect(usageEvent(apiKey)).toMatchObject({ type: "usage", usage: { limits: [], windows: [] } });
+  });
+
+  test("context_usage draws Claude Code's grid and legend, and sums the MCP tools by server", () => {
+    const cell = (categoryName: string, color: string, squareFullness: number) => ({ categoryName, color, squareFullness });
+    const answer = {
+      model: "claude-opus-5-5",
+      totalTokens: 390800,
+      maxTokens: 1000000,
+      percentage: 39.08,
+      categories: [
+        { name: "Messages", tokens: 358900, color: "purple_FOR_SUBAGENTS_ONLY", kind: "used" },
+        { name: "MCP tools (deferred)", tokens: 79300, color: "inactive", kind: "deferred" },
+        { name: "Free space", tokens: 576200, color: "promptBorder", kind: "free" },
+        { name: "Compact buffer", tokens: 0, color: "inactive", kind: "buffer" },
+      ],
+      gridRows: [[cell("Messages", "purple_FOR_SUBAGENTS_ONLY", 1), cell("Messages", "purple_FOR_SUBAGENTS_ONLY", 0.4), cell("Free space", "promptBorder", 1)]],
+      mcpTools: [
+        { name: "a", serverName: "notion", tokens: 2000, isLoaded: false },
+        { name: "b", serverName: "notion", tokens: 1500, isLoaded: false },
+        { name: "c", serverName: "anvim", tokens: 300, isLoaded: true },
+      ],
+      agents: [],
+      memoryFiles: [],
+    } as unknown as Parameters<typeof contextEvent>[0];
+    expect(contextEvent(answer)).toEqual({
+      type: "context_usage",
+      context: {
+        title: "claude-opus-5-5 · 390.8k/1m tokens (39%)",
+        grid: [
+          [
+            { glyph: "⛁", color: "purple_FOR_SUBAGENTS_ONLY" },
+            { glyph: "⛀", color: "purple_FOR_SUBAGENTS_ONLY" },
+            { glyph: "⛶", color: "promptBorder" },
+          ],
+        ],
+        legend: [
+          { glyph: "⛁", color: "purple_FOR_SUBAGENTS_ONLY", text: "Messages: 358.9k tokens (35.9%)" },
+          { glyph: "⛶", color: "inactive", text: "MCP tools (deferred): 79.3k tokens (7.9%)", dim: true },
+          { glyph: "⛶", color: "promptBorder", text: "Free space: 576.2k tokens (57.6%)" },
+        ],
+        sections: [{ title: "MCP tools", lines: ["notion: 2 tools, 3.5k (deferred)", "anvim: 1 tool, 300"] }],
+      },
+    });
   });
 
   test("session_info names the login and counts the MCP servers by status", () => {

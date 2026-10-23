@@ -18,6 +18,15 @@ export type UsageLimit = { title: string; percent: number; resets_at?: number };
 // Lines under a title, such as the session's totals or the last 24 hours.
 export type UsageSection = { title: string; lines: string[] };
 export type Usage = { session: UsageSection; limits: UsageLimit[]; windows: UsageSection[] };
+// The Context tab: Claude Code's grid of the context window, its legend, and
+// what fills it. A color is a Claude Code theme color, such as "claude".
+export type ContextMark = { glyph: string; color: string };
+export type ContextView = {
+  title: string;
+  grid: ContextMark[][];
+  legend: (ContextMark & { text: string; dim?: boolean })[];
+  sections: UsageSection[];
+};
 // The Status tab's lines that Claude Code knows. mcp counts the servers by status.
 export type SessionInfo = { version?: string; login?: string; organization?: string; email?: string; mcp: string };
 
@@ -58,6 +67,8 @@ export type Command =
   | { type: "usage" }
   // Answered with a session_info event.
   | { type: "session_info" }
+  // Answered with a context_usage event.
+  | { type: "context_usage" }
   | { type: "preview_done"; req: number }
   // The answer to an editor_request: plain text for Claude, or an error.
   | { type: "editor_response"; req: number; result?: string; error?: string }
@@ -243,6 +254,8 @@ export type Event =
   | { type: "prompt_state"; id: string; state: string }
   // The email of Claude Code's login, at start.
   | { type: "account"; email?: string }
+  // The answer to context_usage, for the Context tab.
+  | { type: "context_usage"; context?: ContextView; error?: string }
   // The answer to session_info, for the Status tab.
   | { type: "session_info"; info?: SessionInfo; error?: string }
   // A resumed session's past, sent before it starts. Its events draw the

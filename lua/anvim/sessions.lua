@@ -478,6 +478,9 @@ function M.command(text)
   elseif name == "/usage" or name == "/cost" or name == "/stats" then
     require("anvim.settings").open("usage")
     return true
+  elseif name == "/context" then
+    require("anvim.settings").open("context")
+    return true
   end
   local reason = name and require("anvim.completion").unusable(name:sub(2), arg)
   if reason then
@@ -514,6 +517,7 @@ local own_commands = {
   { name = "effort", description = "Set the effort level for this session", argument_hint = "[level]" },
   { name = "status", description = "Show the login, the model and the session" },
   { name = "usage", description = "Show the plan's limits and what used them" },
+  { name = "context", description = "Show what fills Claude's context window" },
 }
 
 local function add_commands()

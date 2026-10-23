@@ -2,12 +2,13 @@ import type {
   AccountInfo,
   McpServerStatus,
   ModelInfo,
+  SDKControlGetContextUsageResponse,
   SDKControlGetUsageResponse,
   SDKMessage,
   SlashCommand as SdkSlashCommand,
 } from "@anthropic-ai/claude-agent-sdk";
 import { FieldStream } from "./fieldstream";
-import type { Event, UsageSection } from "./protocol";
+import type { ContextMark, Event, UsageSection } from "./protocol";
 
 const MAX_TEXT = 2000;
 // A subagent's reply can be long.
@@ -362,9 +363,10 @@ function duration(ms: number): string {
   return h ? `${h}h ${m}m ${s % 60}s` : m ? `${m}m ${s % 60}s` : `${s}s`;
 }
 
-// 14.4m, 1.4k or 25 tokens.
+// 14.4m, 1m, 1.4k or 25 tokens.
 function tokens(n: number): string {
-  return n >= 1e6 ? `${(n / 1e6).toFixed(1)}m` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(n);
+  const short = (x: number, unit: string) => `${x.toFixed(1).replace(/\.0$/, "")}${unit}`;
+  return n >= 1e6 ? short(n / 1e6, "m") : n >= 1e3 ? short(n / 1e3, "k") : String(Math.round(n));
 }
 
 const dollars = (usd: number) => `$${usd.toFixed(usd >= 0.5 || usd === 0 ? 2 : 4)}`;
@@ -407,6 +409,91 @@ export function usageEvent(u: SDKControlGetUsageResponse): Event {
       session: sessionSection(u.session),
       limits,
       windows: b ? [usageWindow("Last 24h", b.day), usageWindow("Last 7d", b.week)] : [],
+    },
+  };
+}
+
+const home = (path: string) => {
+  const dir = process.env.HOME;
+  return dir && path.startsWith(dir + "/") ? "~" + path.slice(dir.length) : path;
+};
+
+// The first rows, and how many more there are.
+function top(rows: string[], n = 5): string[] {
+  return rows.length > n ? [...rows.slice(0, n), `and ${rows.length - n} more`] : rows;
+}
+
+type ContextAnswer = SDKControlGetContextUsageResponse;
+
+// Claude Code's /context grid: a full cell, a part-full one, free space, and
+// the buffer that autocompact keeps.
+function contextMark(kind: string | undefined, color: string, fullness = 1): ContextMark {
+  const glyph = kind === "free" || kind === "deferred" ? "⛶" : kind === "buffer" ? "⛝" : fullness >= 0.7 ? "⛁" : "⛀";
+  return { glyph, color };
+}
+
+function contextSections(c: ContextAnswer): UsageSection[] {
+  const sections: UsageSection[] = [];
+  const add = (title: string, lines: string[]) => {
+    if (lines.length) sections.push({ title, lines });
+  };
+  const m = c.messageBreakdown;
+  if (m) {
+    add(
+      "Messages",
+      (
+        [
+          ["Tool calls", m.toolCallTokens],
+          ["Tool results", m.toolResultTokens],
+          ["Attachments", m.attachmentTokens],
+          ["Claude's messages", m.assistantMessageTokens],
+          ["Your messages", m.userMessageTokens],
+        ] as const
+      ).flatMap(([name, n]) => (n ? [`${name}: ${tokens(n)}`] : [])),
+    );
+  }
+  const servers = new Map<string, { tools: number; tokens: number; loaded: boolean }>();
+  for (const t of c.mcpTools) {
+    const s = servers.get(t.serverName) ?? { tools: 0, tokens: 0, loaded: false };
+    servers.set(t.serverName, { tools: s.tools + 1, tokens: s.tokens + t.tokens, loaded: s.loaded || t.isLoaded !== false });
+  }
+  add(
+    "MCP tools",
+    top(
+      [...servers]
+        .sort((a, b) => b[1].tokens - a[1].tokens)
+        .map(([name, s]) => `${name}: ${s.tools} tool${s.tools === 1 ? "" : "s"}, ${tokens(s.tokens)}${s.loaded ? "" : " (deferred)"}`),
+    ),
+  );
+  add("Custom agents", top([...c.agents].sort((a, b) => b.tokens - a.tokens).map((a) => `${a.agentType}: ${tokens(a.tokens)}`)));
+  add(
+    "Memory files",
+    c.memoryFiles.map((f) => `${f.type}: ${home(f.path)} (${tokens(f.tokens)})`),
+  );
+  const sk = c.skills;
+  if (sk?.totalSkills) {
+    const rows = [...sk.skillFrontmatter].sort((a, b) => b.tokens - a.tokens).map((s) => `${s.name}: ${tokens(s.tokens)}`);
+    add("Skills", [`${sk.includedSkills} of ${sk.totalSkills} skills, ${tokens(sk.tokens)}`, ...top(rows)]);
+  }
+  return sections;
+}
+
+export function contextEvent(c: ContextAnswer): Event {
+  const kinds = new Map(c.categories.map((cat) => [cat.name, cat.kind]));
+  const share = (n: number) => ((n / c.maxTokens) * 100).toFixed(1);
+  return {
+    type: "context_usage",
+    context: {
+      title: `${c.model} · ${tokens(c.totalTokens)}/${tokens(c.maxTokens)} tokens (${Math.round(c.percentage)}%)`,
+      grid: c.gridRows.map((row) => row.map((cell) => contextMark(kinds.get(cell.categoryName), cell.color, cell.squareFullness))),
+      legend: c.categories
+        .filter((cat) => cat.tokens > 0)
+        .map((cat) => ({
+          ...contextMark(cat.kind, cat.color),
+          text: `${cat.name}: ${tokens(cat.tokens)} tokens (${share(cat.tokens)}%)`,
+          ...(cat.kind === "deferred" ? { dim: true } : {}),
+        })),
+      sections: contextSections(c),
     },
   };
 }

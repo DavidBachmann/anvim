@@ -1,6 +1,7 @@
--- Claude Code's Settings dialog in a float, with its Status and Usage tabs.
--- /status and /usage open it. Claude Code's /usage in the SDK prints text,
--- which would go into Claude's context, and its /status does not run there.
+-- Claude Code's Settings dialog in a float, with Status, Usage and Context
+-- tabs. /status, /usage and /context open it. Claude Code's /usage and
+-- /context in the SDK print text, which would go into Claude's context, and
+-- its /status does not run there.
 local keys = require("anvim.keys")
 local sidecar = require("anvim.sidecar")
 local state = require("anvim.state")
@@ -9,16 +10,27 @@ local M = {}
 
 local api = vim.api
 local ns = api.nvim_create_namespace("anvim.settings")
-local WIDTH = 72
+-- Room for the context grid and its legend side by side.
+local WIDTH = 88
 local BAR = 50
-local TABS = { "status", "usage" }
-local NAMES = { status = "Status", usage = "Usage" }
+local TABS = { "status", "usage", "context" }
+local NAMES = { status = "Status", usage = "Usage", context = "Context" }
 -- The request that answers each tab.
-local REQUESTS = { status = "session_info", usage = "usage" }
+local REQUESTS = { status = "session_info", usage = "usage", context = "context_usage" }
+-- Claude Code's theme colors, as highlight groups. The rest are grey.
+local COLORS = {
+  claude = "AnvimClaude",
+  warning = "DiagnosticWarn",
+  error = "DiagnosticError",
+  success = "DiagnosticOk",
+  permission = "DiagnosticInfo",
+  suggestion = "DiagnosticHint",
+  text = "Normal",
+}
 
 ---@type snacks.win?
 local win
----@type "status"|"usage"
+---@type "status"|"usage"|"context"
 local tab = "status"
 -- The answers since the window opened, by tab: the event, or nil while it loads.
 ---@type table<string, table>
@@ -95,6 +107,50 @@ local function render_usage(t, usage)
   end
 end
 
+local function color(name)
+  local agent = name:match("^(%a+)_FOR_SUBAGENTS_ONLY$")
+  if agent then
+    return "MiniIcons" .. (agent == "pink" and "Red" or agent:sub(1, 1):upper() .. agent:sub(2))
+  end
+  return COLORS[name] or "Comment"
+end
+
+-- The grid with its legend at the right, as in Claude Code, or under it when
+-- the window is too narrow.
+local function render_context(t, ctx)
+  local legend = { { { ctx.title } }, {} }
+  local widest = 0
+  for _, row in ipairs(ctx.legend) do
+    legend[#legend + 1] = { { row.glyph, color(row.color) }, { " " .. row.text, row.dim and "Comment" or nil } }
+    widest = math.max(widest, 2 + api.nvim_strwidth(row.text))
+  end
+  widest = math.max(widest, api.nvim_strwidth(ctx.title))
+  local grid_width = math.max(#(ctx.grid[1] or {}) * 2 - 1, 0)
+  local inner = (valid() and api.nvim_win_get_width(win.win) or WIDTH + 2) - 2
+  local side = grid_width + 3 + widest <= inner
+  for r = 1, side and math.max(#ctx.grid, #legend) or #ctx.grid do
+    local chunks = {}
+    for c, mark in ipairs(ctx.grid[r] or {}) do
+      chunks[#chunks + 1] = { (c > 1 and " " or "") .. mark.glyph, color(mark.color) }
+    end
+    if side and legend[r] and #legend[r] > 0 then
+      chunks[#chunks + 1] = { (" "):rep(ctx.grid[r] and 3 or grid_width + 3) }
+      vim.list_extend(chunks, legend[r])
+    end
+    t:add(chunks)
+  end
+  t:add("")
+  if not side then
+    for _, row in ipairs(legend) do
+      t:add(row)
+    end
+    t:add("")
+  end
+  for _, s in ipairs(ctx.sections) do
+    section(t, s)
+  end
+end
+
 -- Claude Code's answer may lack a row, such as the organization of an API
 -- key. While it loads, its rows show dots.
 local function render_status(t, info)
@@ -126,8 +182,10 @@ local function render()
     t:add({ { "Claude Code did not answer: " .. ev.error, "DiagnosticError" } })
   elseif tab == "status" then
     render_status(t, ev and ev.info)
-  elseif ev then
+  elseif ev and tab == "usage" then
     render_usage(t, ev.usage)
+  elseif ev then
+    render_context(t, ev.context)
   else
     t:add({ { "Loading...", "AnvimResult" } })
   end
@@ -190,7 +248,7 @@ function M.close()
   end
 end
 
----@param name "status"|"usage"
+---@param name "status"|"usage"|"context"
 function M.open(name)
   if not sidecar.running() then
     vim.notify("anvim: Claude is not running. :AnvimRestart starts it", vim.log.levels.WARN)

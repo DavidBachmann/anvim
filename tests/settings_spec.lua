@@ -9,7 +9,7 @@ describe("settings", function()
     helpers.start()
   end)
 
-  it("/status shows the login, <Tab> shows the usage, and q closes the window", function()
+  it("/status shows the login, <Tab> shows the usage and the context, and q closes the window", function()
     local layout = require("anvim.layout")
     vim.api.nvim_set_current_win(layout.wins.input)
     local buf
@@ -39,6 +39,23 @@ describe("settings", function()
     assert(helpers.contains(lines, "^   Total cost: %$1%.00$"))
     assert(helpers.contains(lines, "^ " .. ("█"):rep(25) .. ("░"):rep(25) .. " 50%% used$"))
     assert.is_false(vim.bo[buf].modifiable)
+
+    helpers.capture_sends(function(sent)
+      vim.api.nvim_feedkeys(vim.keycode("<Tab>"), "mx", false)
+      assert.are.same({ { type = "context_usage" } }, sent)
+    end)
+    sidecar.dispatch({
+      type = "context_usage",
+      context = {
+        title = "claude-opus-5-5 · 10k/1m tokens (1%)",
+        grid = { { { glyph = "⛁", color = "claude" }, { glyph = "⛶", color = "promptBorder" } } },
+        legend = { { glyph = "⛁", color = "claude", text = "Memory files: 10k tokens (1.0%)" } },
+        sections = { { title = "Memory files", lines = { "Project: ~/dev/anvim/CLAUDE.md (4.4k)" } } },
+      },
+    })
+    lines = helpers.buf_lines(buf)
+    assert(helpers.contains(lines, "^ ⛁ ⛶   claude%-opus%-5%-5 · 10k/1m tokens %(1%%%)$"))
+    assert(helpers.contains(lines, "^       ⛁ Memory files: 10k tokens"))
 
     vim.api.nvim_feedkeys("q", "mx", false)
     assert.are.same(-1, vim.fn.bufwinid(buf))
