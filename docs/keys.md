@@ -58,6 +58,7 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 | `Shift-Enter`, `Alt-Enter` | New line, in insert mode |
 | `Esc`, a pause, `Esc`, in normal mode | Stop Claude |
 | `Ctrl-C`, `:AnvimStop` | Stop Claude at once |
+| `Ctrl-B`, in insert mode | Move the running agents and Bash commands to the background |
 | `Shift-Tab` | Cycle the permission mode |
 | `Ctrl-G` | Write the prompt in a large window |
 | `j`, `Down` on the last line, in normal mode | Select the agent count in the footer, while agents run |

@@ -87,6 +87,9 @@ export type Command =
   // id is a UUID, which Claude Code's prompt_state events name.
   | { type: "prompt"; text: string; images?: string[]; id?: string }
   | { type: "interrupt" }
+  // Claude Code's Ctrl+B: the running foreground agents and Bash commands go
+  // on in the background, and the turn goes on.
+  | { type: "background" }
   | { type: "set_permission_mode"; mode: PermissionMode }
   | { type: "set_model"; model?: string }
   // For the rest of the session. null is the default: the level of the user's
@@ -243,6 +246,8 @@ export type Event =
       tokens?: number;
       last_tool?: string;
     }
+  // A running foreground subagent went on in the background.
+  | { type: "agent_background"; agent_id: string }
   // A subagent ended. A background agent's Agent tool call returned when it
   // started, so this is its result. description is set in a resumed
   // session's history, which may lack the tool call.

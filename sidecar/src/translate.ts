@@ -169,6 +169,10 @@ export class Translator {
       });
     } else if (!this.agents.has(id)) {
       return;
+    } else if (m.subtype === "task_updated") {
+      if (m.patch?.is_backgrounded !== true || this.background.has(id)) return;
+      this.background.add(id);
+      out.push({ type: "agent_background", agent_id: id });
     } else if (m.subtype === "task_progress") {
       out.push({
         type: "agent_progress",

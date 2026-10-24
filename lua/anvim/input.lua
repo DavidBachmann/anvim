@@ -103,6 +103,8 @@ function M.buf()
   map("i", "<M-CR>", newline, { expr = true })
   map("n", "<Esc>", M.escape, { nowait = true })
   map({ "i", "n" }, "<C-c>", M.interrupt)
+  -- Claude Code's key. In normal mode, <C-b> scrolls the transcript.
+  map("i", "<C-b>", M.background)
   map({ "i", "n" }, "<S-Tab>", M.cycle_mode)
   map({ "i", "n" }, "<C-g>", function()
     require("anvim.compose").open()
@@ -375,6 +377,24 @@ function M.interrupt()
   end
 end
 
+-- The running foreground agents and Bash commands go on in the background,
+-- and Claude's turn goes on, so a queued prompt reaches Claude.
+function M.background()
+  if state.busy then
+    sidecar.send({ type = "background" })
+  end
+end
+
+---@return boolean
+local function foreground_agent()
+  for _, agent in ipairs(require("anvim.agents").running()) do
+    if not agent.background then
+      return true
+    end
+  end
+  return false
+end
+
 -- The action that a second <Esc> takes, while armed.
 ---@return anvim.EscAction?
 function M.armed()
@@ -580,7 +600,10 @@ function M.activity()
   elseif state.busy and state.turn_started then
     local frame = spinner_frames[math.floor(vim.uv.now() / 120) % #spinner_frames + 1]
     local verb, elapsed = working()
-    local hint = ("(%s · esc twice to stop)"):format(transcript.duration(elapsed, true))
+    local hint = ("(%s · esc twice to stop%s)"):format(
+      transcript.duration(elapsed, true),
+      foreground_agent() and " · ctrl+b to background" or ""
+    )
     text = ("%%#AnvimClaude#%s %s %%#Comment#%s "):format(frame, (verb:gsub("%%", "%%%%")), hint)
     width = vim.fn.strdisplaywidth(("%s %s %s "):format(frame, verb, hint))
   end

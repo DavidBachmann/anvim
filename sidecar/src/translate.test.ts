@@ -695,6 +695,22 @@ describe("Translator", () => {
     ]);
   });
 
+  test("a foreground agent that goes to the background says so once, and ends when it leaves the task list", () => {
+    const moved = msg({ type: "system", subtype: "task_updated", task_id: "f1", patch: { is_backgrounded: true } });
+    const events = run([
+      msg({ type: "system", subtype: "task_started", task_id: "f1", tool_use_id: "toolu_F", description: "f1", task_type: "local_agent" }),
+      msg({ type: "system", subtype: "background_tasks_changed", tasks: [{ task_id: "f1" }] }),
+      moved,
+      moved,
+      msg({ type: "system", subtype: "task_updated", task_id: "f1", patch: { status: "completed" } }),
+      msg({ type: "system", subtype: "background_tasks_changed", tasks: [] }),
+    ]).filter((e) => e.type !== "agent_start");
+    expect(events).toEqual([
+      { type: "agent_background", agent_id: "f1" },
+      { type: "agent_end", agent_id: "f1", status: "completed" },
+    ]);
+  });
+
   test("message_stop closes a cut tool call", () => {
     const events = run([
       se({ type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "t2", name: "Write" } }),

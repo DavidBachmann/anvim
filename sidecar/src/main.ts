@@ -325,6 +325,11 @@ export async function handle(cmd: Command): Promise<void> {
     case "interrupt":
       await session?.interrupt();
       return;
+    case "background":
+      await session?.backgroundTasks().catch((err) => {
+        emit({ type: "notice", level: "warn", text: `Could not move the tasks to the background: ${err}` });
+      });
+      return;
     case "set_permission_mode":
       await session?.setPermissionMode(cmd.mode);
       return;

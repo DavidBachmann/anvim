@@ -30,6 +30,8 @@ Your prompts are saved per directory, the last 200, in anvim's state dir. `Up` o
 
 A prompt that you send while Claude works waits under the prompt box, dimmed and marked `queued`, as in Claude Code. It joins the transcript when Claude Code takes it: after Claude's next tool call, or when the turn ends. So a reply that streams in is never split by your prompt. If Claude stops before it takes a queued prompt, a notice says so, and `Up` in the prompt brings the text back.
 
+A foreground agent's tool call ends only when the agent ends, so a queued prompt waits for it. `Ctrl-B` in insert mode moves the running foreground agents and Bash commands to the background, as in Claude Code. They work on, and Claude's turn goes on and takes the prompt. While a foreground agent runs, the activity line says `ctrl+b to background`. Stopping Claude stops its foreground agents too.
+
 ## Stopping Claude
 
 `Esc` in normal mode in the prompt stops Claude while Claude works, or answers No to a request. It acts only when you press it twice. The first press only arms it. The line above the prompt then says in red what the next press does, such as "esc again to stop Claude". Press `Esc` again after a pause of at least 0.4 s and within 3 s. A press within the pause does nothing and starts the pause again, so a burst of `Esc` presses never stops Claude. A busy change, a new or changed request, any other key, leaving the prompt and the end of the 3 s limit take the red text away. The next `Esc` then starts over. `Ctrl-C` stops Claude at once.

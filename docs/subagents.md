@@ -18,7 +18,7 @@ Claude Code sends a subagent's edits whole, not as they are generated. So while 
 
 ## Background agents
 
-A background subagent keeps working after Claude's turn ends. Its line in the tool pane says `Backgrounded agent`, lists its newest tool calls, and keeps its color and its number until it ends. Then its line shows its totals, and a row at the end of the transcript says `Agent "Find x" finished`, with its summary. When Claude is idle, it replies to each end in a turn of its own, as in Claude Code.
+A background subagent keeps working after Claude's turn ends. `Ctrl-B` in the prompt, in insert mode, moves the running foreground agents to the background. A background agent's line in the tool pane says `Backgrounded agent`, lists its newest tool calls, and keeps its color and its number until it ends. Then its line shows its totals, and a row at the end of the transcript says `Agent "Find x" finished`, with its summary. When Claude is idle, it replies to each end in a turn of its own, as in Claude Code.
 
 With the tool pane hidden (`<leader>us`), the subagents' lines show in the transcript, as in Claude Code, and the line of the subagent that has focus ends in `◉ focused`.
 

@@ -213,6 +213,15 @@ function M.progress(ev)
   end
 end
 
+-- With Ctrl+B, a foreground agent works on after the turn.
+function M.background(ev)
+  local agent = agents[ev.agent_id]
+  if agent then
+    agent.background = true
+    M.changed()
+  end
+end
+
 function M.finish(ev)
   local agent = agents[ev.agent_id]
   if not agent then
@@ -413,6 +422,7 @@ end
 function M.attach(sidecar)
   sidecar.on("agent_start", M.start)
   sidecar.on("agent_progress", M.progress)
+  sidecar.on("agent_background", M.background)
   sidecar.on("agent_end", M.finish)
   sidecar.on("tool_field", M.tool_field)
   sidecar.on("tool_use", M.tool_use)

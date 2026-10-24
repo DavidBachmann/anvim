@@ -85,6 +85,30 @@ describe("agents", function()
     end
   end)
 
+  it("ctrl+b in the prompt moves a foreground agent to the background, and the agent outlives the turn", function()
+    helpers.fresh()
+    input.set_busy(true)
+    sidecar.dispatch({
+      type = "agent_start",
+      agent_id = "f1",
+      tool_use_id = "toolu_F",
+      description = "Sleep",
+      depth = 1,
+      background = false,
+    })
+    helpers.capture_sends(function(sent)
+      api.nvim_buf_call(input.buf(), function()
+        vim.fn.maparg("<C-b>", "i", false, true).callback()
+      end)
+      assert.are.same({ { type = "background" } }, sent)
+    end)
+    sidecar.dispatch({ type = "agent_background", agent_id = "f1" })
+    sidecar.dispatch({ type = "turn_end", subtype = "success", duration_ms = 1, cost_usd = 0, num_turns = 0 })
+    assert.are.same("running", agents.get("f1").status)
+    sidecar.dispatch({ type = "agent_end", agent_id = "f1", status = "completed" })
+    assert.are.same("completed", agents.get("f1").status)
+  end)
+
   it("replays three agents in parallel: slots, places, files, bullets and the footer", function()
     helpers.fresh()
     for _, name in ipairs({ "alpha", "beta", "gamma" }) do
