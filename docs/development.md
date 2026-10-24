@@ -57,7 +57,7 @@ It first brings your install dir to the repo's commits, and then updates the plu
 
 ## The screen tool
 
-`tools/screen/screen.ts` drives anvim headless and saves text, highlight and PNG snapshots of the real screen. It boots the plugins in `.tests/anvim`, as the UI tests do, and shares its UI client, `tools/screen/ui.ts`, with them. A snap writes the grid as `.txt`, the highlights as `.hl.txt`, and an `.svg` and a `.png`. The PNG needs Google Chrome. `record` logs every frame with its timing. A run keeps its own log in a temp dir, and prints its path.
+`tools/screen/screen.ts` drives anvim headless and saves text, highlight and PNG snapshots of the real screen. It boots the plugins in `.tests/anvim`, as the UI tests do, and shares its UI client, `tools/screen/ui.ts`, with them. A snap writes the grid as `.txt`, the highlights as `.hl.txt`, and an `.svg` and a `.png`. The PNG needs Google Chrome. `record` logs every frame with its timing. A run keeps its own log in a temp dir, and prints its path. A live run uses the `default` account, so no account picker asks. `ANVIM_ACCOUNT` or `CLAUDE_CONFIG_DIR` picks another one.
 
 ```sh
 bun tools/screen/screen.ts --cwd <dir> --size 200x48 [--replay rec.jsonl | --model haiku] --out <dir> -- \

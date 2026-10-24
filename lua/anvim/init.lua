@@ -233,6 +233,9 @@ function M.setup(opts)
   api.nvim_create_user_command("AnvimSessions", sessions.pick, { desc = "Resume a session of this directory" })
   api.nvim_create_user_command("AnvimRestart", sessions.restart, { desc = "Restart Claude in this session" })
   api.nvim_create_user_command("AnvimModel", sessions.pick_model, { desc = "Choose Claude's model" })
+  api.nvim_create_user_command("AnvimAccount", function(cmd)
+    require("anvim.accounts").command(cmd.args)
+  end, { nargs = "*", desc = "Switch the Claude account, or add one" })
   local keys = require("anvim.keys")
   keys.set("claude", "n", "<leader>cs", sessions.pick)
   keys.set("claude", "n", "<leader>cm", sessions.pick_model)
@@ -258,14 +261,17 @@ function M.start()
   refresh_branch()
   local resume = config.options.resume
   local sessions = require("anvim.sessions")
-  sidecar.start(sessions.start_command({
-    resume = resume ~= "pick" and resume or nil,
-    continue = config.options.continue or nil,
-    history = true,
-  }))
-  if resume == "pick" then
-    vim.schedule(sessions.pick)
-  end
+  -- Claude starts once the account is known, which a picker can ask first.
+  require("anvim.accounts").start(function()
+    sidecar.start(sessions.start_command({
+      resume = resume ~= "pick" and resume or nil,
+      continue = config.options.continue or nil,
+      history = true,
+    }))
+    if resume == "pick" then
+      vim.schedule(sessions.pick)
+    end
+  end)
   api.nvim_create_autocmd("VimLeavePre", { callback = sidecar.stop })
 end
 

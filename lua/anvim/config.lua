@@ -12,6 +12,8 @@ M.defaults = {
   resume = nil,
   -- Resume the latest session in the working directory at start.
   continue = false,
+  ---@type string? The account to start with: default, or <name> for the config dir ~/.claude-<name>.
+  account = nil,
   -- Run Claude's Bash commands in Claude Code's sandbox: they can write only in the project, a temp dir and
   -- the npm, bun and go build caches.
   sandbox = true,

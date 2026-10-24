@@ -64,6 +64,9 @@ export class Ui {
       env[`XDG_${name.toUpperCase()}_HOME`] = dir;
     }
     Object.assign(env, opts.env);
+    // The temp state dir remembers no account, so anvim would ask with a picker
+    // on a machine with two logins. CLAUDE_CONFIG_DIR still picks another one.
+    if (!env.ANVIM_REPLAY && !env.ANVIM_ACCOUNT && !env.CLAUDE_CONFIG_DIR) env.ANVIM_ACCOUNT = "default";
     this.proc = Bun.spawn(["nvim", "--embed", "-u", join(root, "init.lua")], {
       cwd: opts.cwd,
       env,

@@ -9,6 +9,7 @@ return {
       permission_mode = vim.env.ANVIM_MODE,
       resume = vim.env.ANVIM_RESUME,
       continue = vim.env.ANVIM_CONTINUE == "1",
+      account = vim.env.ANVIM_ACCOUNT,
       sandbox = vim.env.ANVIM_SANDBOX ~= "0",
       debug = vim.env.ANVIM_DEBUG == "1",
       chrome = ({ ["1"] = true, ["0"] = false })[vim.env.ANVIM_CHROME or ""],

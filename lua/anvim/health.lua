@@ -92,6 +92,28 @@ local function start_mode(runs)
   end
 end
 
+local function accounts()
+  health.start("anvim accounts")
+  local acc = require("anvim.accounts")
+  local current = acc.current()
+  for _, a in ipairs(acc.list()) do
+    local dir = a.dir and vim.fn.fnamemodify(a.dir, ":~") or "~/.claude"
+    local text = ("Account %s%s: %s, %s"):format(
+      a.name,
+      a.name == current and " (current)" or "",
+      dir,
+      a.login and (a.email or "a login without an email") or "no login"
+    )
+    health.info(text)
+  end
+  local r = acc.reason
+  if r then
+    health.info(("This start uses the account %s, because %s"):format(r.name, r.why))
+  else
+    health.info("Claude has not started yet, so no account is chosen")
+  end
+end
+
 function M.check()
   health.start("anvim")
 
@@ -147,10 +169,8 @@ function M.check()
     )
   end
 
-  -- The Agent SDK runs its own Claude Code binary from a per-platform package.
-  -- It does not use a `claude` on PATH.
-  local claude = vim.fn.glob(sidecar.dir .. "/node_modules/@anthropic-ai/claude-agent-sdk-*/claude", true, true)[1]
-  if claude and vim.fn.executable(claude) == 1 then
+  local claude = sidecar.claude()
+  if claude then
     health.ok(
       ("Claude Code %s, bundled with the Agent SDK"):format(version({ claude, "--version" }) or "(unknown version)")
     )
@@ -195,6 +215,8 @@ function M.check()
   end
 
   health.info("Log: " .. sidecar.log_path)
+
+  accounts()
 end
 
 return M

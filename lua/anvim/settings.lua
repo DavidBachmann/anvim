@@ -304,6 +304,7 @@ local function render_status(t, info)
     { "Version", info and info.version },
     { "Session ID", state.session_id },
     { "cwd", state.cwd and vim.fn.fnamemodify(state.cwd, ":~") },
+    { "Account", require("anvim.accounts").current() },
     -- Claude Code's own dir, which tells a work login from a personal one.
     { "Config dir", vim.fn.fnamemodify(vim.env.CLAUDE_CONFIG_DIR or "~/.claude", ":~") },
     { "Login method", info and info.login },

@@ -816,6 +816,9 @@ describe("stack", function()
       require("anvim.settings").open("status")
       snap("settings", "settings", vim.api.nvim_get_current_buf())
       require("anvim.settings").close()
+      local login = require("anvim.accounts").login("keys", vim.fn.tempname(), { "sh", "-c", "read x" })
+      snap("login", "login", login.buf)
+      login:close()
       -- The prompt has the choice keys while a request waits.
       local req = { command = "make keys" }
       sidecar.dispatch({ type = "tool_start", id = "keys1", name = "Bash" })
@@ -1164,6 +1167,49 @@ describe("stack", function()
       }
     ]])
   end
+
+  it("logs in a new account in a terminal float that opens in normal mode, and q stops a login", function()
+    start()
+    local dir = helpers.tmp .. "/login-dir"
+    vim.fn.mkdir(dir, "p")
+    local stub = helpers.tmp .. "/fake-login"
+    vim.fn.writefile({
+      "#!/bin/sh",
+      [[printf 'Paste code here if prompted > ']],
+      "read code",
+      [[printf '{"oauthAccount":{"emailAddress":"new@x.com"}}' > "$CLAUDE_CONFIG_DIR/.claude.json"]],
+    }, stub)
+    vim.fn.setfperm(stub, "rwxr-xr-x")
+    lua([[require("anvim.layout").focus_input()]])
+    wait_where({ win = "input", mode = "i" }, "the prompt")
+    lua([[require("anvim.accounts").login("new", ...)]], dir, { stub })
+    wait(
+      5000,
+      [[return table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n"):find("Paste code") ~= nil]],
+      "the login did not ask for a code"
+    )
+    wait_where({ win = "anvim_login", mode = "nt" }, "the login float")
+    keys("i")
+    wait_where({ win = "anvim_login", mode = "t" }, "i in the login float")
+    keys("abc<CR>")
+    wait(5000, [[return vim.bo.filetype ~= "anvim_login"]], "the float stayed after the login")
+    local lines = lua([[return vim.api.nvim_buf_get_lines(require("anvim.transcript").buf(), 0, -1, false)]])
+    helpers.contains(lines, "The account new logged in as new@x%.com")
+
+    local id = lua(
+      [[
+      local win = require("anvim.accounts").login("new", ..., { "sh", "-c", "sleep 30" })
+      return vim.b[win.buf].terminal_job_id
+    ]],
+      dir
+    )
+    wait_where({ win = "anvim_login", mode = "nt" }, "the second login float")
+    keys("q")
+    wait(3000, [[return vim.bo.filetype ~= "anvim_login"]], "q did not close the float")
+    wait(3000, ("return vim.fn.jobwait({ %d }, 0)[1] ~= -1"):format(id), "q did not stop the login")
+    lua([[require("anvim.layout").focus_input({ insert = false })]])
+    wait_where({ win = "input", mode = "n" }, "the prompt after the login")
+  end)
 
   it("never answers while enter is held down", function()
     start()

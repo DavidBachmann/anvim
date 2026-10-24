@@ -180,6 +180,14 @@ function M.send(msg)
   end
 end
 
+-- The Agent SDK runs its own Claude Code binary from a per-platform package.
+-- It does not use a `claude` on PATH.
+---@return string?
+function M.claude()
+  local path = vim.fn.glob(M.dir .. "/node_modules/@anthropic-ai/claude-agent-sdk-*/claude", true, true)[1]
+  return path and vim.fn.executable(path) == 1 and path or nil
+end
+
 function M.running()
   return proc ~= nil
 end

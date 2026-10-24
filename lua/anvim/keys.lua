@@ -20,7 +20,7 @@ local M = {}
 ---@class anvim.KeyPlace
 ---@field id string
 ---@field name string
----@field ctx "global"|"file"|"prompt"|"transcript"|"compose"|"explorer"|"files"|"overview"|"agentlog"|"view"|"settings"|"other" Where its maps live.
+---@field ctx "global"|"file"|"prompt"|"transcript"|"compose"|"explorer"|"files"|"overview"|"agentlog"|"view"|"settings"|"login"|"other" Where its maps live.
 ---@field keys anvim.Key[]
 
 ---@type anvim.KeyPlace[]
@@ -341,6 +341,16 @@ M.places = {
       { "r", "Reconnect the MCP server" },
       { "t", "Turn the MCP server on or off" },
       { { "q", "<Esc>" }, "Close the window" },
+    },
+  },
+  -- Claude Code's login of a new account, in a terminal.
+  {
+    id = "login",
+    name = "Account login",
+    ctx = "login",
+    keys = {
+      { "i", "Type into the login", static = true },
+      { "q", "Close the window and stop the login" },
     },
   },
 }

@@ -82,12 +82,21 @@ describe("completion", function()
     })
     local start, list = complete("/")
     local items = by_abbr(list)
-    -- anvim runs /model, /resume, /effort, /status, /usage, /context, /mcp and /chrome itself, and adds them.
+    -- anvim runs /model, /resume, /effort, /status, /usage, /context, /mcp, /chrome and /account itself, and adds them.
     assert.are.same(0, start)
-    assert.are.same(
-      { "/chrome", "/compact", "/context", "/effort", "/mcp", "/model", "/resume", "/review", "/status", "/usage" },
-      vim.fn.sort(vim.tbl_keys(items))
-    )
+    assert.are.same({
+      "/account",
+      "/chrome",
+      "/compact",
+      "/context",
+      "/effort",
+      "/mcp",
+      "/model",
+      "/resume",
+      "/review",
+      "/status",
+      "/usage",
+    }, vim.fn.sort(vim.tbl_keys(items)))
     assert.are.same("/review ", items["/review"].word)
     assert.are.same("Review a pull request", items["/review"].menu)
     assert.are.same("Review a pull request\n\n/review <pr>", items["/review"].info)

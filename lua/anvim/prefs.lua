@@ -6,6 +6,8 @@ M.path = vim.fn.stdpath("state") .. "/prefs.json"
 
 ---@type table<string, any>?
 local cache
+-- The path that the cache holds, because specs move M.path.
+local cache_path
 
 ---@return table<string, any>
 local function read()
@@ -19,14 +21,16 @@ local function read()
 end
 
 function M.get(key)
-  cache = cache or read()
+  if cache_path ~= M.path then
+    cache, cache_path = read(), M.path
+  end
   return cache[key]
 end
 
 -- Another anvim may have made a choice since, so read the file again before
 -- writing it.
 function M.set(key, value)
-  cache = read()
+  cache, cache_path = read(), M.path
   cache[key] = value
   vim.fn.mkdir(vim.fs.dirname(M.path), "p")
   local tmp = M.path .. ".tmp"
@@ -36,6 +40,13 @@ function M.set(key, value)
     f:close()
     os.rename(tmp, M.path)
   end
+end
+
+-- Changes a key from the value in the file now, so that what another anvim
+-- wrote under it stays.
+---@param fn fun(value: any): any
+function M.update(key, fn)
+  M.set(key, fn(read()[key]))
 end
 
 return M

@@ -39,11 +39,12 @@ To point Claude at code, select lines and press `c`. That puts a reference such 
 Claude starts in bypass mode with Claude Code's sandbox on. It edits files and runs commands without asking, and the sandbox keeps its commands from writing outside the project. `anvim --mode default` asks first, as Claude Code does.
 
 ```sh
-anvim --model haiku ~/dev/project     # pick a model
-anvim --mode default ~/dev/project    # ask before edits and commands
-anvim -c ~/dev/project                # go on with the latest session
-anvim --resume ~/dev/project          # pick a session
-anvim --debug ~/dev/anvim             # let Claude work on anvim itself
+anvim --model haiku ~/dev/project      # pick a model
+anvim --mode default ~/dev/project     # ask before edits and commands
+anvim --account personal ~/dev/project # use the login in ~/.claude-personal
+anvim -c ~/dev/project                 # go on with the latest session
+anvim --resume ~/dev/project           # pick a session
+anvim --debug ~/dev/anvim              # let Claude work on anvim itself
 ```
 
 `<leader>` is Space, and `<leader>?` lists every key.

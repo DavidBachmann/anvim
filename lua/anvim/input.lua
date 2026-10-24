@@ -294,6 +294,12 @@ function M.submit()
   if text == "" then
     return
   end
+  -- The prompt stays in the box until an account starts Claude.
+  local accounts = require("anvim.accounts")
+  if accounts.waiting() and not (text == "/account" or text:match("^/account%s")) then
+    accounts.stopped()
+    return
+  end
   require("anvim.history").add(text)
   api.nvim_buf_set_lines(buf, 0, -1, false, { "" })
   if not require("anvim.sessions").command(text) then

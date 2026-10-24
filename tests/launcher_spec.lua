@@ -15,7 +15,7 @@ vim.fn.writefile({
   [[  --version) echo "NVIM v0.12.5"; exit 0 ;;]],
   [[  --headless) echo "fake install" >&2; exit "${FAKE_INSTALL_EXIT:-0}" ;;]],
   "esac",
-  [[printf '%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "$ANVIM_MODEL" "$ANVIM_RESUME" "$ANVIM_CONTINUE" "$(pwd)" "$*" "$ANVIM_INSTALL_DIR" "$ANVIM_INSTALL_FAILED" "$ANVIM_EFFORT" "$ANVIM_SANDBOX"]],
+  [[printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "$ANVIM_MODEL" "$ANVIM_RESUME" "$ANVIM_CONTINUE" "$(pwd)" "$*" "$ANVIM_INSTALL_DIR" "$ANVIM_INSTALL_FAILED" "$ANVIM_EFFORT" "$ANVIM_SANDBOX" "$ANVIM_ACCOUNT"]],
 }, bin .. "/nvim")
 vim.fn.writefile({ "#!/bin/sh", [[[ "$1" = --version ] && echo 1.0.0]], "exit 0" }, bin .. "/bun")
 for _, name in ipairs({ "nvim", "bun" }) do
@@ -34,6 +34,7 @@ local id = "9b0fe4b4-4c79-44ac-be0c-7ccce0301a50"
 ---@field failed string ANVIM_INSTALL_FAILED
 ---@field effort string
 ---@field sandbox string
+---@field account string
 
 ---@param env? table<string, string|false> false unsets the variable.
 ---@return anvim.LauncherOut? out What nvim got, or nil when bin/anvim did not start it.
@@ -47,6 +48,7 @@ local function run(args, env, cwd)
     ANVIM_MODE = "",
     ANVIM_EFFORT = "",
     ANVIM_SANDBOX = "",
+    ANVIM_ACCOUNT = "",
     ANVIM_NO_INSTALL = "1",
     ANVIM_INSTALL_DIR = helpers.tmp .. "/launcher install",
   }
@@ -61,8 +63,8 @@ local function run(args, env, cwd)
       clear_env = true,
     })
     :wait()
-  local model, resume, continue, dir, rest, install, failed, effort, sandbox = (res.stdout or ""):match(
-    "^(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)\n$"
+  local model, resume, continue, dir, rest, install, failed, effort, sandbox, account = (res.stdout or ""):match(
+    "^(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)\n$"
   )
   local out = model
       and {
@@ -75,6 +77,7 @@ local function run(args, env, cwd)
         failed = failed,
         effort = effort,
         sandbox = sandbox,
+        account = account,
       }
     or nil
   return out, res.code, res.stderr or ""
@@ -90,7 +93,7 @@ local function read(path)
 end
 
 describe("bin/anvim", function()
-  it("takes -c, --resume with and without an id, and passes the rest on to nvim", function()
+  it("takes -c, --resume with and without an id and --account, and passes the rest on to nvim", function()
     local out = assert(run({ "-c", project }))
     assert.are.same({ "1", "", vim.fn.resolve(project) }, { out.continue, out.resume, vim.fn.resolve(out.dir) })
     out = assert(run({ "--resume", project }))
@@ -100,6 +103,8 @@ describe("bin/anvim", function()
     assert(vim.endswith(out.args, "/init.lua +10"), out.args)
     out = assert(run({ "--resume=abc" }))
     assert.are.same("abc", out.resume)
+    out = assert(run({ "--account", "personal", project, "--account=x" }))
+    assert.are.same({ "x", vim.fn.resolve(project) }, { out.account, vim.fn.resolve(out.dir) })
   end)
 
   it("turns the sandbox off with --no-sandbox, and keeps ANVIM_SANDBOX from the environment", function()

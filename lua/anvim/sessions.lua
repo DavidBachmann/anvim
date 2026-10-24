@@ -185,6 +185,10 @@ end
 -- saved a turn goes on where it was.
 ---@param what? string The notice, "Restarting Claude" by default.
 function M.restart(what)
+  -- Without an account, Claude would start with the wrong login.
+  if require("anvim.accounts").waiting() then
+    return require("anvim.accounts").pick()
+  end
   local id = (state.turns or 0) > 0 and state.session_id or nil
   -- Tool calls that the old sidecar runs end with it.
   transcript.turn_end()
@@ -325,6 +329,9 @@ function M.show_picker(items)
 end
 
 function M.pick()
+  if require("anvim.accounts").waiting() then
+    return require("anvim.accounts").pick()
+  end
   M.fetch(function(list, err)
     if not list then
       vim.notify("anvim: could not list sessions: " .. err, vim.log.levels.ERROR)
@@ -475,7 +482,10 @@ end
 ---@return boolean handled
 function M.command(text)
   local name, arg = text:match("^(/%S+)%s*(.-)%s*$")
-  if name == "/resume" then
+  if name == "/account" then
+    require("anvim.accounts").command(arg)
+    return true
+  elseif name == "/resume" then
     M.pick()
     return true
   elseif name == "/model" and arg == "" then
@@ -544,6 +554,7 @@ local own_commands = {
     argument_hint = "[reconnect|enable|disable [<server>|all]]",
   },
   { name = "chrome", description = "Open Claude in Chrome settings" },
+  { name = "account", description = "Switch the Claude account, or add one", argument_hint = "[<name>|add <name>]" },
 }
 
 local function add_commands()

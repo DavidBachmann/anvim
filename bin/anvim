@@ -1,5 +1,5 @@
 #!/bin/sh
-# Usage: anvim [--model <model>] [--effort <level>] [--mode <mode>] [--no-sandbox] [--chrome | --no-chrome] [--debug] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
+# Usage: anvim [--model <model>] [--effort <level>] [--mode <mode>] [--account <name>] [--no-sandbox] [--chrome | --no-chrome] [--debug] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
 # The permission mode is default, acceptEdits, plan or bypassPermissions. It is
 # bypassPermissions unless --mode or ANVIM_MODE says otherwise: Claude runs
 # tools without asking. The sandbox limits where its Bash commands write, and
@@ -16,7 +16,8 @@
 # takes a picture of the screen, and a tool that restarts anvim with the code
 # on disk in the same session. When the repo's lockfiles changed since the
 # last install, anvim runs scripts/install first. ANVIM_NO_INSTALL=1 skips
-# that.
+# that. --account (ANVIM_ACCOUNT) names the Claude login to start with:
+# default, or <name> for the Claude Code config dir ~/.claude-<name>.
 root=$(cd "$(dirname "$(realpath "$0")")/.." && pwd)
 
 is_session_id() {
@@ -35,15 +36,16 @@ unset ANVIM_INSTALL_FAILED
 n=$#
 while [ "$n" -gt 0 ]; do
   case "$1" in
-    --model | --mode | --effort)
+    --model | --mode | --effort | --account)
       # $# also counts the arguments already moved to the end.
       if [ "$n" -lt 2 ]; then
-        echo "anvim: $1 needs a value, e.g. --model haiku, --effort high or --mode default" >&2
+        echo "anvim: $1 needs a value, e.g. --model haiku, --effort high, --mode default or --account personal" >&2
         exit 2
       fi
       case $1 in
         --model) ANVIM_MODEL=$2 ;;
         --mode) ANVIM_MODE=$2 mode=1 ;;
+        --account) ANVIM_ACCOUNT=$2 ;;
         *) ANVIM_EFFORT=$2 effort=1 ;;
       esac
       shift 2
@@ -51,6 +53,11 @@ while [ "$n" -gt 0 ]; do
       ;;
     --model=*)
       ANVIM_MODEL=${1#--model=}
+      shift
+      n=$((n - 1))
+      ;;
+    --account=*)
+      ANVIM_ACCOUNT=${1#--account=}
       shift
       n=$((n - 1))
       ;;
@@ -108,6 +115,8 @@ while [ "$n" -gt 0 ]; do
   esac
 done
 [ -n "$ANVIM_MODEL" ] && export ANVIM_MODEL
+# anvim checks the name, because it finds the accounts.
+[ -n "$ANVIM_ACCOUNT" ] && export ANVIM_ACCOUNT
 [ -n "$ANVIM_SANDBOX" ] && export ANVIM_SANDBOX
 [ -n "$ANVIM_DEBUG" ] && export ANVIM_DEBUG
 [ -n "$ANVIM_CHROME" ] && export ANVIM_CHROME

@@ -18,6 +18,9 @@ for i, frame in ipairs(frames) do
   frames[i] = frame:gsub("/ANVIM_FIXTURE", M.tmp)
 end
 vim.fn.writefile(frames, recording)
+-- No spec reads the user's own Claude Code logins.
+require("anvim.accounts").home = M.tmp .. "/home"
+vim.fn.mkdir(M.tmp .. "/home", "p")
 
 ---@type string? The layout role of the window that had focus after start.
 local start_role
