@@ -7,6 +7,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { appendFileSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { postToolUse } from "./agentfiles";
 import {
   browsersEvent,
   CHROME_SERVER,
@@ -258,6 +259,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     forwardSubagentText: true,
     hooks: {
       PreToolUse: preToolUse(previews.hook, guard),
+      PostToolUse: postToolUse(() => session, cmd.cwd),
     },
     systemPrompt: { type: "preset", preset: "claude_code", append: cmd.append_system_prompt },
     extraArgs: chromeArgs(cmd.chrome),

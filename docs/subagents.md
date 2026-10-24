@@ -21,3 +21,7 @@ Claude Code sends a subagent's edits whole, not as they are generated. So while 
 A background subagent keeps working after Claude's turn ends. Its line in the tool pane says `Backgrounded agent`, lists its newest tool calls, and keeps its color and its number until it ends. Then its line shows its totals, and a row at the end of the transcript says `Agent "Find x" finished`, with its summary. When Claude is idle, it replies to each end in a turn of its own, as in Claude Code.
 
 With the tool pane hidden (`<leader>us`), the subagents' lines show in the transcript, as in Claude Code, and the line of the subagent that has focus ends in `◉ focused`.
+
+## New agents
+
+Claude Code gives each turn the agents that it started with. Between turns, it rereads only the agent folders that existed when the session started. When Claude writes or edits an agent file in the project's `.claude/agents/` or in the login's `agents/` folder, anvim reloads the agents at once, also from a new folder. anvim then tells Claude that the agent works from the next turn on, so Claude ends its turn instead of using another agent. For an agent file that something else writes, `/reload-plugins` reloads the agents.
