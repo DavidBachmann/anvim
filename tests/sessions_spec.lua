@@ -88,6 +88,15 @@ describe("sessions", function()
     assert.are.same({ "✻ Resuming session " .. list[1].id }, buf_lines(transcript.buf()))
   end)
 
+  it(":AnvimRestart restarts Claude with the default notice", function()
+    local restarts, unrestart = stub(sidecar, "restart")
+    local ok, err = pcall(vim.cmd.AnvimRestart)
+    unrestart()
+    assert(ok, err)
+    assert.are.same(1, #restarts)
+    helpers.contains(buf_lines(transcript.buf()), "Restarting Claude")
+  end)
+
   it("restarts the sidecar process, and what was sent meanwhile reaches the new one", function()
     -- The replay sidecar plays its recording from the start again, init first.
     local function restart()
