@@ -583,44 +583,50 @@ describe("stack", function()
     assert.are.same({ ft = "markdown", wrap = true, code = false, input = false, transcript = false }, out)
   end)
 
-  it("shows a PNG that Claude reads as an image, also without ImageMagick, and keeps it read-only", function()
+  it("shows a PNG or JPG that Claude reads as an image, also without ImageMagick, and keeps it read-only", function()
     start()
-    local file = helpers.tmp .. "/pixel.png"
-    local png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
-    local f = assert(io.open(file, "wb"))
-    f:write(vim.base64.decode(png))
-    f:close()
-    local out = lua(
-      [[
-      local file = ...
-      local api = vim.api
-      local layout = require("anvim.layout")
-      local code = layout.code_win()
-      local before = api.nvim_win_get_buf(code)
-      layout.focus_input({ insert = false })
-      local sidecar = require("anvim.sidecar")
-      sidecar.dispatch({ type = "tool_use", id = "png1", name = "Read", input = { file_path = file } })
-      local buf = vim.fn.bufnr(file)
-      -- snacks places the image with an extmark, or writes its error into the buffer.
-      local ns = api.nvim_create_namespace("snacks.image")
-      vim.wait(3000, function()
-        return #api.nvim_buf_get_extmarks(buf, ns, 0, -1, {}) > 0 or api.nvim_buf_get_lines(buf, 0, 1, false)[1] ~= ""
-      end, 20)
-      local out = {
-        ft = vim.bo[buf].filetype,
-        shown = api.nvim_win_get_buf(code) == buf,
-        lines = api.nvim_buf_get_lines(buf, 0, -1, false),
-        modifiable = vim.bo[buf].modifiable,
-      }
-      sidecar.dispatch({ type = "turn_end", subtype = "success", is_error = false, duration_ms = 1, cost_usd = 0 })
-      -- The next cases expect the file that the code window showed.
-      api.nvim_win_set_buf(code, before)
-      api.nvim_buf_delete(buf, { force = true })
-      return out
-    ]],
-      file
-    )
-    assert.are.same({ ft = "image", shown = true, lines = { "" }, modifiable = false }, out)
+    local images = {
+      ["pixel.png"] = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+      ["pixel.jpg"] = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD57ooor+kTxz//2Q==",
+    }
+    for name, data in pairs(images) do
+      local file = helpers.tmp .. "/" .. name
+      local f = assert(io.open(file, "wb"))
+      f:write(vim.base64.decode(data))
+      f:close()
+      local out = lua(
+        [[
+        local file = ...
+        local api = vim.api
+        local layout = require("anvim.layout")
+        local code = layout.code_win()
+        local before = api.nvim_win_get_buf(code)
+        layout.focus_input({ insert = false })
+        local sidecar = require("anvim.sidecar")
+        sidecar.dispatch({ type = "tool_use", id = "img1", name = "Read", input = { file_path = file } })
+        local buf = vim.fn.bufnr(file)
+        -- snacks converts a JPG to a PNG first. A failed image writes its error into the buffer.
+        local img = Snacks.image.image.new(api.nvim_buf_get_name(buf))
+        vim.wait(3000, function()
+          return img:ready() or img:failed()
+        end, 20)
+        local out = {
+          ft = vim.bo[buf].filetype,
+          shown = api.nvim_win_get_buf(code) == buf,
+          ready = img:ready(),
+          lines = api.nvim_buf_get_lines(buf, 0, -1, false),
+          modifiable = vim.bo[buf].modifiable,
+        }
+        sidecar.dispatch({ type = "turn_end", subtype = "success", is_error = false, duration_ms = 1, cost_usd = 0 })
+        -- The next cases expect the file that the code window showed.
+        api.nvim_win_set_buf(code, before)
+        api.nvim_buf_delete(buf, { force = true })
+        return out
+      ]],
+        file
+      )
+      assert.are.same({ ft = "image", shown = true, ready = true, lines = { "" }, modifiable = false }, out, name)
+    end
   end)
 
   it("toggles the explorer with <leader>e, and the explorer changes no files", function()

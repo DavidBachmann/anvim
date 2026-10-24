@@ -68,7 +68,8 @@ end
 -- again, would reload with the old picture. So the reload forgets the image:
 -- the terminal frees the old data, and the file goes again as a new image.
 -- snacks forgets only all images at once, so the others go again when they
--- show next.
+-- show next. snacks keeps the PNG that it converted from another format and
+-- never checks it again, so the reload removes it too.
 local function resend_images(group)
   local mtimes = {}
   api.nvim_create_autocmd("BufReadCmd", {
@@ -87,6 +88,9 @@ local function resend_images(group)
         local img = Snacks.image.image.new(file)
         img:del()
         Snacks.image.terminal.request({ a = "d", d = "I", i = img.id })
+        if vim.startswith(img.file, Snacks.image.config.cache .. "/") then
+          os.remove(img.file)
+        end
         Snacks.image.image.clear()
         Snacks.image.buf.attach(ev.buf)
       end

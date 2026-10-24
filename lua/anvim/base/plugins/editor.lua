@@ -6,9 +6,9 @@ return {
     opts = {
       bigfile = { enabled = true },
       explorer = { enabled = true },
-      -- Other formats need ImageMagick, which anvim does not install. They
-      -- load as text.
-      image = { enabled = true, formats = { "png", "icns" } },
+      -- Formats other than PNG need ImageMagick, which anvim does not
+      -- install, or Bun, which the sidecar needs anyway.
+      image = { enabled = true, formats = { "png", "jpg", "jpeg", "gif", "bmp", "webp", "tiff", "icns" } },
       indent = { enabled = true },
       input = { enabled = true },
       notifier = { enabled = true },
@@ -23,15 +23,22 @@ return {
       require("snacks").setup(opts)
       -- snacks asks ImageMagick's identify for the size of each image, and
       -- shows an error without it. Without that step, snacks reads the size
-      -- from the PNG itself.
+      -- from the PNG itself. Bun takes the place of ImageMagick's convert.
       if opts.image.enabled and vim.fn.executable("magick") == 0 and vim.fn.executable("identify") == 0 then
         local convert = require("snacks.image.convert")
         local new = convert.convert
+        local script = require("anvim.base.install").root .. "/sidecar/src/topng.ts"
+        local topng = { ft = "png", cmd = { cmd = "bun", args = { script, "{src}", "{file}" } } }
         convert.convert = function(o)
           local ret = new(o)
           ret.steps = vim.tbl_filter(function(step)
             return step.name ~= "identify"
           end, ret.steps)
+          for _, step in ipairs(ret.steps) do
+            if step.name == "convert" then
+              step.cmd = topng
+            end
+          end
           return ret
         end
       end
