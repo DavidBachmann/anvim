@@ -1,5 +1,5 @@
 #!/bin/sh
-# Usage: anvim [--model <model>] [--effort <level>] [--mode <mode>] [--account <name>] [--no-sandbox] [--chrome | --no-chrome] [--debug] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
+# Usage: anvim [--model <model>] [--effort <level>] [--mode <mode>] [--account <name>] [--no-sandbox] [--dangerously-skip-permissions] [--chrome | --no-chrome] [--debug] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
 # The permission mode is default, acceptEdits, plan or bypassPermissions. It is
 # bypassPermissions unless --mode or ANVIM_MODE says otherwise: Claude runs
 # tools without asking. The sandbox limits where its Bash commands write, and
@@ -9,7 +9,9 @@
 # Claude Code settings for the model, else the model's. Claude's Bash
 # commands run in Claude Code's sandbox, which lets them write only in the
 # project, a temp dir and the caches of npm, bun and go build.
-# --no-sandbox (ANVIM_SANDBOX=0) turns it off. --chrome (ANVIM_CHROME=1) and
+# --no-sandbox (ANVIM_SANDBOX=0) turns it off. --dangerously-skip-permissions
+# is --no-sandbox --mode bypassPermissions: Claude runs every tool anywhere
+# without asking. --chrome (ANVIM_CHROME=1) and
 # --no-chrome (ANVIM_CHROME=0) turn Claude in Chrome on or off, as in Claude
 # Code. Without them, its "Enabled by default" setting decides. --debug
 # (ANVIM_DEBUG=1) is for anvim's own development: it gives Claude a tool that
@@ -73,6 +75,11 @@ while [ "$n" -gt 0 ]; do
       ;;
     --no-sandbox)
       ANVIM_SANDBOX=0
+      shift
+      n=$((n - 1))
+      ;;
+    --dangerously-skip-permissions)
+      ANVIM_SANDBOX=0 ANVIM_MODE=bypassPermissions mode=1
       shift
       n=$((n - 1))
       ;;

@@ -15,7 +15,7 @@ vim.fn.writefile({
   [[  --version) echo "NVIM v0.12.5"; exit 0 ;;]],
   [[  --headless) echo "fake install" >&2; exit "${FAKE_INSTALL_EXIT:-0}" ;;]],
   "esac",
-  [[printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "$ANVIM_MODEL" "$ANVIM_RESUME" "$ANVIM_CONTINUE" "$(pwd)" "$*" "$ANVIM_INSTALL_DIR" "$ANVIM_INSTALL_FAILED" "$ANVIM_EFFORT" "$ANVIM_SANDBOX" "$ANVIM_ACCOUNT"]],
+  [[printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "$ANVIM_MODEL" "$ANVIM_RESUME" "$ANVIM_CONTINUE" "$(pwd)" "$*" "$ANVIM_INSTALL_DIR" "$ANVIM_INSTALL_FAILED" "$ANVIM_EFFORT" "$ANVIM_SANDBOX" "$ANVIM_ACCOUNT" "$ANVIM_MODE"]],
 }, bin .. "/nvim")
 vim.fn.writefile({ "#!/bin/sh", [[[ "$1" = --version ] && echo 1.0.0]], "exit 0" }, bin .. "/bun")
 for _, name in ipairs({ "nvim", "bun" }) do
@@ -35,6 +35,7 @@ local id = "9b0fe4b4-4c79-44ac-be0c-7ccce0301a50"
 ---@field effort string
 ---@field sandbox string
 ---@field account string
+---@field mode string
 
 ---@param env? table<string, string|false> false unsets the variable.
 ---@return anvim.LauncherOut? out What nvim got, or nil when bin/anvim did not start it.
@@ -63,8 +64,8 @@ local function run(args, env, cwd)
       clear_env = true,
     })
     :wait()
-  local model, resume, continue, dir, rest, install, failed, effort, sandbox, account = (res.stdout or ""):match(
-    "^(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)\n$"
+  local model, resume, continue, dir, rest, install, failed, effort, sandbox, account, mode = (res.stdout or ""):match(
+    "^(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)|(.-)\n$"
   )
   local out = model
       and {
@@ -78,6 +79,7 @@ local function run(args, env, cwd)
         effort = effort,
         sandbox = sandbox,
         account = account,
+        mode = mode,
       }
     or nil
   return out, res.code, res.stderr or ""
@@ -116,6 +118,12 @@ describe("bin/anvim", function()
     assert.are.same("", out.sandbox)
     out = assert(run({ project }, { ANVIM_SANDBOX = "0" }))
     assert.are.same("0", out.sandbox)
+  end)
+
+  it("turns the sandbox off and starts in bypass mode with --dangerously-skip-permissions", function()
+    local out =
+      assert(run({ "--mode", "default", "--dangerously-skip-permissions", project }, { ANVIM_SANDBOX = false }))
+    assert.are.same({ "0", "bypassPermissions" }, { out.sandbox, out.mode })
   end)
 
   it("never resumes from a value that another anvim left in the environment", function()

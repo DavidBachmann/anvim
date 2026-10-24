@@ -52,7 +52,8 @@ local function sandbox()
   local ran, problem = sandbox_problem()
   if config.options.sandbox == false then
     health.info(
-      vim.env.ANVIM_SANDBOX == "0" and "The sandbox is off, because anvim started with --no-sandbox or ANVIM_SANDBOX=0"
+      vim.env.ANVIM_SANDBOX == "0"
+          and "The sandbox is off, because anvim started with --no-sandbox, --dangerously-skip-permissions or ANVIM_SANDBOX=0"
         or "The sandbox is off, because a spec sets `sandbox = false`"
     )
     if ran then

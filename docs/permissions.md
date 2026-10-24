@@ -57,7 +57,7 @@ A model sometimes takes one of these ways by accident, when a way inside the san
 
 ### Without a sandbox
 
-On Linux, the sandbox needs `bwrap` (from bubblewrap) and `socat`. Without them, anvim warns, commands run without the sandbox, and anvim runs in default mode, so Claude asks before it runs a tool. The same happens when Claude Code finds that the sandbox cannot start. `--no-sandbox` also starts anvim in default mode, without a warning. A mode that you chose with `--mode`, `ANVIM_MODE` or your own spec stays: with `--mode bypassPermissions`, commands then run anywhere without asking.
+On Linux, the sandbox needs `bwrap` (from bubblewrap) and `socat`. Without them, anvim warns, commands run without the sandbox, and anvim runs in default mode, so Claude asks before it runs a tool. The same happens when Claude Code finds that the sandbox cannot start. `--no-sandbox` also starts anvim in default mode, without a warning. A mode that you chose with `--mode`, `ANVIM_MODE` or your own spec stays: with `--mode bypassPermissions`, commands then run anywhere without asking. `--dangerously-skip-permissions` is short for `--no-sandbox --mode bypassPermissions`: Claude runs every tool anywhere, and only its questions and plans wait for you.
 
 `:checkhealth anvim` says whether the sandbox is on, and which mode anvim starts in and why. `anvim --no-sandbox`, or `ANVIM_SANDBOX=0`, turns it off, also when a settings file turns it on. A spec of your own can set the anvim plugin's `sandbox` option to `false` too.
 
