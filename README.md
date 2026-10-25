@@ -2,7 +2,11 @@
 
 Claude Code, dressed as Neovim.
 
-![anvim](docs/screenshot.png)
+![The Ctrl-G prompt editor in anvim](docs/readme01.png)
+
+![The Agent Overview with two background agents](docs/readme02.png)
+
+![A subagent's edit streams into sessions.ts](docs/readme03.png)
 
 *anvim* is a read-only Neovim for keeping an eye on your coding agents. Claude does the typing; you get your Vim motions, a proper view of the code, and a comfortable place to say "hang on a second."
 
