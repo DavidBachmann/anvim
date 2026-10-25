@@ -2,7 +2,9 @@
 // the background. Its JSONL stream becomes the protocol events of a
 // subagent, so the plugin shows it as one. When it exits, its result goes to
 // Claude as a task notification, as a background agent's end does.
-import { isAbsolute, relative, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import type { Event } from "./protocol";
 import { truncate } from "./translate";
 
@@ -223,7 +225,56 @@ async function tail(stream: ReadableStream<Uint8Array>): Promise<string> {
   return text;
 }
 
-export type CodexInput = { description: string; prompt: string; read_only?: boolean };
+export type CodexInput = { description: string; prompt: string; read_only?: boolean; model?: string; effort?: string };
+
+// A model and a reasoning effort. Each one is unset when nobody chose it.
+export type CodexSettings = { model?: string; effort?: string };
+
+function setting(value: unknown): string | undefined {
+  return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+// The top-level keys of Codex's config.toml, which a run without flags uses.
+// Only to show them: Codex itself reads its config.
+export function codexConfig(env: Record<string, string | undefined> = process.env): CodexSettings {
+  const home = env.CODEX_HOME || join(homedir(), ".codex");
+  try {
+    const toml = Bun.TOML.parse(readFileSync(join(home, "config.toml"), "utf8")) as Record<string, unknown>;
+    // A profile's keys win inside Codex, so the top-level ones would mislead.
+    if (toml.profile !== undefined) return {};
+    const model = setting(toml.model);
+    const effort = setting(toml.model_reasoning_effort);
+    return { ...(model ? { model } : {}), ...(effort ? { effort } : {}) };
+  } catch {
+    return {};
+  }
+}
+
+// The call's input wins over anvim's defaults, field by field. What neither
+// sets, Codex's own config decides, so it gets no flag.
+export function codexSettings(input: CodexInput, defaults: CodexSettings): CodexSettings {
+  const model = setting(input.model) ?? setting(defaults.model);
+  const effort = setting(input.effort) ?? setting(defaults.effort);
+  return { ...(model ? { model } : {}), ...(effort ? { effort } : {}) };
+}
+
+export function codexArgs(bin: string, cwd: string, readOnly: boolean, settings: CodexSettings): string[] {
+  const { model, effort } = settings;
+  return [
+    bin,
+    "exec",
+    "--json",
+    "-C",
+    cwd,
+    "-s",
+    readOnly ? "read-only" : "workspace-write",
+    ...(model ? ["-m", model] : []),
+    // A TOML string, so that no level parses as another type.
+    ...(effort ? ["-c", `model_reasoning_effort=${JSON.stringify(effort)}`] : []),
+    "--skip-git-repo-check",
+    "-",
+  ];
+}
 
 export type CodexState = "on" | "off" | "missing" | "logged_out";
 
@@ -271,6 +322,9 @@ export class CodexRunner {
       emit: (ev: Event) => void;
       // Hands Claude the end of a run, as a message of its own.
       notify: (text: string) => void;
+      // anvim's defaults now, which the user can change between runs.
+      defaults: () => CodexSettings;
+      config?: () => CodexSettings;
     },
   ) {}
 
@@ -279,8 +333,8 @@ export class CodexRunner {
     const id = `codex-${this.stamp}-${this.next++}`;
     const { bin, cwd, emit } = this.opts;
     const stream = new CodexStream(id, toolUseId ?? id, cwd);
-    const sandbox = input.read_only ? "read-only" : "workspace-write";
-    const proc = Bun.spawn([bin, "exec", "--json", "-C", cwd, "-s", sandbox, "--skip-git-repo-check", "-"], {
+    const settings = codexSettings(input, this.opts.defaults());
+    const proc = Bun.spawn(codexArgs(bin, cwd, input.read_only === true, settings), {
       cwd,
       stdin: new Blob([input.prompt]),
       stdout: "pipe",
@@ -296,6 +350,9 @@ export class CodexRunner {
       subagent_type: CODEX_TYPE,
       depth: 1,
       background: true,
+      // What the run uses, for the Overview: anvim's flags, else Codex's config.
+      ...(this.opts.config ?? codexConfig)(),
+      ...settings,
     });
     const started = Date.now();
     const stderr = tail(proc.stderr);

@@ -74,6 +74,38 @@ describe("the Agent Overview", function()
     }, vim.tbl_map(texts, overview.items()))
   end)
 
+  it("keeps the preview's wrap when a longer row widens the list", function()
+    fresh()
+    local columns = vim.o.columns
+    vim.o.columns = 200
+    start("w1")
+    overview.open()
+    local function preview()
+      local p = overview.get()
+      return p and p.preview.win:valid() and p.preview.win.win
+    end
+    local function list_width()
+      return vim.api.nvim_win_get_width(overview.get().list.win.win)
+    end
+    assert(
+      vim.wait(2000, function()
+        return preview() and vim.wo[preview()].wrap
+      end),
+      "the preview opens with wrap"
+    )
+    local before = list_width()
+    sidecar.dispatch({ type = "agent_progress", agent_id = "w1", description = ("Running a long command "):rep(3) })
+    assert(
+      vim.wait(2000, function()
+        return list_width() > before
+      end),
+      "the longer row widens the list"
+    )
+    assert.is_true(vim.wo[preview()].wrap)
+    overview.close()
+    vim.o.columns = columns
+  end)
+
   it("lists Claude, the running agents by slot, the one without a slot, then the ended ones, newest first", function()
     fresh()
     start("x1")

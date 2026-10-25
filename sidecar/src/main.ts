@@ -17,7 +17,7 @@ import {
   type ChromeMessage,
   setEnabledByDefault,
 } from "./chrome";
-import { CodexRunner, codexState } from "./codex";
+import { CodexRunner, type CodexSettings, codexConfig, codexState } from "./codex";
 import { type ImageBlock, imageBlocks } from "./images";
 import { PermissionBridge } from "./permissions";
 import { PreviewBridge } from "./preview";
@@ -87,6 +87,8 @@ const permissions = new PermissionBridge(emit);
 const previews = new PreviewBridge(emit);
 // The Codex agents of the session, when a codex CLI is on PATH.
 let codex: CodexRunner | undefined;
+// The user's model and effort for the next Codex runs.
+let codexDefaults: CodexSettings = {};
 
 // The session to resume, after its history went out. Claude Code fails to
 // start on an id it cannot find, so a missing one starts a new session.
@@ -256,9 +258,15 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     fallBack,
   );
   const [resume, { state: codexOn, bin: codexBin }] = await Promise.all([resumeTarget(cmd), codexCheck]);
-  emit({ type: "codex", state: codexOn });
+  emit({ type: "codex", state: codexOn, ...(codexOn === "on" ? { config: codexConfig() } : {}) });
   codex = codexBin
-    ? new CodexRunner({ bin: codexBin, cwd: cmd.cwd, emit, notify: (text) => inbox.push(text) })
+    ? new CodexRunner({
+        bin: codexBin,
+        cwd: cmd.cwd,
+        emit,
+        notify: (text) => inbox.push(text),
+        defaults: () => codexDefaults,
+      })
     : undefined;
   const options: Options = {
     ...sandbox.options,
@@ -322,6 +330,7 @@ export async function handle(cmd: Command): Promise<void> {
   switch (cmd.type) {
     case "start":
       if (session) return;
+      codexDefaults = { model: cmd.codex_model, effort: cmd.codex_effort };
       run(cmd).then(
         () => process.exit(0),
         (err) => {
@@ -375,6 +384,9 @@ export async function handle(cmd: Command): Promise<void> {
         }
         await reportEffort(q);
       });
+      return;
+    case "set_codex_defaults":
+      codexDefaults = { model: cmd.model ?? undefined, effort: cmd.effort ?? undefined };
       return;
     case "list_models":
       await control(async (q) => emit(modelsEvent(await q.supportedModels())));

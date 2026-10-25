@@ -85,6 +85,8 @@ function M.start_command(opts)
     debug = config.options.debug,
     chrome = M.chrome_flag(),
     codex = config.options.codex ~= false,
+    codex_model = require("anvim.codex").model(),
+    codex_effort = require("anvim.codex").effort(),
   }, opts or {})
 end
 
@@ -497,6 +499,12 @@ function M.command(text)
     return true
   elseif name == "/effort" then
     return effort_command(arg)
+  elseif name == "/codex-model" then
+    require("anvim.codex").model_command(arg)
+    return true
+  elseif name == "/codex-effort" then
+    require("anvim.codex").effort_command(arg)
+    return true
   elseif name == "/status" then
     require("anvim.settings").open("status")
     return true
@@ -556,6 +564,12 @@ local own_commands = {
   },
   { name = "chrome", description = "Open Claude in Chrome settings" },
   { name = "account", description = "Switch the Claude account, or add one", argument_hint = "[<name>|add <name>]" },
+  { name = "codex-model", description = "Set the model of Codex agents", argument_hint = "[<model>|default]" },
+  {
+    name = "codex-effort",
+    description = "Set the reasoning effort of Codex agents",
+    argument_hint = "[<level>|default]",
+  },
 }
 
 local function add_commands()
@@ -582,7 +596,7 @@ function M.attach()
   sidecar.on("commands", add_commands)
   sidecar.on("history", M.history)
   sidecar.on("codex", function(ev)
-    state.codex = ev.state
+    state.codex, state.codex_config = ev.state, ev.config
   end)
   sidecar.on("reset", M.reset)
   -- A /clear also ends a turn, but saves none.

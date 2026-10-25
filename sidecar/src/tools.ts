@@ -113,6 +113,9 @@ type Extra = { _meta?: Record<string, unknown> };
 
 export type Codex = { start(input: CodexInput, toolUseId: string | undefined): { id: string } };
 
+// A model name or an effort level, and never a flag.
+const SETTING = /^\w[\w.:/-]*$/;
+
 function codexTool(codex: Codex) {
   return tool(
     "codex",
@@ -121,6 +124,20 @@ function codexTool(codex: Codex) {
       description: z.string().describe("A short (3-5 word) description of the task"),
       prompt: z.string().describe("The task for Codex, self-contained"),
       read_only: z.boolean().optional().describe("Codex reads and runs commands, but writes no files"),
+      model: z
+        .string()
+        .regex(SETTING)
+        .optional()
+        .describe(
+          "The Codex model. Set it only when the user names a Codex model. Never choose one on your own: without it, the user's default applies.",
+        ),
+      effort: z
+        .string()
+        .regex(SETTING)
+        .optional()
+        .describe(
+          "Codex's reasoning effort, such as low or high. Set it only when the user names one for Codex. Never choose one on your own: without it, the user's default applies.",
+        ),
     },
     async (args, extra) => {
       const meta = (extra as Extra | undefined)?._meta?.["claudecode/toolUseId"];

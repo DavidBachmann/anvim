@@ -84,6 +84,10 @@ export type Command =
       chrome?: boolean;
       // False turns the Codex agents off (codex.ts).
       codex?: boolean;
+      // The model and the reasoning effort of Codex runs. Without them,
+      // Codex's own config decides.
+      codex_model?: string;
+      codex_effort?: string;
     }
   // Absolute paths of the images that the prompt's [Image #N] chips stand for.
   // id is a UUID, which Claude Code's prompt_state events name.
@@ -101,6 +105,9 @@ export type Command =
   // For the rest of the session. null is the default: the level of the user's
   // Claude Code settings for the model, else the model's, also after a switch.
   | { type: "set_effort"; effort: EffortLevel | null }
+  // For the next Codex runs, as the start's codex_model and codex_effort. Null
+  // leaves the choice to Codex's config.
+  | { type: "set_codex_defaults"; model: string | null; effort: string | null }
   // Answered with a models event.
   | { type: "list_models" }
   // Answered with a usage event.
@@ -241,6 +248,9 @@ export type Event =
       parent_agent_id?: string;
       depth: number;
       background: boolean;
+      // A Codex agent's model and reasoning effort, as far as anvim knows them.
+      model?: string;
+      effort?: string;
     }
   // Sent before each of a subagent's tool calls. description says what it
   // does, such as "Editing alpha.js".
@@ -312,7 +322,12 @@ export type Event =
   | { type: "account"; email?: string }
   // Whether Claude got the codex tool at start. Off: the start command turned
   // it off. Missing: no codex CLI is on PATH. Logged out: Codex has no login.
-  | { type: "codex"; state: "on" | "off" | "missing" | "logged_out" }
+  // config: the model and the effort that Codex's config.toml sets, when it is on.
+  | {
+      type: "codex";
+      state: "on" | "off" | "missing" | "logged_out";
+      config?: { model?: string; effort?: string };
+    }
   // The MCP servers, for the MCP tab. After an action that failed, error says why.
   | { type: "mcp_servers"; servers?: McpServer[]; error?: string }
   // The answer to context_usage, for the Context tab.

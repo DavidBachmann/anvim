@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { SessionMessage } from "@anthropic-ai/claude-agent-sdk";
-import { CodexStream, codexState, unwrapShell } from "./codex";
+import { type CodexSettings, CodexStream, codexArgs, codexSettings, codexState, unwrapShell } from "./codex";
 import { historyEvents } from "./sessions";
 
 // As codex-cli 0.164.0 printed it for `codex exec --json`. The error item is
@@ -83,5 +83,27 @@ describe("codexState", () => {
     expect(await codexState(true, which(null), login(true))).toEqual({ state: "missing" });
     expect(await codexState(true, which("/bin/codex"), login(false))).toEqual({ state: "logged_out" });
     expect(await codexState(true, which("/bin/codex"), login(true))).toEqual({ state: "on", bin: "/bin/codex" });
+  });
+});
+
+describe("codexArgs", () => {
+  test("takes the call's model and effort over anvim's defaults, and passes no flag without either", () => {
+    const task = { description: "Review", prompt: "Review a.ts" };
+    const defaults = { model: "gpt-5.1-codex-mini", effort: "low" };
+    const args = (input: Parameters<typeof codexSettings>[0], d: CodexSettings = defaults) =>
+      codexArgs("/bin/codex", "/work", input.read_only === true, codexSettings(input, d));
+    const head = ["/bin/codex", "exec", "--json", "-C", "/work"];
+    const tail = ["--skip-git-repo-check", "-"];
+    expect(args({ ...task, model: "o3", effort: "high", read_only: true })).toEqual([
+      ...head,
+      ...["-s", "read-only", "-m", "o3", "-c", 'model_reasoning_effort="high"'],
+      ...tail,
+    ]);
+    expect(args({ ...task, effort: "xhigh" })).toEqual([
+      ...head,
+      ...["-s", "workspace-write", "-m", "gpt-5.1-codex-mini", "-c", 'model_reasoning_effort="xhigh"'],
+      ...tail,
+    ]);
+    expect(args(task, {})).toEqual([...head, "-s", "workspace-write", ...tail]);
   });
 });

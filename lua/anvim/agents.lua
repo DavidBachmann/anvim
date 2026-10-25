@@ -25,6 +25,8 @@ M.slots = 4
 ---@field usage { tool_uses: integer?, tokens: integer?, duration_ms: integer? }? Its totals, once it ended.
 ---@field order integer
 ---@field prompt string? The prompt of the Agent call that started it.
+---@field model string? A Codex agent's model, as far as anvim knows it.
+---@field effort string? A Codex agent's reasoning effort, as far as anvim knows it.
 ---@field last_slot integer? The slot it had when it ended.
 ---@field ended_order integer? When it ended, counted as `order` is.
 ---@field past boolean? It ended before the user's last prompt.
@@ -104,6 +106,16 @@ end
 function M.name(agent)
   local name = agent.type and agent.type ~= "" and agent.type ~= "general-purpose" and agent.type or "Agent"
   return agent.slot and ("%s %d"):format(name, agent.slot) or name
+end
+
+-- What the agent runs with, such as "gpt-5.1-codex · low", or nil.
+---@param agent anvim.Agent
+---@return string?
+function M.settings(agent)
+  local parts = {}
+  parts[#parts + 1] = agent.model
+  parts[#parts + 1] = agent.effort
+  return #parts > 0 and table.concat(parts, " · ") or nil
 end
 
 ---@param id string The id of the Agent tool call that started the agent.
@@ -195,6 +207,8 @@ function M.start(ev)
   agent = agent or { id = ev.agent_id, description = "" }
   agent.tool_use_id = ev.tool_use_id
   agent.type = ev.subagent_type or agent.type
+  agent.model = type(ev.model) == "string" and ev.model or nil
+  agent.effort = type(ev.effort) == "string" and ev.effort or nil
   if ev.description and ev.description ~= "" then
     agent.description = ev.description
   end

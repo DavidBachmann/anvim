@@ -104,6 +104,7 @@ local function codex()
   local s = require("anvim.state").codex
   if s == "on" then
     health.ok("Codex agents are on: Claude has the codex tool, because the codex CLI is installed and logged in")
+    health.info(require("anvim.codex").describe())
   elseif s == "missing" then
     health.info("Codex agents are off, because the codex CLI is not on PATH")
   elseif s == "logged_out" then

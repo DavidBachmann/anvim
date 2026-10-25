@@ -14,6 +14,8 @@ Choosing one starts Claude again in that session and draws its past in the trans
 
 `/effort` lists the effort levels of the current model, and `/effort high` sets one at once, for this session only, without a change to your settings. `/effort default` gives the effort that a new session would have: the level in your Claude Code settings for the model, else the model's. The default follows a model switch, and a level that you chose stays, as in Claude Code. `/effort current` asks Claude Code which level applies. The statusline shows the level that the session uses next to the model, as in `Haiku 5.5 · high`, and no level for a model without effort levels.
 
+`/codex-model` and `/codex-effort` set the model and the effort of Codex agents. [Subagents](subagents.md#codex-agents) explains them.
+
 Before the model, a meter shows how full the context window is, as in `▰▰▰▰▰▱▱▱▱▱ 64%`. It changes when a turn ends. The statusline shows the login's email before the meter, so a work login and a personal one differ at a glance.
 
 `<leader>cR` or `:AnvimRestart` starts Claude again when it exited or hangs, in the same session, and keeps the model and effort you chose. A restart with the default effort starts as a new session would.

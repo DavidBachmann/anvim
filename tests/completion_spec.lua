@@ -82,11 +82,14 @@ describe("completion", function()
     })
     local start, list = complete("/")
     local items = by_abbr(list)
-    -- anvim runs /model, /resume, /effort, /status, /usage, /context, /mcp, /chrome and /account itself, and adds them.
+    -- anvim runs /model, /resume, /effort, /status, /usage, /context, /mcp, /chrome, /account and the Codex
+    -- commands itself, and adds them.
     assert.are.same(0, start)
     assert.are.same({
       "/account",
       "/chrome",
+      "/codex-effort",
+      "/codex-model",
       "/compact",
       "/context",
       "/effort",
