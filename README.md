@@ -4,7 +4,7 @@ Claude Code, dressed as Neovim.
 
 ![anvim](docs/screenshot.png)
 
-anvim is a read-only Neovim for watching Claude Code work. Claude does the editing. You keep every Vim motion, and you get the overview.
+anvim is a read-only Neovim for overseeing agentic coding. It takes Claude Code a step further: your agents do the editing, and you keep every Vim motion and the full overview.
 
 ## Why read-only?
 
@@ -40,6 +40,7 @@ MCP sign-in and paid cloud reviews still need Claude Code's terminal. So do term
 
 ## Quality of life
 
+- Timestamps. Every prompt, reply, tool call and notice shows when it arrived, in agent logs and resumed sessions too.
 - `Esc` needs two presses with a pause to stop Claude or answer no. A burst does nothing.
 - Typing never answers a permission request. Digits stay text, and `Enter` keeps your prompt.
 - Focus never starts insert mode. Only insert commands such as `i`, `a` and `c` do.
