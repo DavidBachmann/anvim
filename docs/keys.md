@@ -64,6 +64,7 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 | `Ctrl-G` | Write the prompt in a large window |
 | `j`, `Down` on the last line, in normal mode | Select the agent count in the footer, while agents run |
 | `k`, `Up`, `Esc` | End the selection of the agent count |
+| `f` on the selected agent count | Follow the next agent, and Claude after the last |
 | `Up` on the first line, `Ctrl-P` | Take the queued prompts back into the prompt, to change them, while prompts are queued |
 | `Up` on the first line, `Down` on the last | Go back and forth through past prompts, in insert mode |
 | `Ctrl-P`, `Ctrl-N` | Go back and forth through past prompts, in normal mode |

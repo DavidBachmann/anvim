@@ -4,7 +4,7 @@ Claude can start subagents, such as Explore, and several at once. Each running s
 
 ## Where they are
 
-The footer under the prompt has a dot in each running subagent's color, and their count: `⏺⏺⏺ 3 agents ↓`. In normal mode, `j` or `Down` on the prompt's last line selects the count, and `Enter` then opens the Agent Overview. `k`, `Up` and `Esc` end the selection. Any other key ends it too, and then does its usual work.
+The footer under the prompt has a dot in each running subagent's color, and their count: `⏺⏺⏺ 3 agents ↓`. In normal mode, `j` or `Down` on the prompt's last line selects the count. `Enter` then opens the Agent Overview, and `f` follows the next agent, or Claude after the last. So with one agent, `f` follows it, and a second `f` follows Claude again. `k`, `Up` and `Esc` end the selection. Any other key ends it too, and then does its usual work.
 
 In the explorer, an agent's dots in its color show where it works, up to three agents and then `+`. A `⏺` marks the file that the agent reads or writes now, and a `-` marks each other file that it wrote to. A closed folder shows each agent once: a `⏺` when the agent's current file is below it, else a `-`. A subagent's dots go when it ends, and Claude's own dots last until its turn ends.
 

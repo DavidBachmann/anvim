@@ -166,6 +166,7 @@ M.places = {
       { "<CR>", "Send the prompt", mode = "i", row = "Send the prompt, or open the Agent Overview" },
       { { "<S-CR>", "<M-CR>" }, "New line", mode = "i" },
       { "<Esc>", "Stop Claude (press twice), or end the agent count's selection" },
+      { "f", "Find a character, or follow the next agent from the agent count" },
       { "<C-c>", "Stop Claude", mode = { "i", "n" } },
       { "<C-b>", "Move the running agents and commands to the background", mode = "i" },
       { "<S-Tab>", "Cycle the permission mode", mode = { "i", "n" } },

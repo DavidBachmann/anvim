@@ -51,8 +51,9 @@ local esc_ns = api.nvim_create_namespace("anvim.input.esc")
 ---@type uv.uv_timer_t?
 local esc_timer
 
--- The footer's agent count is selected: j on the last line selects it, and
--- <CR> then opens the Agent Overview. The cursor stays in the prompt text.
+-- The footer's agent count is selected: j on the last line selects it. <CR>
+-- then opens the Agent Overview, and f follows the next agent. The cursor
+-- stays in the prompt text.
 local selected = false
 local select_ns = api.nvim_create_namespace("anvim.input.select")
 
@@ -104,6 +105,10 @@ function M.buf()
   map("i", "<S-CR>", newline, { expr = true })
   map("i", "<M-CR>", newline, { expr = true })
   map("n", "<Esc>", M.escape, { nowait = true })
+  -- Off the agent count, f is Neovim's own.
+  map("n", "f", function()
+    return selected and "<Cmd>lua require('anvim.input').follow_next()<CR>" or "f"
+  end, { expr = true })
   map({ "i", "n" }, "<C-c>", M.interrupt)
   -- Claude Code's key. In normal mode, <C-b> scrolls the transcript.
   map("i", "<C-b>", M.background)
@@ -650,6 +655,26 @@ function M.mode_label()
   end
 end
 
+-- The agent that f follows from the selected count: the running agent after
+-- the focused one, or nil for Claude after the last.
+---@return anvim.Agent?
+local function next_agent()
+  local focus, running = require("anvim.follow").focus, require("anvim.agents").running()
+  if not focus then
+    return running[1]
+  end
+  for i, agent in ipairs(running) do
+    if agent.id == focus then
+      return running[i + 1]
+    end
+  end
+end
+
+function M.follow_next()
+  local agent = next_agent()
+  require("anvim.follow").set_focus(agent and agent.id)
+end
+
 -- A dot in each running agent's color, with their count, under the prompt
 -- text. The focused agent's dot is ◉. The arrow says that j reaches the count.
 ---@return [string, string?][]
@@ -667,14 +692,17 @@ function M.footer()
   end
   local count = ("%d agent%s ↓"):format(#running, #running == 1 and "" or "s")
   vim.list_extend(chunks, { { " " }, { count, selected and "AnvimChipSelected" or "AnvimChip" } })
-  local hint = "  enter to open the Agent Overview"
   if selected then
     local width = 0
     for _, chunk in ipairs(chunks) do
       width = width + api.nvim_strwidth(chunk[1])
     end
-    if width + api.nvim_strwidth(hint) <= win_width(prompt_win()) then
-      chunks[#chunks + 1] = { hint, "Comment" }
+    local f = next_agent() and "f to follow" or "f to follow Claude"
+    for _, hint in ipairs({ "  enter to open the Agent Overview · " .. f, "  " .. f }) do
+      if width + api.nvim_strwidth(hint) <= win_width(prompt_win()) then
+        chunks[#chunks + 1] = { hint, "Comment" }
+        break
+      end
     end
   end
   return chunks
@@ -703,7 +731,7 @@ end
 -- These keys act on the selection themselves. Any other typed key ends it
 -- before it does its usual work.
 local select_keys = {}
-for _, lhs in ipairs({ "<CR>", "<Esc>", "j", "<Down>", "k", "<Up>" }) do
+for _, lhs in ipairs({ "<CR>", "<Esc>", "f", "j", "<Down>", "k", "<Up>" }) do
   select_keys[vim.keycode(lhs)] = true
 end
 
