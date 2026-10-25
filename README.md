@@ -4,11 +4,49 @@ Claude Code, dressed as Neovim.
 
 ![anvim](docs/screenshot.png)
 
-anvim is a read-only Neovim for watching Claude Code work. You read and point. Claude writes, and its edits stream into your buffers as it generates them. You cannot edit a file in anvim. If you want to edit code, open Neovim proper. If you want oversight over your agents, this might be for you.
+anvim is a read-only Neovim for watching Claude Code work. Claude does the editing. You keep every Vim motion, and you get the overview.
 
-It runs the real Claude Code engine through the Agent SDK, so your login, `CLAUDE.md` files, skills, MCP servers, hooks and settings work as they do in Claude Code. anvim only builds the view.
+## Why read-only?
 
-This is a personal productivity tool, and it is niche. There are no releases and no compatibility promise. Most of anvim was written inside anvim, and `anvim --debug` lets Claude keep going: it gets a tool that takes a picture of the screen, and one that restarts anvim with its own changes. Fork it and make it yours.
+Claude Code's terminal shows a log: `Read(src/app.ts)`, then `Update(src/app.ts)`. anvim shows the code behind it.
+
+- Follow Claude: the code window opens each file at the lines Claude reads.
+- Watch edits stream in, with old text struck through. You see each change before it reaches disk.
+- Track agents by their colored dots in the explorer. Follow one to see its reads and edits.
+- Open the Agent Overview for each agent's task, context use and tool calls.
+
+Leave the prompt to review code with LSP, grep, git log and diffs. `<leader>j` takes you back to Claude.
+
+Claude writes; you review and point. To edit a file yourself, open Neovim proper. anvim reloads files that change on disk.
+
+## What anvim rebuilds
+
+The Agent SDK runs the real Claude Code engine. It brings your login, sessions and `CLAUDE.md` files.
+
+Your skills, plugins, MCP servers, hooks, settings, permission rules, subagents and sandbox work as they do in Claude Code.
+
+The SDK has no interface. anvim rebuilds Claude Code's interface:
+
+- The transcript and tool pane.
+- The prompt: `@` and `/` completion, past prompts and pasted images.
+- `Ctrl-G` for long prompts, `Up` to retrieve queued prompts, `Ctrl-B` to background agents.
+- Permission requests, Claude's questions and plan approval.
+- The statusline: permission mode, model, effort and context use.
+- `/resume`, `/model` and `/effort`; Settings for `/status`, `/usage`, `/context`, `/mcp` and `/chrome`.
+
+Claude Code sends subagent edits whole; anvim types them into the buffer while you follow. It also finds files in Bash commands such as `cat` and `grep -n`.
+
+MCP sign-in and paid cloud reviews still need Claude Code's terminal. So do terminal-only commands such as `/doctor`.
+
+## Quality of life
+
+- `Esc` needs two presses with a pause to stop Claude or answer no. A burst does nothing.
+- Typing never answers a permission request. Digits stay text, and `Enter` keeps your prompt.
+- Focus never starts insert mode. Only insert commands such as `i`, `a` and `c` do.
+- Prompts carry only what you write. anvim adds no hidden context.
+- Keys follow LazyVim. Keys that change files do nothing.
+- The transcript and tool pane take no focus. Scroll with the mouse wheel; drag to copy text.
+- Notifications arrive only when anvim is out of sight.
 
 ## Install
 
@@ -30,13 +68,13 @@ anvim keeps its plugins, state and config apart from your main Neovim, and reads
 anvim ~/dev/project
 ```
 
-Three columns open: the explorer, the code and Claude. The cursor is in the prompt, in normal mode. Press `i`, type, and press `Enter`.
+The explorer, code and Claude open in three columns. The cursor starts in the prompt, in normal mode. Press `i`, type, then press `Enter`.
 
-While your cursor is in the prompt, the code window follows Claude. It opens the files Claude reads, and edits stream in with the old text struck through. Move the cursor anywhere else to take control. `<leader>j` jumps back to where Claude is.
+The code window follows Claude while your cursor stays in the prompt. Move elsewhere to review; `<leader>j` takes you back.
 
-To point Claude at code, select lines and press `c`. That puts a reference such as `@src/app.lua#L12-30` in the prompt, and Claude Code reads those lines with your prompt. The buffers are read-only, so `c` is free. Read it as "change this, Claude".
+Select lines and press `c` to put a reference such as `@src/app.lua#L12-30` in the prompt. Claude Code reads those lines with your prompt. Read `c` as "change this, Claude".
 
-Claude starts in bypass mode with Claude Code's sandbox on. It edits files and runs commands without asking, and the sandbox keeps its commands from writing outside the project. `anvim --mode default` asks first, as Claude Code does.
+Claude starts in bypass mode with the sandbox on. It edits files and runs commands without asking, and the sandbox keeps its commands from writing outside the project. `anvim --mode default` asks first.
 
 ```sh
 anvim --model haiku ~/dev/project      # pick a model
@@ -63,9 +101,9 @@ anvim --debug ~/dev/anvim              # let Claude work on anvim itself
 
 ## Make it yours
 
-anvim is one person's workflow, written down as code. Yours differs. Fork the repo, change the keys, the layout and the rules, and point `anvim --debug` at your fork. Claude reads the screen, edits the code and restarts anvim in the same session, so you can shape it from the inside.
+anvim is one person's workflow, with no releases or compatibility promise. Most of anvim was written inside anvim. `anvim --debug` lets Claude keep going: it reads the screen and restarts anvim with its own changes.
 
-Issues and pull requests are welcome, but a fork that fits you is the better outcome.
+Fork the repo, change what bothers you, and point `anvim --debug` at your fork. Issues and pull requests are welcome, but a fork that fits you is the better outcome.
 
 ## License
 
