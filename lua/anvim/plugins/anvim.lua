@@ -13,6 +13,7 @@ return {
       sandbox = vim.env.ANVIM_SANDBOX ~= "0",
       debug = vim.env.ANVIM_DEBUG == "1",
       chrome = ({ ["1"] = true, ["0"] = false })[vim.env.ANVIM_CHROME or ""],
+      codex = vim.env.ANVIM_CODEX ~= "0",
       -- ANVIM_REPLAY=<recording> plays a session that ANVIM_RECORD saved, at no API cost.
       replay = vim.env.ANVIM_REPLAY,
       replay_speed = tonumber(vim.env.ANVIM_REPLAY_SPEED),

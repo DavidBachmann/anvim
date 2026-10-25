@@ -72,6 +72,7 @@ local titles = {
   WebSearch = "Web search",
   -- A sandboxed command connects to a host that no rule allows yet.
   SandboxNetworkAccess = "Network access",
+  [agents.codex_tool] = "Start a Codex agent",
 }
 
 local function first_line(text)
@@ -285,6 +286,15 @@ local function add_header(b, r)
     end
   elseif type(path) == "string" then
     b.add("    " .. paths.display(path))
+  elseif tool == agents.codex_tool then
+    b.add(("    Codex(%s)%s"):format(tostring(inp.description or ""), inp.read_only == true and " · read-only" or ""))
+    local lines = vim.split(vim.trim(tostring(inp.prompt or "")), "\n", { plain = true })
+    for i = 1, math.min(#lines, 8) do
+      b.add("    " .. lines[i], "Comment")
+    end
+    if #lines > 8 then
+      b.add(("    +%d more lines"):format(#lines - 8), "Comment")
+    end
   elseif mcp_server then
     b.add(("    %s - %s (MCP)"):format(mcp_server, transcript.label(mcp_tool, inp)))
   else

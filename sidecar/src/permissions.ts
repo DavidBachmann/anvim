@@ -12,7 +12,7 @@ import { isAbsolute, relative } from "node:path";
 import type { Command, Event } from "./protocol";
 import { tildePath } from "./sandbox";
 import { SendBack } from "./sendback";
-import { isEditorTool } from "./tools";
+import { isCodexTool, isEditorTool } from "./tools";
 
 type Response = Extract<Command, { type: "permission_response" }>;
 type Input = Record<string, unknown>;
@@ -41,6 +41,8 @@ export class PermissionBridge {
   cwd = process.cwd();
   // A session that started in bypass mode can switch back to it after a plan.
   bypass = false;
+  // The session's permission mode, from Claude Code's messages.
+  mode?: string;
   // anvim's own asks (sandbox.ts), whose reason the request shows.
   guard?: Guard;
   // Sends the first guarded call of each agent back to Claude (sendback.ts).
@@ -58,11 +60,19 @@ export class PermissionBridge {
   // Each SDK message of the session, for the send-back's reset.
   message(msg: SDKMessage): void {
     this.sendBack?.message(msg);
+    const m = msg as { type: string; subtype?: string; permissionMode?: string };
+    if (m.type === "system" && (m.subtype === "init" || m.subtype === "status") && m.permissionMode) {
+      this.mode = m.permissionMode;
+    }
   }
 
   canUseTool: CanUseTool = (tool, input, opts) => {
     // Editor tools need no prompt (tools.ts).
-    if (isEditorTool(opts.mcpServer)) return Promise.resolve({ behavior: "allow", updatedInput: input });
+    if (isEditorTool(opts.mcpServer, tool)) return Promise.resolve({ behavior: "allow", updatedInput: input });
+    // A plan only reads, so a Codex agent of plan mode writes no files.
+    if (isCodexTool(opts.mcpServer, tool) && this.mode === "plan") {
+      return Promise.resolve({ behavior: "allow", updatedInput: { ...input, read_only: true } });
+    }
     // Claude Code passes the hook's reason as decisionReason, but a user's own
     // hook can ask too, so the guard tells anvim's asks apart. A saved rule
     // would not stop anvim's hook from asking again, so its asks offer no

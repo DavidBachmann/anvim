@@ -31,18 +31,19 @@ anvim brings its own Neovim config. It reads and writes nothing under your main 
 ## Start
 
 ```sh
-anvim [--model <model>] [--effort <level>] [--mode <mode>] [--no-sandbox] [--dangerously-skip-permissions] [--chrome | --no-chrome] [--debug] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
+anvim [--model <model>] [--effort <level>] [--mode <mode>] [--no-sandbox] [--dangerously-skip-permissions] [--chrome | --no-chrome] [--no-codex] [--debug] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
 anvim --model haiku ~/dev/project
 anvim --effort high ~/dev/project               # low, medium, high, xhigh or max
 anvim --mode default ~/dev/project              # ask before Claude edits a file or runs a command
 anvim --no-sandbox ~/dev/project                # let Bash commands write anywhere, and start in default mode
 anvim --dangerously-skip-permissions ~/dev/project   # no sandbox, and no prompts
 anvim --chrome ~/dev/project                    # let Claude use your Chrome through the Claude extension
+anvim --no-codex ~/dev/project                  # no Codex agents, even with the codex CLI logged in
 anvim -c ~/dev/project                          # go on with the latest session there
 anvim --resume ~/dev/project                    # pick a session to go on with
 ```
 
-Each flag has an environment variable: `ANVIM_MODEL`, `ANVIM_EFFORT`, `ANVIM_MODE`, `ANVIM_SANDBOX=0`, `ANVIM_CHROME=1` or `0`, and `ANVIM_DEBUG=1`. `--dangerously-skip-permissions` is short for `--no-sandbox --mode bypassPermissions`. A flag wins over its variable. To start in default mode every time, put `export ANVIM_MODE=default` in your shell profile.
+Each flag has an environment variable: `ANVIM_MODEL`, `ANVIM_EFFORT`, `ANVIM_MODE`, `ANVIM_SANDBOX=0`, `ANVIM_CHROME=1` or `0`, `ANVIM_CODEX=0` and `ANVIM_DEBUG=1`. `--dangerously-skip-permissions` is short for `--no-sandbox --mode bypassPermissions`. A flag wins over its variable. To start in default mode every time, put `export ANVIM_MODE=default` in your shell profile.
 
 Without `--effort` or `ANVIM_EFFORT`, the effort is the level in your Claude Code settings for the model, else the model's own. Without `--chrome` or `--no-chrome`, Claude Code's "Enabled by default" setting for Claude in Chrome decides. `--debug` is for work on anvim itself, see [development.md](development.md).
 

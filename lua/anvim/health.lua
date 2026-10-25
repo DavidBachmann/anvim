@@ -93,6 +93,26 @@ local function start_mode(runs)
   end
 end
 
+local function codex()
+  if config.options.codex == false then
+    health.info(
+      vim.env.ANVIM_CODEX == "0" and "Codex agents are off, because anvim started with --no-codex or ANVIM_CODEX=0"
+        or "Codex agents are off, because a spec sets `codex = false`"
+    )
+    return
+  end
+  local s = require("anvim.state").codex
+  if s == "on" then
+    health.ok("Codex agents are on: Claude has the codex tool, because the codex CLI is installed and logged in")
+  elseif s == "missing" then
+    health.info("Codex agents are off, because the codex CLI is not on PATH")
+  elseif s == "logged_out" then
+    health.warn("Codex agents are off, because the codex CLI is not logged in", { "Run `codex login`" })
+  else
+    health.info("Claude has not started yet, so anvim has not checked Codex")
+  end
+end
+
 local function accounts()
   health.start("anvim accounts")
   local acc = require("anvim.accounts")
@@ -181,6 +201,7 @@ function M.check()
 
   local runs = sandbox()
   start_mode(runs)
+  codex()
 
   executables({
     { "git", "lazy.nvim installs the plugins with it.", error = true },

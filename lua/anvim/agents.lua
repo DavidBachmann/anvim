@@ -87,6 +87,17 @@ function M.in_slot(slot)
   return slots[slot]
 end
 
+-- The tool calls that start an agent: Claude Code's Agent tool, and anvim's
+-- codex tool (sidecar/src/codex.ts).
+M.codex_tool = "mcp__anvim__codex"
+local spawn_tools = { Agent = true, Task = true, [M.codex_tool] = true }
+
+---@param name string?
+---@return boolean
+function M.spawns(name)
+  return spawn_tools[name] == true
+end
+
 -- As its tool line names it, by its type, and then its slot: Explore 2.
 ---@param agent anvim.Agent
 ---@return string
@@ -288,7 +299,7 @@ function M.tool_field(ev)
 end
 
 function M.tool_use(ev)
-  if ev.name == "Agent" or ev.name == "Task" then
+  if M.spawns(ev.name) then
     local agent = by_tool[ev.id]
     if agent then
       fill(agent, ev.input)

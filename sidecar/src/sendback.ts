@@ -63,6 +63,8 @@ export class SendBack {
   // The hint when this guarded call goes back to Claude, or undefined when
   // the user is asked. Each call must come here once.
   decide(call: GuardedCall): string | undefined {
+    // A Codex run that writes files has no way inside the sandbox.
+    if (call.reason === REASONS.codex) return undefined;
     const key = call.agentID ?? "";
     const what = target(call);
     const line = `${call.agentID ?? "main"} ${call.tool} ${call.reason}: ${what.replace(/\n/g, "\\n").slice(0, 200)}`;

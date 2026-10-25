@@ -18,6 +18,7 @@ import type {
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { CODEX_TOOL } from "./tools";
 
 export type Host = {
   platform: NodeJS.Platform;
@@ -440,6 +441,7 @@ export const REASONS = {
   settings: "changes the sandbox's settings",
   config: "changes a config that runs outside the sandbox",
   outside: (path: string) => `outside the trusted dirs: ${path}`,
+  codex: "writes outside the sandbox, also files that run code",
 };
 
 // anvim's guards for what the sandbox does not cover. Each one is a
@@ -553,6 +555,15 @@ export class SandboxGuard {
     return paths.some((p) => protectedPath(below(p))) ? this.ask(input, toolUseID, signal, REASONS.config) : {};
   };
 
+  // Codex's own sandbox lets it write files in the project that Claude's
+  // edits ask for, such as .envrc. Plan mode runs it read-only (permissions.ts).
+  codex: HookCallback = async (input, toolUseID, { signal }) => {
+    const { tool_input, permission_mode } = input as PreToolUseHookInput;
+    const { read_only } = (tool_input ?? {}) as Record<string, unknown>;
+    if (read_only === true || permission_mode === "plan") return {};
+    return this.ask(input, toolUseID, signal, REASONS.codex);
+  };
+
   private absolute(path: string): string {
     if (path === "~" || path.startsWith("~/")) return join(this.home, path.slice(1));
     return isAbsolute(path) ? path : join(this.opts.cwd, path);
@@ -602,6 +613,7 @@ export function preToolUse(preview: HookCallback, guard?: SandboxGuard): HookCal
   return [
     { matcher: "Edit|Write|NotebookEdit", hooks: [edit], timeout: GUARD_TIMEOUT_S },
     { matcher: "Bash", hooks: [guard.bash], timeout: GUARD_TIMEOUT_S },
+    { matcher: CODEX_TOOL, hooks: [guard.codex], timeout: GUARD_TIMEOUT_S },
   ];
 }
 

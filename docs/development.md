@@ -10,7 +10,7 @@ The Agent SDK runs the real Claude Code engine, so sessions, auth, skills, MCP s
 
 - `bin/anvim` runs `nvim -u init.lua` with `NVIM_APPNAME=anvim`, so anvim's state, plugins and logs stay apart from the main Neovim's.
 - `lua/anvim/base/` is the editor under the layout: a lean copy of LazyVim's options, keymaps and plugin specs. `lua/anvim/plugins/` is anvim's own lazy.nvim spec on top of it. The other files in `lua/anvim/` are named after their concern.
-- `sidecar/src/` is the Bun process. `main.ts` runs the session, `translate.ts` turns SDK messages into protocol events, `protocol.ts` is the contract between the two sides, `tools.ts` is the editor tools' MCP server, `permissions.ts` bridges `canUseTool`, and `sandbox.ts` holds the sandbox guards.
+- `sidecar/src/` is the Bun process. `main.ts` runs the session, `translate.ts` turns SDK messages into protocol events, `protocol.ts` is the contract between the two sides, `tools.ts` is the editor tools' MCP server, `permissions.ts` bridges `canUseTool`, `sandbox.ts` holds the sandbox guards, and `codex.ts` runs the Codex agents.
 - `tools/screen/` embeds anvim as a UI and records what Neovim draws.
 
 `CLAUDE.md` holds the rules and the traps for work on the code.

@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import type { PermissionResult, PermissionUpdate } from "@anthropic-ai/claude-agent-sdk";
+import type { PermissionResult, PermissionUpdate, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { CANCELLED, joinAnswer, PermissionBridge, REJECT, REJECT_WITH } from "./permissions";
 import type { Event } from "./protocol";
+import { isEditorTool } from "./tools";
 
 type Request = Extract<Event, { type: "permission_request" }>;
 type Options = Parameters<PermissionBridge["canUseTool"]>[2];
@@ -184,6 +185,22 @@ describe("PermissionBridge", () => {
     ask("mcp__anvim__show_user", input, { mcpServer: { name: "anvim", source: "user" } });
     expect(sent.map((ev) => ev.type)).toEqual(["permission_request", "permission_request"]);
     expect(bridge.waiting).toBe(2);
+  });
+
+  test("asks before anvim's codex tool starts a Codex agent, and runs it read-only in plan mode", async () => {
+    const { bridge, sent, ask } = setup();
+    const own = { mcpServer: { name: "anvim", source: "sdk" } };
+    const input = { description: "Change b", prompt: "Change b to B in notes.txt" };
+    expect(isEditorTool(own.mcpServer, "mcp__anvim__codex")).toBe(false);
+    ask("mcp__anvim__codex", input, own);
+    expect(sent.map((ev) => ev.type)).toEqual(["permission_request"]);
+    expect(bridge.waiting).toBe(1);
+    bridge.message({ type: "system", subtype: "status", status: null, permissionMode: "plan" } as SDKMessage);
+    expect(await ask("mcp__anvim__codex", input, own).result).toEqual({
+      behavior: "allow",
+      updatedInput: { ...input, read_only: true },
+    });
+    expect(sent).toHaveLength(1);
   });
 
   test("puts AskUserQuestion answers into the input, as Claude Code expects them", async () => {

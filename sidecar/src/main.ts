@@ -17,6 +17,7 @@ import {
   type ChromeMessage,
   setEnabledByDefault,
 } from "./chrome";
+import { CodexRunner, codexState } from "./codex";
 import { type ImageBlock, imageBlocks } from "./images";
 import { PermissionBridge } from "./permissions";
 import { PreviewBridge } from "./preview";
@@ -84,6 +85,8 @@ const translator = new Translator();
 const editor = new EditorBridge(emit);
 const permissions = new PermissionBridge(emit);
 const previews = new PreviewBridge(emit);
+// The Codex agents of the session, when a codex CLI is on PATH.
+let codex: CodexRunner | undefined;
 
 // The session to resume, after its history went out. Claude Code fails to
 // start on an id it cannot find, so a missing one starts a new session.
@@ -226,6 +229,9 @@ export function fallBack(): void {
 }
 
 async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
+  // The tool list is fixed when the session starts, so the login check must
+  // end before that. It runs while the rest of the start does.
+  const codexCheck = codexState(cmd.codex !== false);
   // Only false turns the sandbox off, so a start without the field keeps it.
   const sandboxOn = cmd.sandbox !== false;
   const sandbox = sandboxSetup(sandboxOn, cmd.cwd);
@@ -249,12 +255,17 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     start,
     fallBack,
   );
+  const [resume, { state: codexOn, bin: codexBin }] = await Promise.all([resumeTarget(cmd), codexCheck]);
+  emit({ type: "codex", state: codexOn });
+  codex = codexBin
+    ? new CodexRunner({ bin: codexBin, cwd: cmd.cwd, emit, notify: (text) => inbox.push(text) })
+    : undefined;
   const options: Options = {
     ...sandbox.options,
     cwd: cmd.cwd,
     model: cmd.model,
     effort: cmd.effort,
-    resume: await resumeTarget(cmd),
+    resume,
     permissionMode: mode,
     allowDangerouslySkipPermissions: mode === "bypassPermissions",
     includePartialMessages: true,
@@ -266,7 +277,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     },
     systemPrompt: { type: "preset", preset: "claude_code", append: cmd.append_system_prompt },
     extraArgs: chromeArgs(cmd.chrome),
-    mcpServers: { [SERVER]: editorServer(editor, { debug: cmd.debug === true }) },
+    mcpServers: { [SERVER]: editorServer(editor, { debug: cmd.debug === true, codex }) },
     canUseTool: permissions.canUseTool,
     stderr: (data) => {
       process.stderr.write(data);
@@ -296,6 +307,8 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     .catch(() => {});
   for await (const msg of session) {
     permissions.message(msg);
+    // /clear: no conversation waits for the result of a Codex agent.
+    if ((msg as { type: string }).type === "conversation_reset") codex?.stopAll();
     for (const ev of translate(translator, msg)) emit(ev);
     if (msg.type === "result") {
       void reportContext();
@@ -339,6 +352,7 @@ export async function handle(cmd: Command): Promise<void> {
         .catch(() => {});
       return;
     case "set_permission_mode":
+      permissions.mode = cmd.mode;
       await session?.setPermissionMode(cmd.mode);
       return;
     case "set_model":
@@ -489,6 +503,7 @@ export async function handle(cmd: Command): Promise<void> {
 // Bun runs no exit handlers on SIGTERM, so the SDK would leave Claude Code
 // running. A restart of a hung sidecar sends SIGTERM.
 function shutdown(): void {
+  codex?.stopAll();
   inbox.close();
   session?.close();
   process.exit(0);
@@ -510,4 +525,6 @@ if (import.meta.main) {
   });
   rl.on("close", shutdown);
   process.on("SIGTERM", shutdown);
+  // A session that ends leaves no Codex agent running.
+  process.on("exit", () => codex?.stopAll());
 }

@@ -84,6 +84,7 @@ function M.start_command(opts)
     append_system_prompt = config.options.append_system_prompt,
     debug = config.options.debug,
     chrome = M.chrome_flag(),
+    codex = config.options.codex ~= false,
   }, opts or {})
 end
 
@@ -580,6 +581,9 @@ function M.attach()
   sidecar.on("init", add_commands)
   sidecar.on("commands", add_commands)
   sidecar.on("history", M.history)
+  sidecar.on("codex", function(ev)
+    state.codex = ev.state
+  end)
   sidecar.on("reset", M.reset)
   -- A /clear also ends a turn, but saves none.
   sidecar.on("turn_end", function(ev)

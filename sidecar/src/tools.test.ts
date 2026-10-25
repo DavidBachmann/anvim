@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { Event } from "./protocol";
-import { EditorBridge, editorServer, isEditorTool, SERVER } from "./tools";
+import { EditorBridge, editorServer, isOwnServer, SERVER } from "./tools";
 
 type Request = Extract<Event, { type: "editor_request" }>;
 
@@ -76,14 +76,14 @@ describe("editor MCP server", () => {
   });
 
   test("trusts only the in-process server that anvim registered", () => {
-    expect(isEditorTool({ name: SERVER, source: "sdk" })).toBe(true);
+    expect(isOwnServer({ name: SERVER, source: "sdk" })).toBe(true);
     // The CLI gives the tools of these servers names that start with mcp__anvim__.
     for (const name of ["anvim_", "anvim.", "anvim__evil"]) {
-      expect(isEditorTool({ name, source: "project" })).toBe(false);
-      expect(isEditorTool({ name, source: "sdk" })).toBe(false);
+      expect(isOwnServer({ name, source: "project" })).toBe(false);
+      expect(isOwnServer({ name, source: "sdk" })).toBe(false);
     }
-    expect(isEditorTool({ name: SERVER, source: "user" })).toBe(false);
-    expect(isEditorTool(undefined)).toBe(false);
+    expect(isOwnServer({ name: SERVER, source: "user" })).toBe(false);
+    expect(isOwnServer(undefined)).toBe(false);
   });
 
   test("a tool call goes to the editor and returns its answer", async () => {

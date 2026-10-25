@@ -21,6 +21,8 @@ import {
   sandboxSetup,
   startMode,
 } from "./sandbox";
+import { SendBack } from "./sendback";
+import { CODEX_TOOL } from "./tools";
 
 // A host with these dirs and files, and these commands on PATH.
 function host(platform: NodeJS.Platform, dirs: string[] = [], cmds: string[] = [], files: string[] = []): Host {
@@ -363,6 +365,35 @@ describe("the Bash guard", () => {
     ]);
   });
 
+  test("asks before a Codex run that writes, in bypass mode too, and never sends it back", async () => {
+    const asked: string[] = [];
+    const g = new SandboxGuard({
+      cwd,
+      tmpDir: join(root, "sbtmp"),
+      settings: async () => ({}),
+      prompt: async (_tool, _input, opts) => {
+        asked.push(g.take(opts.toolUseID)!);
+        return { behavior: "allow" };
+      },
+    });
+    const call = (tool_input: Record<string, unknown>, permission_mode: string) =>
+      g.codex(
+        { ...base, permission_mode, tool_name: CODEX_TOOL, tool_input, tool_use_id: "toolu_c" } as HookInput,
+        "toolu_c",
+        { signal },
+      );
+    const task = { description: "Fix it", prompt: "Fix the bug" };
+    expect(await call(task, "bypassPermissions")).toEqual({});
+    expect(asked).toEqual([REASONS.codex]);
+    expect(await call(task, "default")).toMatchObject({ hookSpecificOutput: { permissionDecision: "ask" } });
+    expect(await call({ ...task, read_only: true }, "bypassPermissions")).toEqual({});
+    expect(await call(task, "plan")).toEqual({});
+    expect(asked).toHaveLength(1);
+    // Codex has no way to write inside the sandbox, so the user decides at once.
+    const sendBack = new SendBack({ tmpDir: "/tmp", log: () => {} });
+    expect(sendBack.decide({ tool: CODEX_TOOL, input: task, reason: REASONS.codex })).toBeUndefined();
+  });
+
   test("still asks for an escape when the settings cannot be read", async () => {
     const g = new SandboxGuard({
       cwd,
@@ -506,9 +537,9 @@ describe("the edit guard", () => {
       },
     });
     const hooks = preToolUse(slow, g);
-    expect(hooks.map((h) => h.matcher)).toEqual(["Edit|Write|NotebookEdit", "Bash"]);
+    expect(hooks.map((h) => h.matcher)).toEqual(["Edit|Write|NotebookEdit", "Bash", CODEX_TOOL]);
     // A prompt from the guard waits for the user, not for Claude Code's default timeout.
-    expect(hooks.map((h) => h.timeout)).toEqual([GUARD_TIMEOUT_S, GUARD_TIMEOUT_S]);
+    expect(hooks.map((h) => h.timeout)).toEqual([GUARD_TIMEOUT_S, GUARD_TIMEOUT_S, GUARD_TIMEOUT_S]);
     expect(hooks[1]!.hooks).toEqual([g.bash]);
     const out = await hooks[0]!.hooks[0]!(
       {

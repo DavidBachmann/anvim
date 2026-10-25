@@ -16,6 +16,8 @@ local M = {
   context = nil, ---@type { percent: number, tokens: integer, max: integer }?
   -- The email of Claude Code's login, as the sidecar reports it at start.
   email = nil, ---@type string?
+  -- Whether Claude got the codex tool at this start, as the sidecar reports it.
+  codex = nil, ---@type 'on'|'off'|'missing'|'logged_out'|nil
   compacting = false,
   -- Set while a permission prompt waits for the user: the hint that says how
   -- to answer.

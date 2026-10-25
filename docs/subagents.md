@@ -22,6 +22,12 @@ A background subagent keeps working after Claude's turn ends. `Ctrl-B` in the pr
 
 With the tool pane hidden (`<leader>us`), the subagents' lines show in the transcript, as in Claude Code, and the line of the subagent that has focus ends in `◉ focused`.
 
+## Codex agents
+
+When OpenAI's Codex CLI is on your `PATH` and logged in (`codex login`), Claude has a `codex` tool that hands a task to a Codex agent. `--no-codex` or `ANVIM_CODEX=0` takes the tool away, and `:checkhealth anvim` says whether it is there and why. Claude uses it when you ask for Codex or for the opinion of another model. A Codex agent shows as a background subagent named `Codex 1`: its number and color, its dots in the footer and the explorer, its row in the Agent Overview, its line in the tool pane, and follow mode with `<leader>c1`. Its commands and its file changes show as `Bash`, `Edit` and `Write` calls, and its replies as its text. When it ends, Claude gets its result in a turn of its own, as for a background agent, and a resumed session shows that end too.
+
+Codex runs `codex exec` in the working directory, in its own sandbox. It can write files there, unless Claude asks for a read-only run. A Codex agent has less than a Claude subagent. Its edits do not stream: the file reloads after Codex changes it. Its Overview row has no context percent, because Codex does not say how big its window is. It never asks for permission, because Codex's sandbox decides what it may do. `Esc` stops Claude, not a Codex agent, and `/clear` stops every Codex agent.
+
 ## New agents
 
 Claude Code gives each turn the agents that it started with. Between turns, it rereads only the agent folders that existed when the session started. When Claude writes or edits an agent file in the project's `.claude/agents/` or in the login's `agents/` folder, anvim reloads the agents at once, also from a new folder. anvim then tells Claude that the agent works from the next turn on, so Claude ends its turn instead of using another agent. For an agent file that something else writes, `/reload-plugins` reloads the agents.

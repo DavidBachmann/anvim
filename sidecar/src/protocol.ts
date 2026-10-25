@@ -82,6 +82,8 @@ export type Command =
       // Claude in Chrome: true is Claude Code's --chrome, false its
       // --no-chrome. Without it, Claude Code's "Enabled by default" decides.
       chrome?: boolean;
+      // False turns the Codex agents off (codex.ts).
+      codex?: boolean;
     }
   // Absolute paths of the images that the prompt's [Image #N] chips stand for.
   // id is a UUID, which Claude Code's prompt_state events name.
@@ -308,6 +310,9 @@ export type Event =
   | { type: "prompt_state"; id: string; state: string }
   // The email of Claude Code's login, at start.
   | { type: "account"; email?: string }
+  // Whether Claude got the codex tool at start. Off: the start command turned
+  // it off. Missing: no codex CLI is on PATH. Logged out: Codex has no login.
+  | { type: "codex"; state: "on" | "off" | "missing" | "logged_out" }
   // The MCP servers, for the MCP tab. After an action that failed, error says why.
   | { type: "mcp_servers"; servers?: McpServer[]; error?: string }
   // The answer to context_usage, for the Context tab.

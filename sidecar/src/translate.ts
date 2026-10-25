@@ -10,7 +10,7 @@ import type {
 import { FieldStream } from "./fieldstream";
 import type { ContextMark, Event, McpServer, UsageSection } from "./protocol";
 import { tildePath } from "./sandbox";
-import { isEditorTool } from "./tools";
+import { isOwnServer } from "./tools";
 
 const MAX_TEXT = 2000;
 // A subagent's reply can be long.
@@ -548,7 +548,7 @@ function mcpServer(s: McpServerStatus): McpServer {
     ...(where ? { where } : {}),
     ...(s.error ? { error: s.error } : {}),
     tools: (s.tools ?? []).map((t) => t.name),
-    ...(isEditorTool(s.source ? { name: s.name, source: s.source } : undefined) ? { own: true } : {}),
+    ...(isOwnServer(s.source ? { name: s.name, source: s.source } : undefined) ? { own: true } : {}),
   };
 }
 

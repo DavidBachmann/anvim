@@ -5,10 +5,13 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
+import type { CodexInput } from "./codex";
 import type { Command, Event } from "./protocol";
 import { parseDump, png, svg, type Pos } from "./screen";
 
 export const SERVER = "anvim";
+// It starts an agent that can write files, so it follows the permission mode.
+export const CODEX_TOOL = `mcp__${SERVER}__codex`;
 const TIMEOUT_MS = 10_000;
 
 type Response = Extract<Command, { type: "editor_response" }>;
@@ -105,7 +108,35 @@ async function screenshot(bridge: EditorBridge): Promise<Result | ImageResult> {
   }
 }
 
-function editorTools(bridge: EditorBridge, opts: { debug?: boolean } = {}) {
+// The tool's id, which Claude Code puts in the call's _meta.
+type Extra = { _meta?: Record<string, unknown> };
+
+export type Codex = { start(input: CodexInput, toolUseId: string | undefined): { id: string } };
+
+function codexTool(codex: Codex) {
+  return tool(
+    "codex",
+    "Start an OpenAI Codex agent in the background, on a task in this project. Use it when the user asks for Codex, or for the opinion of another model. Codex runs in its own sandbox, and it can write files in the working directory unless read_only is true. It knows only what the prompt says. The call returns at once. Codex's result arrives later, in a message of its own, so do not wait or poll for it.",
+    {
+      description: z.string().describe("A short (3-5 word) description of the task"),
+      prompt: z.string().describe("The task for Codex, self-contained"),
+      read_only: z.boolean().optional().describe("Codex reads and runs commands, but writes no files"),
+    },
+    async (args, extra) => {
+      const meta = (extra as Extra | undefined)?._meta?.["claudecode/toolUseId"];
+      try {
+        const { id } = codex.start(args, typeof meta === "string" ? meta : undefined);
+        return text(
+          `Codex agent ${id} started in the background. Its result arrives in a message of its own when it ends. Do not wait or poll for it: go on with other work, or end your turn.`,
+        );
+      } catch (err) {
+        return text(`Could not start Codex: ${(err as Error)?.message ?? err}`, true);
+      }
+    },
+  );
+}
+
+function editorTools(bridge: EditorBridge, opts: { debug?: boolean; codex?: Codex } = {}) {
   const call = (method: string) => (args: Record<string, unknown>) => bridge.request(method, args);
   // These tools are for anvim's own development, so only --debug adds them.
   const debug = opts.debug
@@ -181,17 +212,32 @@ function editorTools(bridge: EditorBridge, opts: { debug?: boolean } = {}) {
       readOnly,
     ),
     ...debug,
+    ...(opts.codex ? [codexTool(opts.codex)] : []),
   ];
 }
 
-export function editorServer(bridge: EditorBridge, opts: { debug?: boolean } = {}): McpSdkServerConfigWithInstance {
+// codex adds the codex tool, which needs the Codex CLI.
+export function editorServer(
+  bridge: EditorBridge,
+  opts: { debug?: boolean; codex?: Codex } = {},
+): McpSdkServerConfigWithInstance {
   // Always loaded, so the tools never hide behind tool search.
   return createSdkMcpServer({ name: SERVER, tools: editorTools(bridge, opts), alwaysLoad: true });
 }
 
-// Editor tools need no permission prompt. Trust comes from the server's
-// source, not the tool name: the tools of a settings server named "anvim_",
-// "anvim." or "anvim__evil" also start with mcp__anvim__.
-export function isEditorTool(mcpServer: { name: string; source: string } | undefined): boolean {
+// anvim's own in-process server. Trust comes from the server's source, not
+// the tool name: the tools of a settings server named "anvim_", "anvim." or
+// "anvim__evil" also start with mcp__anvim__.
+export function isOwnServer(mcpServer: { name: string; source: string } | undefined): boolean {
   return mcpServer?.source === "sdk" && mcpServer.name === SERVER;
+}
+
+// Editor tools need no permission prompt. The codex tool starts an agent
+// that can write files, so it is not one of them.
+export function isEditorTool(mcpServer: { name: string; source: string } | undefined, tool: string): boolean {
+  return isOwnServer(mcpServer) && tool !== CODEX_TOOL;
+}
+
+export function isCodexTool(mcpServer: { name: string; source: string } | undefined, tool: string): boolean {
+  return isOwnServer(mcpServer) && tool === CODEX_TOOL;
 }

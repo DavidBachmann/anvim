@@ -105,6 +105,7 @@ local primary_arg = {
   WebSearch = "query",
   Task = "description",
   Agent = "description",
+  Codex = "description",
   Skill = "skill",
 }
 
@@ -515,6 +516,9 @@ function M.short(text)
 end
 
 local function tool_label(name, input)
+  if name == agents.codex_tool then
+    name = "Codex"
+  end
   local mcp_server, mcp_tool = name:match("^mcp__(.-)__(.+)$")
   if mcp_server == "anvim" then
     return require("anvim.tools").label(mcp_tool, input)
@@ -650,10 +654,10 @@ local function summarize(tool, ev)
   local r = type(ev.result) == "table" and ev.result or {}
   local name, input = tool.name, tool.input or {}
   local editor_tool = name:match("^mcp__anvim__(.+)$")
-  if editor_tool then
-    return require("anvim.tools").summary(editor_tool, input, ev.text)
-  elseif name == "Agent" or name == "Task" then
+  if agents.spawns(name) then
     return agent_done(tool, r)
+  elseif editor_tool then
+    return require("anvim.tools").summary(editor_tool, input, ev.text)
   elseif name == "Read" and r.file and r.file.numLines then
     return "Read " .. plural(r.file.numLines, "line")
   elseif name == "Write" and (r.type == "create" or (not r.structuredPatch and type(input.content) == "string")) then
@@ -745,7 +749,7 @@ end
 -- The bullet of a tool call that has no result yet. An Agent call's bullet
 -- takes its agent's color while the agent runs.
 local function pending(tool)
-  local agent = (tool.name == "Agent" or tool.name == "Task") and agents.by_tool(tool.id)
+  local agent = agents.spawns(tool.name) and agents.by_tool(tool.id)
   return agent and agent.status == "running" and agents.group(agent.slot) or "AnvimToolPending"
 end
 
@@ -999,12 +1003,17 @@ end
 local task_result
 
 -- A background agent's tool call returns as the agent starts. A saved
--- session keeps no result, but the text says so.
+-- session keeps no result, but the text says so. A Codex agent always runs
+-- in the background.
 local function launched(tool, ev)
   local r = type(ev.result) == "table" and ev.result or {}
-  return (tool.name == "Agent" or tool.name == "Task")
+  return agents.spawns(tool.name)
     and not ev.is_error
-    and (r.status == "async_launched" or (ev.result == nil and (ev.text or ""):find("^Async agent launched") ~= nil))
+    and (
+      tool.name == agents.codex_tool
+      or r.status == "async_launched"
+      or (ev.result == nil and (ev.text or ""):find("^Async agent launched") ~= nil)
+    )
 end
 
 function M.tool_result(ev)
@@ -1093,7 +1102,7 @@ local function paint_agents()
   end
   for _, list in ipairs({ tools, held }) do
     for _, tool in pairs(list) do
-      local row = (tool.name == "Agent" or tool.name == "Task") and tool.mark and not tool.done and tool_row(tool)
+      local row = agents.spawns(tool.name) and tool.mark and not tool.done and tool_row(tool)
       if row then
         tool.mark = hl(tool.buf, row, 0, #"⏺", pending(tool), { id = tool.mark })
       end

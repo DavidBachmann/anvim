@@ -300,6 +300,67 @@ describe("background agents", function()
     end)
   end)
 
+  -- As sidecar/src/codex.ts sends a Codex run.
+  it("shows a Codex agent that the codex tool started as a background agent", function()
+    helpers.fresh()
+    local path = helpers.tmp .. "/alpha.js"
+    vim.fn.writefile({ "a", "b" }, path)
+    local tool_id = "tu_codex"
+    local codex = { parent_id = tool_id, agent_id = "codex-1" }
+    sidecar.dispatch({ type = "tool_start", id = tool_id, name = "mcp__anvim__codex" })
+    sidecar.dispatch({
+      type = "tool_use",
+      id = tool_id,
+      name = "mcp__anvim__codex",
+      input = { description = "Change b to B", prompt = "Change b to B in alpha.js" },
+    })
+    sidecar.dispatch({
+      type = "agent_start",
+      agent_id = "codex-1",
+      tool_use_id = tool_id,
+      description = "Change b to B",
+      subagent_type = "Codex",
+      depth = 1,
+      background = true,
+    })
+    sidecar.dispatch({ type = "tool_result", id = tool_id, is_error = false, text = "Codex agent codex-1 started." })
+    turn_end()
+    for _, ev in ipairs({
+      { type = "tool_use", id = "c:1", name = "Bash", input = { command = "cat alpha.js" } },
+      { type = "tool_result", id = "c:1", is_error = false, text = "a\nb\n" },
+      { type = "tool_use", id = "c:2", name = "Edit", input = { file_path = path } },
+      { type = "tool_result", id = "c:2", is_error = false, text = "Updated alpha.js" },
+    }) do
+      sidecar.dispatch(vim.tbl_extend("force", ev, codex))
+    end
+    local head = "⏺ Codex(Change b to B)"
+    assert.are.same({ head, "  ⎿  Backgrounded agent", "     Bash(cat alpha.js)", "     Edit(alpha.js)" }, item(head))
+    assert.are.same("AnvimAgent1", bullet(head))
+    assert.are.same("Codex 1", agents.name(agents.get("codex-1")))
+    assert.are.same(
+      { "Claude", "Codex 1" },
+      vim.tbl_map(function(i)
+        return i.text
+      end, require("anvim.overview").items())
+    )
+    assert.are.same({ alpha = "1:place", beta = "" }, tree_marks())
+    assert.are.same({ 1 }, agents.marks()[path])
+
+    sidecar.dispatch({
+      type = "agent_end",
+      agent_id = "codex-1",
+      tool_use_id = tool_id,
+      status = "completed",
+      summary = "Changed b to B.",
+      tool_uses = 2,
+    })
+    assert.are.same({ head, "  ⎿  Done (2 tool uses)" }, item(head))
+    assert.are.same(
+      { '⏺ Agent "Change b to B" finished', "  ⎿  Changed b to B." },
+      vim.list_slice(lines(), #lines() - 1)
+    )
+  end)
+
   it("ends the main agent's tool line as interrupted when the sidecar exits", function()
     helpers.fresh()
     sidecar.dispatch({

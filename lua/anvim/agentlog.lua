@@ -369,7 +369,9 @@ local function finish(log, id, is_error, text, group)
   put(log, { line }, { { 0, 0, #line, group or "AnvimResult" } }, row + 1)
 end
 
-local starts = { Agent = true, Task = true, SendMessage = true }
+local function starts(name)
+  return name == "SendMessage" or agents.spawns(name)
+end
 
 function M.tool_use(ev)
   local agent = agents.of(ev)
@@ -380,7 +382,7 @@ function M.tool_use(ev)
       tool_use(log, agent, ev)
     end
   end
-  if not starts[ev.name] then
+  if not starts(ev.name) then
     return
   end
   -- A call that starts or continues an agent, which can come after its agent_start.
