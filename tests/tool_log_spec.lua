@@ -147,4 +147,25 @@ describe("the main log", function()
     assert.are.same({ "  ⎿  1 tool call", "", "❯ Next", "", "  ⎿  1 tool call" }, chat())
     assert.are.same({ "⏺ Bash(a)", "  ⎿  ok", "", "⏺ Bash(b)", "  ⎿  ok" }, log())
   end)
+
+  it("keeps Claude's questions and the user's answers in the chat", function()
+    local fruit = {
+      question = "Which fruit do you like?",
+      header = "Fruit",
+      options = { { label = "Apple" }, { label = "Pear" } },
+    }
+    local asked = call("AskUserQuestion", { questions = { fruit } })
+    local answers = { [fruit.question] = "Neither. I like mango\nand kiwi." }
+    result(asked, false, "The user answered", { result = { questions = { fruit }, answers = answers } })
+    result(call("AskUserQuestion", { questions = { fruit } }), true, "The user doesn't want to proceed")
+    assert.are.same({
+      "⏺ User answered Claude's questions:",
+      "  ⎿  · Which fruit do you like? → Neither. I like mango",
+      "       and kiwi.",
+      "",
+      "⏺ User declined to answer questions",
+      "  ⎿  · Which fruit do you like? (Apple / Pear)",
+    }, chat())
+    assert.are.same({ "" }, log())
+  end)
 end)

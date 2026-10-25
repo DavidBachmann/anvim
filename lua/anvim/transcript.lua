@@ -80,6 +80,9 @@ local tasks = { order = {}, by_id = {} } ---@type { order: string[], by_id: tabl
 -- Claude Code draws no tool line for these. The todo list shows what they do.
 local todo_tools = { TodoWrite = true, TaskCreate = true, TaskUpdate = true, TaskGet = true, TaskList = true }
 M.todo_tools = todo_tools
+-- Claude's questions and the user's answers stay in the chat, also with the
+-- tool pane on, as in Claude Code.
+local chat_tools = { AskUserQuestion = true }
 -- The text blocks since the last prompt or tool call: Claude's last reply.
 local reply = {} ---@type string[]
 local reply_done = true
@@ -843,7 +846,7 @@ function M.tool_start(id, name)
   local label = tool_label(name)
   local tool = { id = id, name = name, time = now() }
   local row
-  if M.pane_on then
+  if M.pane_on and not chat_tools[name] then
     -- A run whose chat buffer went, as after :bwipeout, ends with it.
     if run and not api.nvim_buf_is_loaded(run.buf) then
       run = nil
@@ -929,26 +932,65 @@ function M.tool_use(ev)
   set_tool_line(tool, tool_label(ev.name, ev.input), pending(tool))
 end
 
-local function finish_tool(tool, is_error, summary, group)
+---@param summary string|string[] The result line, or its lines.
+---@param label string? The tool line's text, when it is not the call.
+local function finish_tool(tool, is_error, summary, group, label)
   tool.done = true
   if is_error and tool.run and not tool.failed then
     tool.failed = true
     tool.run.failed = tool.run.failed + 1
     set_count(tool.run)
   end
-  set_tool_line(tool, tool_label(tool.name, tool.input), is_error and "AnvimToolError" or "AnvimToolOk")
+  set_tool_line(tool, label or tool_label(tool.name, tool.input), is_error and "AnvimToolError" or "AnvimToolOk")
   local row = tool_row(tool)
   if not row then
     return
   end
-  local line = "  ⎿  " .. M.short(summary)
+  local lines = {}
+  for i, text in ipairs(type(summary) == "table" and summary or { summary }) do
+    lines[i] = (i == 1 and "  ⎿  " or "     ") .. M.short(text)
+  end
   local old = tool.child_rows or 0
   api.nvim_buf_clear_namespace(tool.buf, ns, row + 1, row + 1 + old)
   with_modifiable(function(buf)
-    api.nvim_buf_set_lines(buf, row + 1, row + 1 + old, false, { line })
+    api.nvim_buf_set_lines(buf, row + 1, row + 1 + old, false, lines)
   end, tool.buf)
   tool.child_rows = nil
-  hl(tool.buf, row + 1, 0, #line, group or "AnvimResult")
+  for i, line in ipairs(lines) do
+    hl(tool.buf, row + i, 0, #line, group or "AnvimResult")
+  end
+end
+
+-- Each question with its answer, as Claude Code shows them. A saved session
+-- keeps only the text that Claude got, so its result line is that text.
+local function finish_question(tool, ev)
+  local r = type(ev.result) == "table" and ev.result or {}
+  local input = type(tool.input) == "table" and tool.input or {}
+  local answers = type(r.answers) == "table" and r.answers or {}
+  local rows = {}
+  for _, q in ipairs(type(r.questions) == "table" and r.questions or input.questions or {}) do
+    local question = q.question:gsub("\n", " ")
+    if ev.is_error then
+      local labels = vim.tbl_map(function(opt)
+        return opt.label
+      end, q.options or {})
+      rows[#rows + 1] = ("· %s (%s)"):format(question, table.concat(labels, " / "))
+    elseif type(answers[q.question]) == "string" then
+      local parts = vim.split(answers[q.question], "\n", { plain = true })
+      rows[#rows + 1] = ("· %s → %s"):format(question, parts[1])
+      for i = 2, #parts do
+        rows[#rows + 1] = "  " .. parts[i]
+      end
+    end
+  end
+  if ev.is_error then
+    finish_tool(tool, true, rows, nil, "User declined to answer questions")
+  elseif #rows > 0 then
+    finish_tool(tool, false, rows, nil, "User answered Claude's questions:")
+  else
+    local text, group = summarize(tool, ev)
+    finish_tool(tool, false, text, group)
+  end
 end
 
 local task_result
@@ -975,7 +1017,9 @@ function M.tool_result(ev)
       task_result(tool, ev)
     end
   elseif tool and not (tool.done or tool.held) then
-    if launched(tool, ev) then
+    if tool.name == "AskUserQuestion" then
+      finish_question(tool, ev)
+    elseif launched(tool, ev) then
       tool.held, tool.live = true, agents.by_tool(tool.id) ~= nil
       held[tool.id] = tool
       set_children(tool)

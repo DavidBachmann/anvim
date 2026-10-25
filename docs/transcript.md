@@ -10,7 +10,7 @@ Your prompts, each block of Claude's text, tool calls and notices show the time 
 
 ## Tool calls
 
-With the tool pane on, the transcript keeps one dim line for each run of tool calls, such as `⎿  7 tool calls · 1 failed`, and the pane under the code window lists the calls. With the pane off (`<leader>us`), the calls show in the transcript, as in Claude Code. See [screen.md](screen.md).
+With the tool pane on, the transcript keeps one dim line for each run of tool calls, such as `⎿  7 tool calls · 1 failed`, and the pane under the code window lists the calls. With the pane off (`<leader>us`), the calls show in the transcript, as in Claude Code. Claude's questions and your answers always show in the transcript. See [screen.md](screen.md).
 
 In the tool pane, a subagent's line shows its last three tool calls while it works, and then a summary such as `Done (12 tool uses · 24.1k tokens · 1m 2s)`. A compaction shows as a notice with the tokens before and after.
 
