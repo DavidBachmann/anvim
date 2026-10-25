@@ -1,7 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Event } from "./protocol";
-import { contextEvent, mainThread, mcpEvent, modelsEvent, sessionInfoEvent, Translator, usageEvent } from "./translate";
+import {
+  contextEvent,
+  limitsEvent,
+  mainThread,
+  mcpEvent,
+  modelsEvent,
+  sessionInfoEvent,
+  Translator,
+  usageEvent,
+} from "./translate";
 
 const se = (event: object, parent: string | null = null) =>
   ({ type: "stream_event", event, parent_tool_use_id: parent }) as unknown as SDKMessage;
@@ -282,6 +291,9 @@ describe("Translator", () => {
     // Without a plan, there are no limits.
     const apiKey = { ...answer, subscription_type: null, rate_limits: null, behaviors: null };
     expect(usageEvent(apiKey)).toMatchObject({ type: "usage", usage: { limits: [], windows: [] } });
+    // The statusline's share of the same answer.
+    expect(limitsEvent(answer)).toEqual({ type: "limits", session: 12, week: 33 });
+    expect(limitsEvent(apiKey)).toEqual({ type: "limits" });
   });
 
   test("context_usage draws Claude Code's grid and legend, and sums the MCP tools by server", () => {

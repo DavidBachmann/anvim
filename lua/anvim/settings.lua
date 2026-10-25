@@ -626,6 +626,10 @@ function M.attach()
     state.email = ev.email
     require("anvim.statusline").refresh()
   end)
+  sidecar.on("limits", function(ev)
+    state.limits = { session = ev.session, week = ev.week }
+    require("anvim.statusline").refresh()
+  end)
   for name, type in pairs(REQUESTS) do
     sidecar.on(type, function(ev)
       answers[name] = ev

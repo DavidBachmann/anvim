@@ -16,7 +16,7 @@ Choosing one starts Claude again in that session and draws its past in the trans
 
 `/codex-model` and `/codex-effort` set the model and the effort of Codex agents. [Subagents](subagents.md#codex-agents) explains them.
 
-Before the model, a meter shows how full the context window is, as in `▰▰▰▰▰▱▱▱▱▱ 64%`. It changes when a turn ends. The statusline shows the login's email before the meter, so a work login and a personal one differ at a glance.
+Before the model, a meter shows how full the context window is, as in `▰▰▰▰▰▱▱▱▱▱ 64%`. It changes when a turn ends. The statusline shows the login's email before the meter, so a work login and a personal one differ at a glance. After the email, `[S27%/W80%]` shows how much of the plan's 5-hour session and of its week you have used, as `/usage` does. It changes at start and when a turn ends. A login without plan limits, such as an API key, shows none.
 
 `<leader>cR` or `:AnvimRestart` starts Claude again when it exited or hangs, in the same session, and keeps the model and effort you chose. A restart with the default effort starts as a new session would.
 

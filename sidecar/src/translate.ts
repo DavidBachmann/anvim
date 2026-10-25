@@ -457,6 +457,16 @@ export function usageEvent(u: SDKControlGetUsageResponse): Event {
   };
 }
 
+export function limitsEvent(u: SDKControlGetUsageResponse): Event {
+  const session = u.rate_limits?.five_hour?.utilization;
+  const week = u.rate_limits?.seven_day?.utilization;
+  return {
+    type: "limits",
+    ...(session == null ? {} : { session: Math.round(session) }),
+    ...(week == null ? {} : { week: Math.round(week) }),
+  };
+}
+
 // The first rows, and how many more there are.
 function top(rows: string[], n = 5): string[] {
   return rows.length > n ? [...rows.slice(0, n), `and ${rows.length - n} more`] : rows;

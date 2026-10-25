@@ -16,6 +16,8 @@ local M = {
   context = nil, ---@type { percent: number, tokens: integer, max: integer }?
   -- The email of Claude Code's login, as the sidecar reports it at start.
   email = nil, ---@type string?
+  -- The plan's 5-hour and weekly usage in percent.
+  limits = nil, ---@type { session: number?, week: number? }?
   -- Whether Claude got the codex tool at this start, as the sidecar reports it.
   codex = nil, ---@type 'on'|'off'|'missing'|'logged_out'|nil
   -- The model and the effort that Codex's config.toml sets, as far as the sidecar could read them.

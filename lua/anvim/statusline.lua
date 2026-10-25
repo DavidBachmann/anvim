@@ -221,6 +221,7 @@ end
 
 ---@class anvim.StatusSession
 ---@field email string? The login's email.
+---@field limits string? The plan's usage, such as [S27%/W80%].
 ---@field context string? How full the context window is, as a meter.
 ---@field model string
 ---@field effort string
@@ -244,8 +245,16 @@ local function session()
     local meter = ("▰"):rep(filled) .. on_c("Comment") .. ("▱"):rep(10 - filled)
     context = ("%s%%#AnvimStatusC# %d%%%%"):format(meter, percent)
   end
+  local limits = {}
+  for _, l in ipairs({ { "S", "session" }, { "W", "week" } }) do
+    local n = state.limits and state.limits[l[2]]
+    if n then
+      limits[#limits + 1] = ("%s%d%%%%"):format(l[1], n)
+    end
+  end
   return {
     email = state.email,
+    limits = #limits > 0 and "[" .. table.concat(limits, "/") .. "]" or nil,
     context = context,
     model = input.model_label(state.model or require("anvim.config").options.model),
     effort = state.effort and (" · " .. state.effort) or "",
@@ -260,7 +269,7 @@ end
 -- branch, because the code window's tab bar names it too. The branch is cut
 -- to the columns that are left, and only then do the cursor's place and
 -- anvim's name go.
-local drops = { "email", "jump", "effort", "model", "context", "short", "file", "branch", "place", "brand" }
+local drops = { "email", "limits", "jump", "effort", "model", "context", "short", "file", "branch", "place", "brand" }
 
 -- With no row for the command line, the macro recording shows here.
 local function recording()
@@ -343,8 +352,15 @@ local function render()
     out[#out + 1] = "%#AnvimStatusC#%="
     local r = vim.list_extend({}, right)
     if s then
+      local account = {}
       if s.email and not cut.email then
-        r[#r + 1] = " " .. esc(s.email) .. " "
+        account[#account + 1] = esc(s.email)
+      end
+      if s.limits and not cut.limits then
+        account[#account + 1] = s.limits
+      end
+      if #account > 0 then
+        r[#r + 1] = " " .. table.concat(account, " ") .. " "
       end
       if s.context and not cut.context then
         r[#r + 1] = " " .. s.context .. " "

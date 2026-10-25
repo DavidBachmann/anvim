@@ -25,7 +25,16 @@ import type { Command, EffortLevel, Event } from "./protocol";
 import { preToolUse, SandboxGuard, SandboxNotice, sandboxSetup, startMode } from "./sandbox";
 import * as sessions from "./sessions";
 import { EditorBridge, editorServer, SERVER } from "./tools";
-import { commandsEvent, contextEvent, mcpEvent, modelsEvent, sessionInfoEvent, Translator, usageEvent } from "./translate";
+import {
+  commandsEvent,
+  contextEvent,
+  limitsEvent,
+  mcpEvent,
+  modelsEvent,
+  sessionInfoEvent,
+  Translator,
+  usageEvent,
+} from "./translate";
 
 const record = process.env.ANVIM_RECORD;
 
@@ -116,6 +125,16 @@ async function reportContext(): Promise<void> {
     translator.defaultWindow = usage.maxTokens;
   } catch {
     // Context usage is a nicety. The next turn tries again.
+  }
+}
+
+// skipBehaviors leaves out the scan of local transcripts that /usage needs.
+async function reportLimits(): Promise<void> {
+  try {
+    const usage = await session?.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true });
+    if (usage) emit(limitsEvent(usage));
+  } catch {
+    // As with the context, the next turn tries again.
   }
 }
 
@@ -313,6 +332,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     .accountInfo()
     .then((a) => emit({ type: "account", email: a.email }))
     .catch(() => {});
+  void reportLimits();
   for await (const msg of session) {
     permissions.message(msg);
     // /clear: no conversation waits for the result of a Codex agent.
@@ -320,6 +340,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     for (const ev of translate(translator, msg)) emit(ev);
     if (msg.type === "result") {
       void reportContext();
+      void reportLimits();
       // A settings file can change the inherited effort meanwhile.
       void control(reportEffort);
     }

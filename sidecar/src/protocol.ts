@@ -320,6 +320,9 @@ export type Event =
   | { type: "prompt_state"; id: string; state: string }
   // The email of Claude Code's login, at start.
   | { type: "account"; email?: string }
+  // The plan's 5-hour and weekly usage in percent, at start and after each
+  // turn. Both are absent for a login without plan limits, such as an API key.
+  | { type: "limits"; session?: number; week?: number }
   // Whether Claude got the codex tool at start. Off: the start command turned
   // it off. Missing: no codex CLI is on PATH. Logged out: Codex has no login.
   // config: the model and the effort that Codex's config.toml sets, when it is on.
