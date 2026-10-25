@@ -225,6 +225,7 @@ M.places = {
       { { "q", "<Esc>" }, "Back to the prompt" },
       { { "i", "a", "I", "A", "o", "O" }, "Back to typing" },
       { "<LeftDrag>", "Select in the transcript", label = "drag", mode = { "n", "i" }, ctx = "prompt" },
+      { "<LeftRelease>", "Copy the mouse selection to the clipboard", label = "release", mode = "x" },
       { "<ScrollWheelUp>", "Scroll it from any window", label = "wheel", static = true },
     },
   },

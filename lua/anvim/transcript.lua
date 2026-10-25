@@ -148,6 +148,9 @@ function M.buf()
   for _, key in ipairs(layout.insert_keys) do
     keys.set("transcript", "n", key, layout.focus_input, { buffer = bufnr })
   end
+  keys.set("transcript", "x", "<LeftRelease>", function()
+    return "<LeftRelease><Cmd>lua require('anvim.windows').copy()<CR>"
+  end, { buffer = bufnr, expr = true })
   return bufnr
 end
 

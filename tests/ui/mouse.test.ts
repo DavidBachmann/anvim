@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { type Anvim, type Box, inBox, start } from "./helpers.ts";
+import { type Anvim, type Box, cells, inBox, start } from "./helpers.ts";
 
 let anvim: Anvim | undefined;
 afterEach(async () => {
@@ -213,4 +213,41 @@ test("a click from the prompt lands on the character under the mouse after the f
   // Review mode's numbers need a fourth digit now.
   expect(await textoff()).toBe(following + 1);
   expect(await ui.exec_lua(`return vim.api.nvim_win_get_cursor(0)`)).toEqual([2, "local short".length]);
+});
+
+test("a mouse selection in the transcript goes to the clipboard, and the cursor goes back to typing", async () => {
+  anvim = await start();
+  const { ui } = anvim;
+  // A stand-in for the system clipboard, so that the test leaves the real one alone.
+  await ui.exec_lua(`
+    vim.g.clipboard = {
+      name = "spec",
+      copy = { ["+"] = function(lines) _G.spec_clip = lines end, ["*"] = function() end },
+      paste = { ["+"] = function() return _G.spec_clip or {} end, ["*"] = function() return {} end },
+    }
+    vim.g.loaded_clipboard_provider = nil
+    vim.cmd("runtime autoload/provider/clipboard.vim")
+    local transcript = require("anvim.transcript")
+    transcript.user("Find the bug")
+    transcript.text_delta("Found it.\\nThe loop is off by one.")
+    transcript.text_stop()
+  `);
+  await anvim.insert();
+  await anvim.type("draft");
+  await ui.drain();
+  const box = await anvim.box("transcript");
+  const rows = ui.lines().map((line) => cells(line, box.col, box.width));
+  const first = rows.findIndex((line) => line.startsWith("⏺ Found it."));
+  expect(first).toBeGreaterThan(-1);
+  const last = "  The loop is off by one.".length - 1;
+  // From the margin of the first line to the end of the second, with the
+  // pauses of a hand on a mouse.
+  await ui.inputMouse("left", "press", first, box.col);
+  await ui.drain();
+  await ui.inputMouse("left", "drag", first + 1, box.col + last);
+  await ui.drain();
+  await ui.inputMouse("left", "release", first + 1, box.col + last);
+  await anvim.waitWhere("input", "i");
+  expect(await ui.exec_lua<string[]>(`return _G.spec_clip`)).toEqual(["Found it.", "The loop is off by one."]);
+  expect(await ui.exec_lua<string>(`return vim.api.nvim_get_current_line()`)).toBe("draft");
 });

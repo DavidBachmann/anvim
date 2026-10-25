@@ -20,4 +20,4 @@ Claude's todo list stays at the end of the transcript, under the newest output, 
 
 ## Read mode
 
-The transcript takes no focus. To yank or search in it, enter read mode with `<leader>cr` or `:AnvimTranscript`. `q` or `Esc` goes back to the prompt, and `i`, `a` and the other insert keys go back and type. A mouse drag across the transcript selects text too. `<leader>cy` yanks Claude's last reply to the clipboard without read mode.
+The transcript takes no focus. To yank or search in it, enter read mode with `<leader>cr` or `:AnvimTranscript`. `q` or `Esc` goes back to the prompt, and `i`, `a` and the other insert keys go back and type. A mouse drag across the transcript selects text. When you let go of the button, anvim copies the selection to the clipboard, without the transcript's margin, and a notice says so. A drag that started from the prompt then goes back there, and you type on if you were typing. `<leader>cy` yanks Claude's last reply to the clipboard without read mode.

@@ -32,6 +32,8 @@ local last_key
 local press
 ---@type vim.fn.getmousepos.ret? Where the current drag started.
 local drag_start
+---@type { insert: boolean }? A drag from the prompt selects in the transcript. The copy goes back to the prompt, in insert mode if it was.
+local drag_back
 ---@type { buf: integer, view: vim.fn.winsaveview.ret }? The code window just before the last split.
 local before_split
 ---@type table<integer, { buf: integer, lnum: integer, col: integer }> Windows that the last command made, as Neovim made them.
@@ -251,8 +253,49 @@ function M.drag_keys()
     return "<LeftDrag>"
   end
   drag_start, press = press, nil
-  local stop = api.nvim_get_mode().mode:sub(1, 1) == "i" and "<Esc>" or ""
-  return stop .. "<Cmd>lua require('anvim.windows').drag()<CR>v<LeftDrag>"
+  local insert = api.nvim_get_mode().mode:sub(1, 1) == "i"
+  drag_back = { insert = insert }
+  return (insert and "<Esc>" or "") .. "<Cmd>lua require('anvim.windows').drag()<CR>v<LeftDrag>"
+end
+
+-- Each line of the transcript starts with a margin of two columns.
+local function unmargin(line)
+  for _, margin in ipairs({ "⏺ ", "❯ ", "  " }) do
+    if vim.startswith(line, margin) then
+      return line:sub(#margin + 1)
+    end
+  end
+  return line
+end
+
+-- The transcript's <LeftRelease> in visual mode. As in a terminal, a mouse
+-- selection goes to the clipboard when the button comes up, without the
+-- transcript's margin. A drag from the prompt then goes back there.
+function M.copy()
+  local mode = api.nvim_get_mode().mode
+  local regtype = ({ v = "c", V = "l", ["\22"] = "b" })[mode]
+  if not regtype then
+    return
+  end
+  local lines = vim.fn.getregion(vim.fn.getpos("v"), vim.fn.getpos("."), { type = mode })
+  if regtype ~= "b" then
+    lines = vim.tbl_map(unmargin, lines)
+  end
+  local reg = "+"
+  -- Without a clipboard tool, the + register fails. The unnamed one still works.
+  if not pcall(vim.fn.setreg, reg, lines, regtype) then
+    reg = '"'
+    vim.fn.setreg(reg, lines, regtype)
+  end
+  vim.cmd("normal! " .. vim.keycode("<Esc>"))
+  local back = drag_back
+  drag_back = nil
+  if back then
+    layout.focus_input({ insert = back.insert })
+  end
+  local n = #lines == 1 and vim.fn.strchars(lines[1]) or #lines
+  local what = ("%d %s%s"):format(n, #lines == 1 and "character" or "line", n == 1 and "" or "s")
+  vim.notify(("anvim: copied %s to %s"):format(what, reg == "+" and "the clipboard" or 'register "'))
 end
 
 -- Puts the cursor where the drag started, in read mode.
@@ -498,7 +541,7 @@ function M.setup()
     callback = function()
       left_before, left = left, api.nvim_get_current_win()
       if left == wins.transcript then
-        vim.w[left].anvim_read = nil
+        vim.w[left].anvim_read, drag_back = nil, nil
       end
     end,
   })

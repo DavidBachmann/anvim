@@ -97,7 +97,7 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 | --- | --- |
 | `q`, `Esc` | Go back to the prompt |
 | `i`, `a`, `I`, `A`, `o`, `O` | Go back to the prompt and type |
-| Mouse drag | Select text, in read mode |
+| Mouse drag | Select text, and copy it to the clipboard when you let go |
 | Mouse wheel | Scroll the transcript or the tool pane, from any window |
 
 ## Permission requests
