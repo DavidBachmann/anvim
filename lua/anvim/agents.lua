@@ -19,6 +19,7 @@ M.slots = 4
 ---@field files string[] The files it edited.
 ---@field tools integer Its tool calls.
 ---@field tokens integer?
+---@field context { tokens: integer, max: integer?, percent: integer? }? How full its context window is.
 ---@field activity string? What it does now, such as "Editing alpha.js".
 ---@field summary string?
 ---@field usage { tool_uses: integer?, tokens: integer?, duration_ms: integer? }? Its totals, once it ended.
@@ -219,6 +220,13 @@ function M.background(ev)
   if agent then
     agent.background = true
     M.changed()
+  end
+end
+
+function M.context(ev)
+  local agent = agents[ev.agent_id]
+  if agent then
+    agent.context = { tokens = tonumber(ev.tokens) or 0, max = tonumber(ev.max), percent = tonumber(ev.percent) }
   end
 end
 
@@ -423,6 +431,7 @@ function M.attach(sidecar)
   sidecar.on("agent_start", M.start)
   sidecar.on("agent_progress", M.progress)
   sidecar.on("agent_background", M.background)
+  sidecar.on("agent_context", M.context)
   sidecar.on("agent_end", M.finish)
   sidecar.on("tool_field", M.tool_field)
   sidecar.on("tool_use", M.tool_use)

@@ -10,7 +10,7 @@ In the explorer, an agent's dots in its color show where it works, up to three a
 
 ## Following one
 
-Follow mode follows one agent at a time, at first Claude itself. `<leader>c2` focuses subagent 2, and `<leader>c0` focuses Claude again. The Agent Overview (`<leader>ca`, or `Enter` on the selected agent count) lists Claude and the running subagents, with what each one does, its tool uses and its place, which the preview shows.
+Follow mode follows one agent at a time, at first Claude itself. `<leader>c2` focuses subagent 2, and `<leader>c0` focuses Claude again. The Agent Overview (`<leader>ca`, or `Enter` on the selected agent count) lists Claude and the running subagents, with what each one does, its tool uses and its place, which the preview shows. Each row also says how full that agent's context window is, such as `23%`. A subagent's percent comes from its last response.
 
 While a subagent has focus, the code window goes where that subagent reads and edits, and the other agents' moves leave it alone. The tool pane shows that subagent's own tool calls, and its bar names the agent in its color. The statusline says `◉ following Explore 2` in the agent's color, and the agent's dot in the footer is `◉`.
 

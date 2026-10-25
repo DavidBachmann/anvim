@@ -442,6 +442,29 @@ describe("Translator", () => {
     ]);
   });
 
+  // Usage as Claude Code 2.1.304 sends it for a haiku subagent. The result's
+  // window differs from the main agent's, to show the second event.
+  test("a subagent's context comes from its responses' usage and its model's window", () => {
+    const t = new Translator();
+    t.defaultWindow = 1_000_000;
+    const usage = { input_tokens: 2, cache_creation_input_tokens: 23148, cache_read_input_tokens: 0, output_tokens: 4 };
+    const events = [
+      msg({
+        type: "assistant",
+        parent_tool_use_id: "toolu_A",
+        agent_id: "a1",
+        message: { model: "claude-haiku-5-5", usage, content: [{ type: "text", text: "ok" }] },
+      }),
+      msg({ type: "result", subtype: "success", modelUsage: { "claude-haiku-5-5": { contextWindow: 200_000 } } }),
+    ]
+      .flatMap((m) => t.translate(m))
+      .filter((e) => e.type === "agent_context");
+    expect(events).toEqual([
+      { type: "agent_context", agent_id: "a1", tokens: 23154, max: 1_000_000, percent: 2 },
+      { type: "agent_context", agent_id: "a1", tokens: 23154, max: 200_000, percent: 12 },
+    ]);
+  });
+
   test("a subagent's text comes as whole blocks, with a cap", () => {
     const agent = { parent_tool_use_id: "toolu_A", agent_id: "a1" };
     const said = (content: object[]) => msg({ type: "assistant", ...agent, message: { content } });

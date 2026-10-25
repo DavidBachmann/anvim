@@ -61,6 +61,19 @@ describe("the Agent Overview", function()
     sidecar.dispatch({ type = "reset" })
   end)
 
+  it("shows how full the context window of Claude and of each agent is", function()
+    fresh()
+    start("a1")
+    start("a2")
+    sidecar.dispatch({ type = "context", percent = 6, tokens = 60000, max = 1000000 })
+    sidecar.dispatch({ type = "agent_context", agent_id = "a1", tokens = 230000, max = 1000000, percent = 23 })
+    assert.are.same({
+      "◉ Claude        6%  idle",
+      "⏺ Agent 1      23%  working",
+      "⏺ Agent 2           working",
+    }, vim.tbl_map(texts, overview.items()))
+  end)
+
   it("lists Claude, the running agents by slot, the one without a slot, then the ended ones, newest first", function()
     fresh()
     start("x1")

@@ -53,6 +53,13 @@ export class Translator {
   // The names of subagent tool calls that wait for their result. A subagent's
   // result has no tool_use_result, so a Read's line count comes from its text.
   private agentTools = new Map<string, string>();
+  // The context window of each model, from the turns' results.
+  private windows = new Map<string, number>();
+  // The main agent's window, for a model that no result named yet.
+  defaultWindow?: number;
+  // Each subagent's model, the tokens in its context after its last
+  // response, and the window that its last agent_context used.
+  private contexts = new Map<string, { model: string; tokens: number; max?: number }>();
 
   translate(msg: SDKMessage): Event[] {
     const m = msg as AnyRecord;
@@ -66,6 +73,7 @@ export class Translator {
         this.system(m, out);
         break;
       case "conversation_reset":
+        this.contexts.clear();
         out.push({ type: "reset" });
         break;
       case "command_lifecycle":
@@ -92,6 +100,7 @@ export class Translator {
           cost_usd: m.total_cost_usd ?? 0,
           num_turns: m.num_turns ?? 0,
         });
+        this.learnWindows(m, out);
         if (m.subtype !== "success" && Array.isArray(m.errors) && m.errors.length) {
           out.push({ type: "notice", level: "error", text: m.errors.join("\n") });
         }
@@ -196,6 +205,34 @@ export class Translator {
     }
   }
 
+  // A subagent's context after a response holds the response's prompt and
+  // its output.
+  private agentUsage(id: string, message: AnyRecord, out: Event[]): void {
+    const u = message.usage;
+    const tokens =
+      (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.output_tokens ?? 0);
+    const entry = { model: String(message.model ?? ""), tokens };
+    this.contexts.set(id, entry);
+    this.agentContext(id, entry, out);
+  }
+
+  private agentContext(id: string, entry: { model: string; tokens: number; max?: number }, out: Event[]): void {
+    entry.max = this.windows.get(entry.model) ?? this.defaultWindow;
+    const percent = entry.max ? { max: entry.max, percent: Math.round((entry.tokens / entry.max) * 100) } : {};
+    out.push({ type: "agent_context", agent_id: id, tokens: entry.tokens, ...percent });
+  }
+
+  // A result names the window of each model that ran. A subagent whose
+  // percent came from another window gets it again.
+  private learnWindows(m: AnyRecord, out: Event[]): void {
+    for (const [model, usage] of Object.entries<AnyRecord>(m.modelUsage ?? {})) {
+      if (usage?.contextWindow > 0) this.windows.set(model, usage.contextWindow);
+    }
+    for (const [id, entry] of this.contexts) {
+      if ((this.windows.get(entry.model) ?? this.defaultWindow) !== entry.max) this.agentContext(id, entry, out);
+    }
+  }
+
   private streamEvent(e: AnyRecord, out: Event[]): void {
     if (e.type === "content_block_start") {
       const cb = e.content_block;
@@ -251,6 +288,7 @@ export class Translator {
     }
     const parent = m.parent_tool_use_id ?? null;
     const agent = mainThread(m as SDKMessage) ? undefined : m.agent_id;
+    if (agent && !synthetic && m.message?.usage) this.agentUsage(agent, m.message, out);
     for (const block of m.message?.content ?? []) {
       // The main agent's text streamed already. A subagent's comes whole.
       if (agent && block.type === "text" && block.text?.trim()) {

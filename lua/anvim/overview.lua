@@ -140,6 +140,25 @@ local function describe(id)
   return agents.name(agent), "Comment", agent.status == "completed" and "AnvimToolOk" or "AnvimToolError", status
 end
 
+-- How full the context window of agent `id` is, or Claude's for nil.
+---@param id string?
+---@return integer?
+local function percent(id)
+  local agent = id and agents.get(id)
+  local context = (agent and agent.context) or (not id and state.context) or nil
+  return context and tonumber(context.percent)
+end
+
+-- The percents line up. Without any, the rows have no column for them.
+local function percent_width()
+  for _, item in ipairs(M.items()) do
+    if percent(item.agent_id) then
+      return 6
+    end
+  end
+  return 0
+end
+
 -- The names line up, with at least two spaces after the longest.
 local function name_width()
   local width = 10
@@ -153,10 +172,12 @@ end
 function M.format(item)
   local name, group, bullet, status = describe(item.agent_id)
   local pad = math.max(2, name_width() - api.nvim_strwidth(name))
+  local pct = percent(item.agent_id)
   return {
     { (item.agent_id == follow.focus and "◉" or "⏺") .. " ", bullet },
     { name, group },
     { (" "):rep(pad) },
+    { pct and ("%3d%%  "):format(pct) or (" "):rep(percent_width()), "Comment" },
     { status, "Comment" },
   }
 end
@@ -445,6 +466,7 @@ end
 
 function M.attach(sidecar)
   sidecar.on("agent_progress", schedule)
+  sidecar.on("agent_context", schedule)
   -- A late end, after a turn's end stopped the agent, fires no AnvimAgents.
   sidecar.on("agent_end", schedule)
   sidecar.on("tool_use", function(ev)

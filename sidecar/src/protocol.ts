@@ -266,6 +266,10 @@ export type Event =
       tokens?: number;
       duration_ms?: number;
     }
+  // How full a subagent's context window is, after each of its responses.
+  // max is the window of the subagent's model, or the main agent's window
+  // until a turn's result names that model. Without max, percent is unknown.
+  | { type: "agent_context"; agent_id: string; tokens: number; max?: number; percent?: number }
   | {
       type: "turn_end";
       subtype: string;

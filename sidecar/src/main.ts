@@ -80,6 +80,7 @@ const ready = new Promise<Query>((resolve) => (sessionReady = resolve)).then(asy
   return q;
 });
 let controls: Promise<void> = Promise.resolve();
+const translator = new Translator();
 const editor = new EditorBridge(emit);
 const permissions = new PermissionBridge(emit);
 const previews = new PreviewBridge(emit);
@@ -105,7 +106,9 @@ async function resumeTarget(cmd: Extract<Command, { type: "start" }>): Promise<s
 async function reportContext(): Promise<void> {
   try {
     const usage = await session?.getContextUsage({ detail: "summary" });
-    if (usage) emit({ type: "context", percent: usage.percentage, tokens: usage.totalTokens, max: usage.maxTokens });
+    if (!usage) return;
+    emit({ type: "context", percent: usage.percentage, tokens: usage.totalTokens, max: usage.maxTokens });
+    translator.defaultWindow = usage.maxTokens;
   } catch {
     // Context usage is a nicety. The next turn tries again.
   }
@@ -291,7 +294,6 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     .accountInfo()
     .then((a) => emit({ type: "account", email: a.email }))
     .catch(() => {});
-  const translator = new Translator();
   for await (const msg of session) {
     permissions.message(msg);
     for (const ev of translate(translator, msg)) emit(ev);
