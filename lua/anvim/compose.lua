@@ -210,6 +210,9 @@ function M.open()
     end,
     -- Above other floats, such as the explorer's list, as for a scratch window.
     zindex = Snacks.win.zindex(20),
+    -- Neovim blends a backdrop with the splits only, so it would blank the
+    -- explorer's list, which is a float.
+    backdrop = false,
     buf = buf,
     -- The filetype of the prompt, for its completion of @ files and slash commands.
     bo = { buftype = "acwrite", bufhidden = "wipe", buflisted = false, swapfile = false, filetype = "anvim_input" },

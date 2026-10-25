@@ -297,6 +297,8 @@ function M.layout()
     title_pos = "center",
     footer = hint(),
     footer_pos = "center",
+    -- As in the prompt editor: a backdrop would blank the explorer's list.
+    backdrop = false,
   }
   -- Neovim wants a corner between two edges, so neither window has both a
   -- top and a side border.
