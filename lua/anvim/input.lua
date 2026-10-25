@@ -760,7 +760,8 @@ end
 -- j, k, <Down> and <Up> in normal mode. They move through a waiting
 -- request's choices. Otherwise they move by screen line without a count,
 -- as the base keymaps do. j on the last screen line selects the agent
--- count, and k ends that selection.
+-- count, and k ends that selection. k on the first screen line takes the
+-- queued prompts back, as insert mode <Up> does.
 ---@param down boolean
 function M.move(down)
   if require("anvim.permission").move(down and 1 or -1) then
@@ -778,6 +779,8 @@ function M.move(down)
     local stuck = vim.deep_equal(before, api.nvim_win_get_cursor(win))
     if down and stuck and before[1] == api.nvim_buf_line_count(0) and count_shown() then
       select_agents()
+    elseif not down and stuck and before[1] == 1 then
+      M.unqueue()
     end
   end
 end

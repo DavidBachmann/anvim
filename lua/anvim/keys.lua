@@ -181,7 +181,7 @@ M.places = {
       },
       {
         { "k", "<Up>" },
-        "Up a screen line, or end the selection of the agent count",
+        "Up a screen line, queued prompts back on the first line, or end the selection of the agent count",
         row = "Down and up by screen line, or to the agent count",
       },
       { "<C-p>", "Queued prompts back, or previous prompt", row = "Previous and next prompt" },
