@@ -605,10 +605,12 @@ describe("stack", function()
         local sidecar = require("anvim.sidecar")
         sidecar.dispatch({ type = "tool_use", id = "img1", name = "Read", input = { file_path = file } })
         local buf = vim.fn.bufnr(file)
-        -- snacks converts a JPG to a PNG first. A failed image writes its error into the buffer.
+        -- snacks converts a JPG to a PNG first. Without a terminal to answer
+        -- its query, it attaches after its timeout. A failed image writes its
+        -- error into the buffer.
         local img = Snacks.image.image.new(api.nvim_buf_get_name(buf))
         vim.wait(3000, function()
-          return img:ready() or img:failed()
+          return vim.bo[buf].filetype ~= "" and (img:ready() or img:failed())
         end, 20)
         local out = {
           ft = vim.bo[buf].filetype,
@@ -627,6 +629,54 @@ describe("stack", function()
       )
       assert.are.same({ ft = "image", shown = true, ready = true, lines = { "" }, modifiable = false }, out, name)
     end
+  end)
+
+  it("shows the first image also when the terminal answers snacks's query late", function()
+    start()
+    local file = helpers.tmp .. "/late.png"
+    local png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    local f = assert(io.open(file, "wb"))
+    f:write(vim.base64.decode(png))
+    f:close()
+    local out = lua(
+      [[
+      local file = ...
+      local api = vim.api
+      local terminal = Snacks.image.terminal
+      -- As in a real terminal: no SNACKS_GHOSTTY, and the answer to snacks's
+      -- query comes when Neovim reads input again, after the read's autocmds.
+      local env, write = vim.env.SNACKS_GHOSTTY, terminal.write
+      vim.env.SNACKS_GHOSTTY = nil
+      terminal._env, terminal._terminal = nil, nil
+      local asked = false
+      terminal.write = function(data)
+        asked = asked or data == "\27[>q"
+      end
+      local layout = require("anvim.layout")
+      local code = layout.code_win()
+      local before = api.nvim_win_get_buf(code)
+      layout.focus_input({ insert = false })
+      local sidecar = require("anvim.sidecar")
+      sidecar.dispatch({ type = "tool_use", id = "late1", name = "Read", input = { file_path = file } })
+      vim.wait(3000, function()
+        return asked
+      end, 10)
+      api.nvim_exec_autocmds("TermResponse", { data = { sequence = "\27P>|ghostty 1.3.2\27\\" } })
+      local buf = vim.fn.bufnr(file)
+      -- snacks sets the filetype once it knows the terminal: image, or markdown for its error.
+      vim.wait(3000, function()
+        return vim.bo[buf].filetype ~= ""
+      end, 20)
+      local out = { ft = vim.bo[buf].filetype, lines = api.nvim_buf_get_lines(buf, 0, -1, false) }
+      vim.env.SNACKS_GHOSTTY, terminal.write = env, write
+      sidecar.dispatch({ type = "turn_end", subtype = "success", is_error = false, duration_ms = 1, cost_usd = 0 })
+      api.nvim_win_set_buf(code, before)
+      api.nvim_buf_delete(buf, { force = true })
+      return out
+    ]],
+      file
+    )
+    assert.are.same({ ft = "image", lines = { "" } }, out)
   end)
 
   it("toggles the explorer with <leader>e, and the explorer changes no files", function()

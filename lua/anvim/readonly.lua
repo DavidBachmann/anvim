@@ -78,7 +78,10 @@ local function resend_images(group)
     callback = function(ev)
       local file = api.nvim_buf_get_name(ev.buf)
       local stat = vim.uv.fs_stat(file)
-      if not stat or not Snacks.config.image.enabled or not Snacks.image.supports(file) then
+      -- Only the format. supports() would also check the terminal, and snacks
+      -- keeps the first answer: here it comes before the terminal answers
+      -- snacks's query, so snacks would never show an image.
+      if not stat or not Snacks.config.image.enabled or not Snacks.image.supports_file(file) then
         return
       end
       local mtime = stat.mtime.sec .. "." .. stat.mtime.nsec
