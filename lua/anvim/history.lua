@@ -1,6 +1,7 @@
 -- Past prompts, as in Claude Code: <Up> on the first line of the prompt goes
 -- back, <Down> on the last line comes forward again. Each working directory
--- keeps its own list in anvim's state dir.
+-- keeps its own list in anvim's state dir. While prompts are queued, <Up>
+-- takes them back first.
 local M = {}
 
 local api = vim.api
@@ -88,6 +89,11 @@ local function check_edit()
 end
 
 function M.older()
+  -- Queued prompts come back first, as in Claude Code.
+  if require("anvim.input").unqueue() then
+    index, draft = nil, nil
+    return
+  end
   check_edit()
   if not index then
     entries = read()

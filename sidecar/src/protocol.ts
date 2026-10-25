@@ -90,6 +90,10 @@ export type Command =
   // Claude Code's Ctrl+B: the running foreground agents and Bash commands go
   // on in the background, and the turn goes on.
   | { type: "background" }
+  // Drops a queued prompt from Claude Code's queue, so that the user can
+  // change it. prompt_state then says cancelled, or started when Claude Code
+  // took the prompt first.
+  | { type: "cancel_prompt"; id: string }
   | { type: "set_permission_mode"; mode: PermissionMode }
   | { type: "set_model"; model?: string }
   // For the rest of the session. null is the default: the level of the user's

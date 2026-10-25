@@ -30,6 +30,8 @@ Your prompts are saved per directory, the last 200, in anvim's state dir. `Up` o
 
 A prompt that you send while Claude works waits under the prompt box, dimmed and marked `queued`, as in Claude Code. It joins the transcript when Claude Code takes it: after Claude's next tool call, or when the turn ends. So a reply that streams in is never split by your prompt. If Claude stops before it takes a queued prompt, a notice says so, and `Up` in the prompt brings the text back.
 
+To change a queued prompt, press `Up` on the first line of the prompt, as in Claude Code. The last queued prompt says `↑ to edit`. The queued prompts come back into the prompt, ahead of what you typed, and Claude Code drops them from its queue. Send them again when they are right. If Claude Code takes a prompt before it can drop it, the prompt joins the transcript, and a notice says so.
+
 A foreground agent's tool call ends only when the agent ends, so a queued prompt waits for it. `Ctrl-B` in insert mode moves the running foreground agents and Bash commands to the background, as in Claude Code. They work on, and Claude's turn goes on and takes the prompt. While a foreground agent runs, the activity line says `ctrl+b to background`. Stopping Claude stops its foreground agents too.
 
 ## Stopping Claude

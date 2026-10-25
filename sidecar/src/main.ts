@@ -330,6 +330,12 @@ export async function handle(cmd: Command): Promise<void> {
         emit({ type: "notice", level: "warn", text: `Could not move the tasks to the background: ${err}` });
       });
       return;
+    case "cancel_prompt":
+      // Query has cancelAsyncMessage, but the SDK's types do not name it.
+      await (session as (Query & { cancelAsyncMessage(uuid: string): Promise<boolean> }) | undefined)
+        ?.cancelAsyncMessage(cmd.id)
+        .catch(() => {});
+      return;
     case "set_permission_mode":
       await session?.setPermissionMode(cmd.mode);
       return;

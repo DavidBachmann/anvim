@@ -22,14 +22,15 @@ end
 
 -- Submits prompts the way <CR> does, without waiting for the turns. The
 -- replay plays one recorded turn per prompt, so the specs stub the send.
+-- Each turn ends before the next submit, or the next prompt would queue.
 local function submit_all(list)
   helpers.capture_sends(function()
     for _, text in ipairs(list) do
       api.nvim_buf_set_lines(input.buf(), 0, -1, false, vim.split(text, "\n"))
       input.submit()
+      input.set_busy(false)
     end
   end)
-  input.set_busy(false)
 end
 
 describe("history", function()

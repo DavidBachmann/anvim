@@ -62,4 +62,31 @@ describe("a prompt sent while Claude works", function()
       assert.is_nil(line:find("queued"), line)
     end
   end)
+
+  it("comes back into the prompt with <Up>, and Claude Code drops it", function()
+    input.set_busy(true)
+    local buf = input.buf()
+    helpers.capture_sends(function(sent)
+      input.send("Say yes")
+      input.send("Say no")
+      vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "draft" })
+      require("anvim.history").older()
+      assert.are.same({ "Say yes", "Say no", "draft" }, vim.api.nvim_buf_get_lines(buf, 0, -1, false))
+      assert.are.same({ type = "cancel_prompt", id = sent[1].id }, sent[3])
+      assert.are.same({ type = "cancel_prompt", id = sent[2].id }, sent[4])
+      -- Claude Code dropped the first one, but had taken the second.
+      sidecar.dispatch({ type = "prompt_state", id = sent[1].id, state = "cancelled" })
+      sidecar.dispatch({ type = "prompt_state", id = sent[2].id, state = "started" })
+    end)
+    for _, line in ipairs(under_box()) do
+      assert.is_nil(line:find("queued"), line)
+    end
+    assert.is_false(in_transcript("Say yes"))
+    assert.is_true(in_transcript("Say no"))
+    for _, line in ipairs(helpers.buf_lines(transcript.buf())) do
+      assert.is_nil(line:find("dropped"), line)
+    end
+    sidecar.dispatch({ type = "turn_end", num_turns = 1 })
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "" })
+  end)
 end)

@@ -169,7 +169,7 @@ M.places = {
       { "<C-b>", "Move the running agents and commands to the background", mode = "i" },
       { "<S-Tab>", "Cycle the permission mode", mode = { "i", "n" } },
       { "<C-g>", "Write the prompt in a large window", mode = { "i", "n" } },
-      { "<Up>", "Previous prompt", mode = "i", row = "Previous and next prompt, or menu item" },
+      { "<Up>", "Queued prompts back, or previous prompt", mode = "i", row = "Previous and next prompt, or menu item" },
       { "<Down>", "Next prompt", mode = "i", row = "Previous and next prompt, or menu item" },
       {
         { "j", "<Down>" },
@@ -181,7 +181,7 @@ M.places = {
         "Up a screen line, or end the selection of the agent count",
         row = "Down and up by screen line, or to the agent count",
       },
-      { "<C-p>", "Previous prompt", row = "Previous and next prompt" },
+      { "<C-p>", "Queued prompts back, or previous prompt", row = "Previous and next prompt" },
       { "<C-n>", "Next prompt", row = "Previous and next prompt" },
       { { "<C-u>", "<C-d>" }, "Scroll the transcript" },
       { { "<C-b>", "<C-f>" }, "Scroll the transcript" },

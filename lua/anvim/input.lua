@@ -21,6 +21,8 @@ local footer_mark
 -- tool result or after the turn, and only then do they join the transcript.
 ---@type { id: string, text: string }[]
 local queued = {}
+---@type table<string, string> The text of each queued prompt that <Up> took back, by id.
+local withdrawn = {}
 ---@type uv.uv_timer_t?
 local spinner_timer
 ---@type [integer, integer]? Where typing stopped when the prompt window was left in insert mode.
@@ -368,6 +370,33 @@ function M.send(text)
   if not state.busy then
     M.set_busy(true)
   end
+end
+
+-- Takes the queued prompts back into the prompt, ahead of what it holds, so
+-- that the user can change them, as <Up> does in Claude Code.
+---@return boolean
+function M.unqueue()
+  if #queued == 0 then
+    return false
+  end
+  local texts = {}
+  for _, q in ipairs(queued) do
+    withdrawn[q.id] = q.text
+    sidecar.send({ type = "cancel_prompt", id = q.id })
+    texts[#texts + 1] = q.text
+  end
+  queued = {}
+  local draft = vim.trim(table.concat(api.nvim_buf_get_lines(bufnr, 0, -1, false), "\n"))
+  if draft ~= "" then
+    texts[#texts + 1] = draft
+  end
+  local lines = vim.split(table.concat(texts, "\n"), "\n", { plain = true })
+  api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+  if api.nvim_get_current_buf() == bufnr then
+    api.nvim_win_set_cursor(0, { #lines, #lines[#lines] })
+  end
+  M.render()
+  return true
 end
 
 function M.interrupt()
@@ -747,9 +776,13 @@ function M.render()
   local width = win_width(win)
   local lines = { { { ("─"):rep(width), "AnvimRule" } } }
   -- Each queued prompt's first line, cut to the window.
-  for _, q in ipairs(queued) do
+  for i, q in ipairs(queued) do
     local tag = "  queued"
-    local room = width - 4 - #tag
+    -- The hint only where it leaves room for the prompt's text.
+    if i == #queued and width - 4 - api.nvim_strwidth(tag) >= 32 then
+      tag = tag .. " · ↑ to edit"
+    end
+    local room = width - 4 - api.nvim_strwidth(tag)
     local line = q.text:match("^[^\n]*")
     if api.nvim_strwidth(line) > room or q.text:find("\n") then
       line = vim.fn.strcharpart(line, 0, math.max(room - 1, 0)) .. "…"
@@ -807,7 +840,17 @@ function M.attach()
     take()
   end)
   sidecar.on("prompt_state", function(ev)
-    if ev.state == "started" then
+    local text = withdrawn[ev.id]
+    if text and (ev.state == "started" or ev.state == "cancelled") then
+      withdrawn[ev.id] = nil
+      if ev.state == "started" then
+        shown(text)
+        transcript.notice(
+          "warn",
+          "Claude Code took the prompt before <Up> could take it back: " .. text:match("^[^\n]*")
+        )
+      end
+    elseif ev.state == "started" then
       take(ev.id)
     elseif ev.state == "cancelled" then
       for i, q in ipairs(queued) do
