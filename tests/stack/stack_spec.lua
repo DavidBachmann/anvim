@@ -520,6 +520,18 @@ describe("stack", function()
     ]])
   end)
 
+  it("loads the catppuccin plugin for :colorscheme catppuccin, not Neovim's own catppuccin", function()
+    start()
+    local got = lua([[
+      vim.cmd.colorscheme("catppuccin")
+      return { plugin = package.loaded.catppuccin ~= nil, name = vim.g.colors_name }
+    ]])
+    lua([[vim.cmd.colorscheme("tokyonight")]])
+    assert.is_true(got.plugin)
+    -- Neovim's own sets the name "catppuccin", and the plugin names the flavor.
+    assert.are_not.same("catppuccin", got.name)
+  end)
+
   it("does not write locked buffers, nor run BufWritePre", function()
     start()
     local file = helpers.tmp .. "/matchparen.lua"
@@ -1317,7 +1329,9 @@ describe("stack", function()
       assert(not line:find("failed", 1, true), table.concat(log, "\n"))
     end
     assert.are.same(before, mtimes())
-    for _, dir in ipairs({ "lazy", "mason", "site" }) do
+    -- catppuccin probes vim.pack for its integrations, which makes an empty
+    -- site/pack. anvim installs the parsers and their queries in site.
+    for _, dir in ipairs({ "lazy", "mason", "site/parser", "site/queries" }) do
       assert(not vim.uv.fs_stat(xdg .. "/data/anvim/" .. dir), "anvim installed into the data dir: " .. dir)
     end
   end)
