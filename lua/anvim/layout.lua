@@ -188,19 +188,65 @@ local function setup_pane_win(win)
   end
 end
 
+-- How long a running agent's run has worked, in ms. Follow mode follows only
+-- running agents, so the pane shows no other.
+---@param agent anvim.Agent
+---@return integer?
+local function worked(agent)
+  return agent.status == "running" and require("anvim.agents").clock() - agent.started or nil
+end
+
+-- While the pane shows a running subagent, the time in its tab counts up. The
+-- timer ticks on the whole seconds of the agent's run, and stops when the
+-- tab shows no running agent.
+local clock = {} ---@type { timer: uv.uv_timer_t?, run: string? }
+
+---@param agent anvim.Agent?
+local function tick(agent)
+  local ms = agent and worked(agent)
+  if not ms then
+    clock.run = nil
+    if clock.timer then
+      clock.timer:stop()
+    end
+    return
+  end
+  local run = agent.id .. ":" .. agent.started
+  if clock.run == run then
+    return
+  end
+  clock.run = run
+  clock.timer = clock.timer or assert(vim.uv.new_timer())
+  clock.timer:start(
+    1000 - ms % 1000,
+    1000,
+    vim.schedule_wrap(function()
+      if valid(M.wins.pane) then
+        vim.cmd.redrawstatus({ bang = true })
+      else
+        tick(nil)
+      end
+    end)
+  )
+end
+
 -- The pane's winbar is a tab, as the code window's current tab. It names a
--- subagent whose calls the pane shows, in its color.
+-- subagent whose calls the pane shows, and how long its run has worked, in
+-- the agent's color.
 function M.pane_winbar()
   local agents = require("anvim.agents")
   local id = vim.b[api.nvim_win_get_buf(vim.g.statusline_winid)].anvim_agentlog
   local agent = id and agents.get(id)
   local verbose = require("anvim.transcript").verbose and "· verbose " or ""
+  tick(agent)
   if not agent then
     return "%#AnvimTabCurrent# Tool calls " .. verbose .. "%*"
   end
   local group = require("anvim.tabs").on_current(agents.group(agent.slot))
   local name = agents.name(agent):gsub("%%", "%%%%")
-  return ("%%#AnvimTabCurrent# Tool calls · %%#%s#%s%%#AnvimTabCurrent# %s%%*"):format(group, name, verbose)
+  local ms = worked(agent)
+  local time = ms and ("%%#AnvimTabCurrent# · %%#%s#%s"):format(group, transcript.duration(ms, true)) or ""
+  return ("%%#AnvimTabCurrent# Tool calls · %%#%s#%s%s%%#AnvimTabCurrent# %s%%*"):format(group, name, time, verbose)
 end
 
 -- Shows `buf` in the pane, at its end.

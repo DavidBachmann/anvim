@@ -152,6 +152,35 @@ describe("the tool pane", function()
     assert.are.same(code, box(layout.wins.code), "the code window takes the column again")
   end)
 
+  it("names the followed agent in its tab, with the time that its run has worked", function()
+    local agents, follow, sidecar = require("anvim.agents"), require("anvim.follow"), require("anvim.sidecar")
+    local now = 5000
+    agents.clock = function()
+      return now
+    end
+    helpers.start()
+    layout.set_pane(true)
+    local pane = layout.wins.pane
+    local function tab()
+      return api.nvim_eval_statusline(vim.wo[pane].winbar, { winid = pane, use_winbar = true }).str
+    end
+    sidecar.dispatch({ type = "agent_start", agent_id = "t1", tool_use_id = "tu_t1", description = "Time", depth = 1 })
+    sidecar.dispatch({ type = "tool_use", id = "t1a", name = "Bash", input = { command = "ls" }, agent_id = "t1" })
+    follow.set_focus("t1")
+    now = 5000 + 72400
+    assert.are.same(" Tool calls · Agent 1 · 1m 12s ", tab())
+    -- SendMessage continues it, and the new run counts from zero.
+    sidecar.dispatch({ type = "agent_end", agent_id = "t1", status = "completed" })
+    sidecar.dispatch({ type = "agent_start", agent_id = "t1", tool_use_id = "tu_t1b", description = "Time", depth = 1 })
+    follow.set_focus("t1")
+    now = now + 3200
+    assert.are.same(" Tool calls · Agent 1 · 3s ", tab())
+
+    agents.clock = vim.uv.now
+    sidecar.dispatch({ type = "reset" })
+    follow.forget()
+  end)
+
   it("keeps its own choice when another anvim saves another one", function()
     helpers.start()
     layout.set_pane(true)

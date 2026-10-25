@@ -30,6 +30,7 @@ M.slots = 4
 ---@field last_slot integer? The slot it had when it ended.
 ---@field ended_order integer? When it ended, counted as `order` is.
 ---@field past boolean? It ended before the user's last prompt.
+---@field started integer When its run started, as M.clock() tells it.
 
 ---@type table<string, anvim.Agent>
 local agents = {}
@@ -49,6 +50,8 @@ local order = 0
 
 -- An agent's prompt is kept whole up to this many characters.
 M.prompt_max = 8000
+-- The clock of each run's start, in ms. Specs replace it.
+M.clock = vim.uv.now
 -- The ended agents that are not past, at most.
 M.ended_max = 8
 
@@ -215,6 +218,7 @@ function M.start(ev)
   agent.status, agent.past = "running", nil
   -- A restart is a run of its own.
   agent.last_slot, agent.summary, agent.usage, agent.activity = nil, nil, nil, nil
+  agent.started = M.clock()
   -- An agent that a background agent starts works on after the turn too.
   local parent = ev.parent_agent_id and agents[ev.parent_agent_id]
   agent.background = ev.background == true or (parent ~= nil and parent.background)
