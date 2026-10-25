@@ -12,7 +12,7 @@ The explorer is 30 columns wide. While it has focus, it widens over the code win
 
 anvim starts with the cursor in the prompt at the bottom right, in normal mode, so your first keys can move around. Press `i` to type. A rule above the prompt and a rule below it frame your text, also when it has several lines.
 
-While your cursor is in the prompt, the code window follows Claude. It opens the files Claude reads, and edits stream in with the old text struck through. Claude often reads with Bash, so `cat`, `head`, `tail`, `sed -n` and `nl` open their files too, and a `grep -n` opens at its first hit.
+While your cursor is in the prompt, the code window follows Claude. It opens the files Claude reads, and edits stream in with the old text struck through. Claude often reads with Bash, so `cat`, `head`, `tail`, `sed -n` and `nl` open their files too, and a `grep -n` opens at its first hit. A change that a Bash command makes, such as `sed -i` or a Python script, does not stream: an open file only reloads after the command. So anvim asks Claude to make each change with Edit or Write, and to use a script only for one change across many files.
 
 Move the cursor anywhere else to take control and review code. The statusline then shows where Claude is, such as `⏺ Claude at stream.lua:40 +2`, and `<leader>j` jumps there. In the prompt it says `◉ following`. On a narrow screen, the statusline drops the jump hint, the effort, the model and the context meter, and then the words, as in `⏺ stream.lua:40 +2`. After that, the file goes, because the bar above the code names it, and the branch gets shorter.
 

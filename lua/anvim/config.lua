@@ -53,6 +53,9 @@ M.defaults = {
   append_system_prompt = table.concat({
     "The user reads code in anvim, a read-only Neovim viewer, while you work.",
     "They cannot edit files themselves; you make every change.",
+    "Make each file change with Edit or Write, also a small one.",
+    "anvim streams those edits into the user's view, but it cannot show a change that a Bash command makes.",
+    "Use sed, perl or a script only for one change across many files.",
     "They point at code as @path#L12-30 (1-based, inclusive).",
     "The mcp__anvim__ tools work in their editor.",
     "When you explain code or say where something is, call show_user so they see it, with a short note.",
