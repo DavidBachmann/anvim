@@ -41,9 +41,6 @@ local highlights = {
   AnvimChip = { link = "Comment" },
   -- The footer's agent count while j has selected it.
   AnvimChipSelected = { link = "PmenuSel" },
-  -- The Claude column's background is the tree's. The explorer's list maps
-  -- NormalFloat to SnacksPickerList.
-  AnvimNormal = { link = "SnacksPickerList" },
   -- The activity line's rule. WinSeparator can fade into the tree's background.
   AnvimRule = { link = "LineNr" },
   -- The code window's winbar. Without a background of its own, it has the code's.
@@ -120,6 +117,11 @@ local function set_highlights()
     end
     return code and api.nvim_win_is_valid(code) and api.nvim_win_call(code, hl) or hl()
   end
+  -- The Claude column has the explorer's background, which the explorer's list
+  -- takes from SnacksPickerList, and the code's text. Some colorschemes, such as
+  -- Neovim's own catppuccin, give floats the text color of comments, and the
+  -- times in the transcript would not stand out.
+  set_derived("AnvimNormal", { fg = get("Normal").fg, bg = get("SnacksPickerList").bg })
   -- The blank row under the transcript takes the transcript's background. With
   -- a default, it would keep the previous colorscheme's colors.
   local column = api.nvim_get_hl(0, { name = "AnvimNormal", link = false })
