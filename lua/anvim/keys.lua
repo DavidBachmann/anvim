@@ -171,6 +171,7 @@ M.places = {
       { "<C-b>", "Move the running agents and commands to the background", mode = "i" },
       { "<S-Tab>", "Cycle the permission mode", mode = { "i", "n" } },
       { "<C-g>", "Write the prompt in a large window", mode = { "i", "n" } },
+      { "<C-o>", "Toggle verbose tool calls", mode = { "i", "n" } },
       { "<Up>", "Queued prompts back, or previous prompt", mode = "i", row = "Previous and next prompt, or menu item" },
       { "<Down>", "Next prompt", mode = "i", row = "Previous and next prompt, or menu item" },
       {

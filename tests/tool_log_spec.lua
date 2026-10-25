@@ -168,4 +168,76 @@ describe("the main log", function()
     }, chat())
     assert.are.same({ "" }, log())
   end)
+
+  it("shows each call's whole input and output in verbose mode, also in an agent's log", function()
+    local input = require("anvim.input")
+    restore = function()
+      if transcript.verbose then
+        input.toggle_verbose()
+      end
+    end
+    transcript.user("List")
+    result(call("Bash", { command = "printf 'a\\nb'\necho c" }), false, "a\nb\nc", { result = { stdout = "a\nb\nc" } })
+    transcript.user("Next")
+    result(call("Read", { file_path = state.cwd .. "/a.lua" }), false, "x", { result = { file = { numLines = 4 } } })
+    result(call("Bash", { command = "false" }), true, "Exit code 1\nboom")
+    call("Bash", { command = "sleep 1\necho done" })
+    sidecar.dispatch({
+      type = "tool_use",
+      id = "tu_v",
+      name = "Agent",
+      input = { description = "Look", prompt = "Look" },
+    })
+    sidecar.dispatch({ type = "agent_start", agent_id = "av", tool_use_id = "tu_v", description = "Look", depth = 1 })
+    local sub = { parent_id = "tu_v", agent_id = "av" }
+    sidecar.dispatch(
+      vim.tbl_extend("force", sub, { type = "tool_use", id = "sv", name = "Bash", input = { command = "ls\npwd" } })
+    )
+    result("sv", false, "a.lua\n/x", sub)
+    local agent_log = require("anvim.agentlog").buf("av")
+    local summary, agent_summary = log(), buf_lines(agent_log)
+    assert.are.same({
+      "⏺ Bash(printf 'a\\nb'...)",
+      "  ⎿  a ... +2 lines",
+      "",
+      "⏺ Read(a.lua)",
+      "  ⎿  Read 4 lines",
+      "⏺ Bash(false)",
+      "  ⎿  Exit code 1 ... +1 lines",
+      "⏺ Bash(sleep 1...)",
+      "⏺ Agent(Look)",
+      "  ⎿  Bash(ls...)",
+    }, summary)
+
+    input.toggle_verbose()
+    assert.are.same({
+      "⏺ Bash(printf 'a\\nb'",
+      "  echo c)",
+      "  ⎿  a",
+      "     b",
+      "     c",
+      "",
+      "⏺ Read(a.lua)",
+      "  ⎿  Read 4 lines",
+      "⏺ Bash(false)",
+      "  ⎿  Exit code 1",
+      "     boom",
+      "⏺ Bash(sleep 1",
+      "  echo done)",
+      "⏺ Agent(Look)",
+      "  ⎿  Bash(ls...)",
+    }, log())
+    assert.are.same({ "⏺ Bash(ls", "  pwd)", "  ⎿  a.lua", "     /x" }, vim.list_slice(buf_lines(agent_log), 3))
+    assert.are.same(
+      { "⏺ Bash(printf 'a\\nb' @09:05:07", "  echo c)" },
+      vim.list_slice(stamped(transcript.log_buf()), 1, 2)
+    )
+    assert.are.same("09:05:07", transcript.time_of(agent_log, 2))
+    assert.are.same({ "AnvimToolError", "AnvimToolName" }, groups(transcript.log_buf(), "⏺ Bash(false)"))
+    assert.are.same({ "AnvimToolError" }, groups(transcript.log_buf(), "     boom"))
+
+    input.toggle_verbose()
+    assert.are.same(summary, log())
+    assert.are.same(agent_summary, buf_lines(agent_log))
+  end)
 end)

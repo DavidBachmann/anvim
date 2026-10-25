@@ -14,6 +14,8 @@ With the tool pane on, the transcript keeps one dim line for each run of tool ca
 
 In the tool pane, a subagent's line shows its last three tool calls while it works, and then a summary such as `Done (12 tool uses · 24.1k tokens · 1m 2s)`. A compaction shows as a notice with the tokens before and after.
 
+`Ctrl-O` in the prompt turns verbose mode on and off, as in Claude Code. In verbose mode, each tool call shows its whole input, such as every line of a Bash command. Its result shows every line of the text that Claude got, instead of the first line and a count such as `... +9 lines`. A summary such as `Read 40 lines` stays as it is, unless the call failed. Verbose mode applies to the transcript, the tool pane and each agent's log, and the pane's tab says `verbose`. It lasts until anvim quits.
+
 ## The todo list
 
 Claude's todo list stays at the end of the transcript, under the newest output, while it has open items. Claude Code keeps it with TodoWrite, or with TaskCreate and TaskUpdate. For its newest models, it offers these tools only when `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` is set. The item in progress is bold, and the spinner names it. Once every item is done, the list stays in the transcript where it was.

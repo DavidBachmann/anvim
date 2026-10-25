@@ -62,6 +62,7 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 | `Ctrl-B`, in insert mode | Move the running agents and Bash commands to the background |
 | `Shift-Tab` | Cycle the permission mode |
 | `Ctrl-G` | Write the prompt in a large window |
+| `Ctrl-O` | Turn verbose mode on and off: tool calls show their whole input and output |
 | `j`, `Down` on the last line, in normal mode | Select the agent count in the footer, while agents run |
 | `k`, `Up`, `Esc` | End the selection of the agent count |
 | `f` on the selected agent count | Follow the next agent, and Claude after the last |

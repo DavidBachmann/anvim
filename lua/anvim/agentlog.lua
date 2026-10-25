@@ -23,11 +23,20 @@ M.max_logs = 16
 ---@field buf integer
 ---@field order integer The agent's order at the start that the log drew.
 ---@field empty boolean The buffer has only its first, empty line.
----@field tools table<string, { mark: integer, name: string, input: table? }> Calls without a result.
+---@field tools table<string, anvim.LogCall> Calls without a result.
+---@field calls anvim.LogCall[] Every call whose lines the log has, for a redraw.
 ---@field text boolean A text block came in this run.
 ---@field await { tool: string, after: integer? }? Where the prompt or message of a later tool call goes.
 ---@field ending { mark: integer, count: integer, key: string }? The end line of this run.
 ---@field dropped boolean
+
+---@class anvim.LogCall
+---@field mark integer The mark on its tool line.
+---@field name string
+---@field input table?
+---@field time integer
+---@field rows integer The rows of its tool line and its result.
+---@field result { is_error: boolean, text: string, group: string?, full: string? }?
 
 ---@type table<string, anvim.Log>
 local logs = {}
@@ -71,6 +80,10 @@ local function cap(log)
         log.tools[id] = nil
       end
     end
+    log.calls = vim.tbl_filter(function(call)
+      local row = mark_row(buf, call.mark)
+      return row ~= nil and row >= last
+    end, log.calls)
     api.nvim_buf_clear_namespace(buf, ns, first, last)
     transcript.unstamp(buf, first, last)
     api.nvim_buf_set_lines(buf, first, last, false, log.dropped and {} or { M.dropped_text })
@@ -98,13 +111,14 @@ local function write(log, fn)
   end
 end
 
--- Inserts lines before `row`, or at the end without it. Each mark is
+-- Inserts lines before `row`, or at the end without it. With `count`, they
+-- replace that many lines from `row`. Each mark is
 -- { row, col, end_col, group } with rows counted from the first line,
 -- { row, line = group }, { row, stamp = true, time = time } for the time of
 -- an item, or { row, anchor = true } for a mark without a group. The cap can
 -- move the lines after that, so the marks are set first.
 ---@return integer[] ids The id of each mark.
-local function put(log, lines, marks, row)
+local function put(log, lines, marks, row, count)
   local ids = {}
   write(log, function(buf)
     if log.empty then
@@ -113,7 +127,7 @@ local function put(log, lines, marks, row)
       log.empty = false
     else
       row = row or api.nvim_buf_line_count(buf)
-      api.nvim_buf_set_lines(buf, row, row, false, lines)
+      api.nvim_buf_set_lines(buf, row, row + (count or 0), false, lines)
     end
     for i, m in ipairs(marks) do
       if m.line then
@@ -221,7 +235,7 @@ local function new_log(id)
       require("anvim.overview").close()
     end, { buffer = buf, nowait = true })
   end
-  local log = { id = id, buf = buf, order = 0, empty = true, tools = {}, text = false, dropped = false }
+  local log = { id = id, buf = buf, order = 0, empty = true, tools = {}, calls = {}, text = false, dropped = false }
   logs[id], seen[id] = log, true
   -- The user can delete or wipe the buffer. The log is gone then, and the
   -- agent's next event starts a new one. The buffer goes, and its name with it.
@@ -340,33 +354,61 @@ function M.start(ev)
   end
 end
 
-local function tool_use(log, agent, ev)
-  local label = transcript.label(ev.name, ev.input)
-  local line = "⏺ " .. label
+-- A call's lines and their marks: its tool line, and its result once it has one.
+---@param call anvim.LogCall
+local function call_lines(call, bullet_hl)
+  local label = transcript.label(call.name, call.input, transcript.verbose)
+  local lines = transcript.head_rows(label)
   local bullet = #"⏺"
   local name_end = label:find("(", 1, true)
-  local ids = put(log, { line }, {
-    { 0, 0, bullet, agents.group(agent.slot) },
+  local marks = {
+    { 0, 0, bullet, bullet_hl },
     { 0, bullet + 1, bullet + 1 + (name_end and name_end - 1 or #label), "AnvimToolName" },
-    { 0, stamp = true, time = transcript.clock() },
-  })
-  log.tools[ev.id] = {
-    mark = ids[1],
-    name = ev.name,
-    input = type(ev.input) == "table" and ev.input or nil,
+    { 0, stamp = true, time = call.time },
   }
+  local r = call.result
+  for _, line in ipairs(r and transcript.result_rows(r.text, r.full) or {}) do
+    lines[#lines + 1] = line
+    marks[#marks + 1] = { #lines - 1, 0, #line, r.group or "AnvimResult" }
+  end
+  return lines, marks
 end
 
-local function finish(log, id, is_error, text, group)
-  local tool = log.tools[id]
-  log.tools[id] = nil
-  local row = tool and mark_row(log.buf, tool.mark)
+-- Draws a call's lines again, in place.
+---@param call anvim.LogCall
+local function redraw(log, call, bullet_hl)
+  local row = mark_row(log.buf, call.mark)
   if not row then
     return
   end
-  hl(log.buf, row, 0, #"⏺", is_error and "AnvimToolError" or "AnvimToolOk", { id = tool.mark })
-  local line = "  ⎿  " .. transcript.short(text)
-  put(log, { line }, { { 0, 0, #line, group or "AnvimResult" } }, row + 1)
+  api.nvim_buf_clear_namespace(log.buf, ns, row, row + call.rows)
+  transcript.unstamp(log.buf, row, row + call.rows)
+  local lines, marks = call_lines(call, bullet_hl)
+  local old = call.rows
+  call.rows = #lines
+  call.mark = put(log, lines, marks, row, old)[1]
+end
+
+local function tool_use(log, agent, ev)
+  local call = {
+    name = ev.name,
+    input = type(ev.input) == "table" and ev.input or nil,
+    time = transcript.clock(),
+  }
+  local lines, marks = call_lines(call, agents.group(agent.slot))
+  call.rows = #lines
+  call.mark = put(log, lines, marks)[1]
+  log.tools[ev.id] = call
+  log.calls[#log.calls + 1] = call
+end
+
+local function finish(log, id, is_error, text, group, full)
+  local call = log.tools[id]
+  log.tools[id] = nil
+  if call then
+    call.result = { is_error = is_error, text = text, group = group, full = full }
+    redraw(log, call, is_error and "AnvimToolError" or "AnvimToolOk")
+  end
 end
 
 local function starts(name)
@@ -416,13 +458,27 @@ function M.tool_result(ev)
   if not (log and log.tools[ev.id]) then
     return
   end
-  local text, group = transcript.summary(log.tools[ev.id], ev)
+  local text, group, full = transcript.summary(log.tools[ev.id], ev)
   if reason and agent then
-    text, group = ("Sent back to %s: %s"):format(agents.name(agent), reason), nil
+    text, group, full = ("Sent back to %s: %s"):format(agents.name(agent), reason), nil, nil
   elseif agent and ev.is_error and transcript.held_back(ev) then
-    text, group = "Sent back to " .. agents.name(agent), nil
+    text, group, full = "Sent back to " .. agents.name(agent), nil, nil
   end
-  finish(log, ev.id, ev.is_error, text, group)
+  finish(log, ev.id, ev.is_error, text, group, full)
+end
+
+-- Draws every call of every log again, as after verbose mode changed.
+function M.redraw()
+  for id, log in pairs(logs) do
+    if api.nvim_buf_is_loaded(log.buf) then
+      local agent = agents.get(id)
+      local waits = agent and agents.group(agent.slot) or "AnvimToolPending"
+      for _, call in ipairs(log.calls) do
+        local r = call.result
+        redraw(log, call, r and (r.is_error and "AnvimToolError" or "AnvimToolOk") or waits)
+      end
+    end
+  end
 end
 
 function M.send_back(ev)

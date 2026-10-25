@@ -194,12 +194,13 @@ function M.pane_winbar()
   local agents = require("anvim.agents")
   local id = vim.b[api.nvim_win_get_buf(vim.g.statusline_winid)].anvim_agentlog
   local agent = id and agents.get(id)
+  local verbose = require("anvim.transcript").verbose and "· verbose " or ""
   if not agent then
-    return "%#AnvimTabCurrent# Tool calls %*"
+    return "%#AnvimTabCurrent# Tool calls " .. verbose .. "%*"
   end
   local group = require("anvim.tabs").on_current(agents.group(agent.slot))
   local name = agents.name(agent):gsub("%%", "%%%%")
-  return ("%%#AnvimTabCurrent# Tool calls · %%#%s#%s%%#AnvimTabCurrent# %%*"):format(group, name)
+  return ("%%#AnvimTabCurrent# Tool calls · %%#%s#%s%%#AnvimTabCurrent# %s%%*"):format(group, name, verbose)
 end
 
 -- Shows `buf` in the pane, at its end.

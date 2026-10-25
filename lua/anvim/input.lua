@@ -116,6 +116,7 @@ function M.buf()
   map({ "i", "n" }, "<C-g>", function()
     require("anvim.compose").open()
   end)
+  map({ "i", "n" }, "<C-o>", M.toggle_verbose)
   -- The transcript takes no focus, so the prompt scrolls it.
   local function scroll(modes, list)
     for _, key in ipairs(list) do
@@ -417,6 +418,14 @@ function M.background()
   if state.busy then
     sidecar.send({ type = "background" })
   end
+end
+
+-- Claude Code's ctrl+o: every tool call shows its whole input and output, or
+-- its summary again.
+function M.toggle_verbose()
+  transcript.set_verbose(not transcript.verbose)
+  require("anvim.agentlog").redraw()
+  require("anvim.statusline").refresh()
 end
 
 ---@return boolean

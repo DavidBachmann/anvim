@@ -21,6 +21,10 @@ M.clock = os.time
 -- run of tool calls.
 M.pane_on = false
 
+-- Claude Code's verbose mode: tool lines show their whole input, and results
+-- every line of their text, instead of the first line and a count.
+M.verbose = false
+
 ---@class anvim.Run The tool calls between two other chat items.
 ---@field buf integer The chat buffer of the count line.
 ---@field mark integer? The mark of the count line.
@@ -42,7 +46,10 @@ M.pane_on = false
 ---@field done boolean?
 ---@field outcome string[]?
 ---@field children string[]? Labels of a subagent's tool calls.
----@field child_rows integer? Rows that show them under the tool line.
+---@field head integer? Rows of the tool line, which a verbose label can have several of.
+---@field body integer? Rows under the tool line: a subagent's calls, or the result.
+---@field result { is_error: boolean, summary: string|string[], group: string?, label: string? }? As drawn, for a redraw.
+---@field full string? The text whose first line the result shows.
 ---@field todo boolean? A TodoWrite or Task tool, which updates the todo list instead of a line.
 ---@field held boolean? A background agent's line, which lives on after its result.
 ---@field live boolean? Held for an agent of this sidecar, not of a resumed session's past.
@@ -61,6 +68,10 @@ local tools = {}
 -- starts, and the line lives on after the turn, until the agent ends.
 ---@type table<string, anvim.Tool>
 local held = {}
+-- The calls with a result, also of past turns, for a redraw in or out of
+-- verbose mode.
+---@type anvim.Tool[]
+local drawn = {}
 -- The guard's reason of each main agent's call that anvim sent back. The
 -- event can come before the call's tool_start.
 ---@type table<string, string>
@@ -515,7 +526,9 @@ function M.short(text)
   return text
 end
 
-local function tool_label(name, input)
+-- With `full`, the argument keeps all of its lines and length.
+---@param full boolean?
+local function tool_label(name, input, full)
   if name == agents.codex_tool then
     name = "Codex"
   end
@@ -553,14 +566,44 @@ local function tool_label(name, input)
   else
     arg = M.short(arg)
   end
-  arg = arg:gsub("\n.*", "...")
-  if #arg > 80 then
-    arg = arg:sub(1, 79) .. "..."
+  if not full then
+    arg = arg:gsub("\n.*", "...")
+    if #arg > 80 then
+      arg = arg:sub(1, 79) .. "..."
+    end
   end
   return ("%s(%s)"):format(name, arg)
 end
 
 M.label = tool_label
+
+-- The rows of a tool line. A verbose label can have several lines.
+---@param label string
+---@return string[]
+function M.head_rows(label)
+  local lines = vim.split(label, "\n", { plain = true })
+  for i, line in ipairs(lines) do
+    lines[i] = (i == 1 and "⏺ " or "  ") .. line
+  end
+  return lines
+end
+
+-- The rows of a result: its summary, or in verbose mode every line of the
+-- text that the summary is the first line of.
+---@param summary string|string[]
+---@param full string?
+---@return string[]
+function M.result_rows(summary, full)
+  local rows = type(summary) == "table" and summary or { summary }
+  if M.verbose and full then
+    rows = vim.split((full:gsub("^%s*\n", ""):gsub("%s+$", "")), "\n", { plain = true })
+  end
+  local lines = {}
+  for i, text in ipairs(rows) do
+    lines[i] = (i == 1 and "  ⎿  " or "     ") .. M.short(text)
+  end
+  return lines
+end
 
 local function patch_counts(patch)
   local added, removed = 0, 0
@@ -649,7 +692,7 @@ local function summarize(tool, ev)
   elseif ev.is_error and held_back(ev) then
     return "Sent back to Claude"
   elseif ev.is_error then
-    return first_line(ev.text), "AnvimToolError"
+    return first_line(ev.text), "AnvimToolError", ev.text
   end
   local r = type(ev.result) == "table" and ev.result or {}
   local name, input = tool.name, tool.input or {}
@@ -674,12 +717,15 @@ local function summarize(tool, ev)
     text = r.stdout ~= "" and r.stdout or r.stderr or ""
   end
   local line = first_line(text)
-  return line ~= "" and line or "Done"
+  -- Verbose mode shows what Claude got, stderr too.
+  local full = type(ev.text) == "string" and ev.text:find("%S") and ev.text or text
+  return line ~= "" and line or "Done", nil, line ~= "" and full or nil
 end
 
--- The result line of a tool call, and its group when it is not AnvimResult.
+-- The result line of a tool call, its group when it is not AnvimResult, and
+-- the text that verbose mode shows in full.
 ---@param tool { name: string, input: table?, outcome: string[]?, children: string[]? }
----@return string text, string? group
+---@return string text, string? group, string? full
 M.summary = summarize
 
 -- The row of a mark, unless its buffer or the mark went.
@@ -753,18 +799,21 @@ local function pending(tool)
   return agent and agent.status == "running" and agents.group(agent.slot) or "AnvimToolPending"
 end
 
+---@param label string? The call's label by default.
 local function set_tool_line(tool, label, bullet_hl)
   local row = tool_row(tool)
   if not row then
     return
   end
-  local line = "⏺ " .. label
+  label = label or tool_label(tool.name, tool.input, M.verbose)
+  local lines = M.head_rows(label)
   local buf = tool.buf
   with_modifiable(function()
-    api.nvim_buf_set_lines(buf, row, row + 1, false, { line })
+    api.nvim_buf_set_lines(buf, row, row + (tool.head or 1), false, lines)
   end, buf)
+  tool.head = #lines
   local bullet = #"⏺"
-  api.nvim_buf_clear_namespace(buf, ns, row, row + 1)
+  api.nvim_buf_clear_namespace(buf, ns, row, row + #lines)
   tool.mark = hl(buf, row, 0, bullet, bullet_hl)
   local name_end = label:find("(", 1, true)
   hl(buf, row, bullet + 1, bullet + 1 + (name_end and name_end - 1 or #label), "AnvimToolName")
@@ -875,7 +924,7 @@ end
 function M.tool_field(ev)
   local tool = tools[ev.id]
   if tool and not tool.todo and ev.phase == "end" and ev.key == primary_arg[tool.name] then
-    set_tool_line(tool, tool_label(tool.name, { [ev.key] = ev.value }), pending(tool))
+    set_tool_line(tool, tool_label(tool.name, { [ev.key] = ev.value }, M.verbose), pending(tool))
   end
 end
 
@@ -899,14 +948,14 @@ local function set_children(tool)
   for i, item in ipairs(items) do
     lines[i] = (i == 1 and "  ⎿  " or "     ") .. item
   end
-  local old = tool.child_rows or 0
-  api.nvim_buf_clear_namespace(tool.buf, ns, row + 1, row + 1 + old)
+  local first, old = row + (tool.head or 1), tool.body or 0
+  api.nvim_buf_clear_namespace(tool.buf, ns, first, first + old)
   with_modifiable(function(buf)
-    api.nvim_buf_set_lines(buf, row + 1, row + 1 + old, false, lines)
+    api.nvim_buf_set_lines(buf, first, first + old, false, lines)
   end, tool.buf)
-  tool.child_rows = #lines
+  tool.body = #lines
   for i, line in ipairs(lines) do
-    hl(tool.buf, row + i, 0, #line, "AnvimResult")
+    hl(tool.buf, first + i - 1, 0, #line, "AnvimResult")
   end
 end
 
@@ -936,35 +985,37 @@ function M.tool_use(ev)
     end
     return
   end
-  set_tool_line(tool, tool_label(ev.name, ev.input), pending(tool))
+  set_tool_line(tool, nil, pending(tool))
 end
 
+-- Draws a call's result, also again for a redraw.
 ---@param summary string|string[] The result line, or its lines.
 ---@param label string? The tool line's text, when it is not the call.
 local function finish_tool(tool, is_error, summary, group, label)
   tool.done = true
+  if not tool.result then
+    drawn[#drawn + 1] = tool
+  end
+  tool.result = { is_error = is_error, summary = summary, group = group, label = label }
   if is_error and tool.run and not tool.failed then
     tool.failed = true
     tool.run.failed = tool.run.failed + 1
     set_count(tool.run)
   end
-  set_tool_line(tool, label or tool_label(tool.name, tool.input), is_error and "AnvimToolError" or "AnvimToolOk")
+  set_tool_line(tool, label, is_error and "AnvimToolError" or "AnvimToolOk")
   local row = tool_row(tool)
   if not row then
     return
   end
-  local lines = {}
-  for i, text in ipairs(type(summary) == "table" and summary or { summary }) do
-    lines[i] = (i == 1 and "  ⎿  " or "     ") .. M.short(text)
-  end
-  local old = tool.child_rows or 0
-  api.nvim_buf_clear_namespace(tool.buf, ns, row + 1, row + 1 + old)
+  local lines = M.result_rows(summary, tool.full)
+  local first, old = row + tool.head, tool.body or 0
+  api.nvim_buf_clear_namespace(tool.buf, ns, first, first + old)
   with_modifiable(function(buf)
-    api.nvim_buf_set_lines(buf, row + 1, row + 1 + old, false, lines)
+    api.nvim_buf_set_lines(buf, first, first + old, false, lines)
   end, tool.buf)
-  tool.child_rows = nil
+  tool.body = #lines
   for i, line in ipairs(lines) do
-    hl(tool.buf, row + i, 0, #line, group or "AnvimResult")
+    hl(tool.buf, first + i - 1, 0, #line, group or "AnvimResult")
   end
 end
 
@@ -995,7 +1046,8 @@ local function finish_question(tool, ev)
   elseif #rows > 0 then
     finish_tool(tool, false, rows, nil, "User answered Claude's questions:")
   else
-    local text, group = summarize(tool, ev)
+    local text, group, full = summarize(tool, ev)
+    tool.full = full
     finish_tool(tool, false, text, group)
   end
 end
@@ -1036,7 +1088,9 @@ function M.tool_result(ev)
       held[tool.id] = tool
       set_children(tool)
     else
-      finish_tool(tool, ev.is_error, summarize(tool, ev))
+      local text, group, full = summarize(tool, ev)
+      tool.full = full
+      finish_tool(tool, ev.is_error, text, group)
     end
   end
 end
@@ -1084,7 +1138,7 @@ function M.settle_past()
   for id, tool in pairs(held) do
     if not tool.live then
       held[id], tool.done = nil, true
-      set_tool_line(tool, tool_label(tool.name, tool.input), "AnvimResult")
+      set_tool_line(tool, nil, "AnvimResult")
     end
   end
 end
@@ -1447,6 +1501,33 @@ function M.batch(fn)
   end
 end
 
+-- Turns verbose mode on or off, and draws every tool call again. A view at
+-- the end stays there.
+---@param on boolean
+function M.set_verbose(on)
+  M.verbose = on
+  local tails = {}
+  for _, buf in ipairs({ M.buf(), log_loaded() }) do
+    tails[buf] = follow_wins(true, buf)
+  end
+  M.batch(function()
+    for _, tool in ipairs(drawn) do
+      local r = tool.result
+      finish_tool(tool, r.is_error, r.summary, r.group, r.label)
+    end
+    for _, list in ipairs({ tools, held }) do
+      for _, tool in pairs(list) do
+        if not tool.done then
+          set_tool_line(tool, nil, pending(tool))
+        end
+      end
+    end
+  end)
+  for buf, wins in pairs(tails) do
+    scroll(wins, buf)
+  end
+end
+
 -- Empties the transcript and the main log, for /clear and before a resumed
 -- session draws.
 function M.clear()
@@ -1456,7 +1537,7 @@ function M.clear()
       blocks[id] = nil
     end
   end
-  tools, held, todo, reply, reply_done, text_open, texts = {}, {}, nil, {}, true, false, {}
+  tools, held, drawn, todo, reply, reply_done, text_open, texts = {}, {}, {}, nil, {}, true, false, {}
   sent_back, run = {}, nil
   tasks = { order = {}, by_id = {} }
   for _, b in ipairs({ buf, log_loaded() }) do
