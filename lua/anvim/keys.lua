@@ -81,6 +81,7 @@ M.places = {
       { "<leader>sd", "Diagnostics of the workspace" },
       { "<leader>sD", "Diagnostics of the file" },
       { "<leader>sh", "Help pages" },
+      { "<leader>lr", "Restart the language servers" },
       { "<leader>gs", "Git status" },
       { "<leader>gd", "Git diff by hunk" },
       { "<leader>gl", "Git log" },

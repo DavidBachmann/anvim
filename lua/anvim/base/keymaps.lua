@@ -112,6 +112,23 @@ for _, client in ipairs(vim.lsp.get_clients()) do
   end
 end
 
+-- A server can miss the files that Claude changes on disk. Every server
+-- restarts, also from the prompt, which has none of its own.
+map("n", "<leader>lr", function()
+  local names = {}
+  for _, client in ipairs(vim.lsp.get_clients()) do
+    names[client.name] = true
+  end
+  names = vim.tbl_keys(names)
+  if #names == 0 then
+    vim.notify("No language server runs", vim.log.levels.WARN)
+    return
+  end
+  table.sort(names)
+  vim.cmd.lsp({ "restart", unpack(names) })
+  vim.notify("Restarting " .. table.concat(names, ", "))
+end)
+
 -- toggles
 Snacks.toggle({
   name = "Wrap in the code window",

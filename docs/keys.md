@@ -20,6 +20,7 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 | `<leader>ss`, `<leader>sS` | Symbols of the file, of the workspace |
 | `<leader>sd`, `<leader>sD` | Diagnostics of the workspace, of the file |
 | `<leader>sh` | Help pages |
+| `<leader>lr` | Restart the language servers, for example when they missed a change on disk |
 | `<leader>gs`, `<leader>gd` | Git status, git diff by hunk |
 | `<leader>gl`, `<leader>gf`, `<leader>gb` | Git log, the file's history, the line's history |
 | `<leader>uw`, `<leader>ud` | Toggle wrap in the code window, toggle diagnostics |

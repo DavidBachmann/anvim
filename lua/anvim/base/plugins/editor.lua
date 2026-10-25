@@ -57,6 +57,7 @@ return {
           { "<leader>f", group = "file/find" },
           { "<leader>g", group = "git" },
           { "<leader>gh", group = "hunks", icon = { cat = "filetype", name = "git" } },
+          { "<leader>l", group = "lsp" },
           { "<leader>s", group = "search" },
           { "<leader>u", group = "ui" },
           { "[", group = "prev" },
