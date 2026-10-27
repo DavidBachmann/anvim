@@ -82,7 +82,7 @@ export type Command =
       // Claude in Chrome: true is Claude Code's --chrome, false its
       // --no-chrome. Without it, Claude Code's "Enabled by default" decides.
       chrome?: boolean;
-      // False turns the Codex agents off (codex.ts).
+      // True turns the Codex agents on (codex.ts).
       codex?: boolean;
       // The model and the reasoning effort of Codex runs. Without them,
       // Codex's own config decides.
@@ -323,8 +323,8 @@ export type Event =
   // The plan's 5-hour and weekly usage in percent, at start and after each
   // turn. Both are absent for a login without plan limits, such as an API key.
   | { type: "limits"; session?: number; week?: number }
-  // Whether Claude got the codex tool at start. Off: the start command turned
-  // it off. Missing: no codex CLI is on PATH. Logged out: Codex has no login.
+  // Whether Claude got the codex tool at start. Off: the start command did not
+  // ask for it. Missing: no codex CLI is on PATH. Logged out: Codex has no login.
   // config: the model and the effort that Codex's config.toml sets, when it is on.
   | {
       type: "codex";

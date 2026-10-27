@@ -49,9 +49,9 @@ anvim --resume ~/dev/project         # choose a session
 anvim --resume 12345678-1234-1234-1234-123456789abc ~/dev/project  # resume by session ID
 ```
 
-The launcher accepts `--model`, `--effort` (`low`, `medium`, `high`, `xhigh`, `max`), `--mode` (`default`, `acceptEdits`, `plan`, `bypassPermissions`), `--account`, `--no-sandbox`, `--dangerously-skip-permissions`, `--chrome`, `--no-chrome`, `--no-codex`, `--debug`, and `-c`/`--continue` or `-r`/`--resume [id]`. Remaining arguments go to Neovim; if the first remaining argument is a directory, it selects the working directory. Continue and resume cannot be combined.
+The launcher accepts `--model`, `--effort` (`low`, `medium`, `high`, `xhigh`, `max`), `--mode` (`default`, `acceptEdits`, `plan`, `bypassPermissions`), `--account`, `--no-sandbox`, `--dangerously-skip-permissions`, `--chrome`, `--no-chrome`, `--codex`, `--no-codex`, `--debug`, and `-c`/`--continue` or `-r`/`--resume [id]`. Remaining arguments go to Neovim; if the first remaining argument is a directory, it selects the working directory. Continue and resume cannot be combined.
 
-Environment equivalents are `ANVIM_MODEL`, `ANVIM_EFFORT`, `ANVIM_MODE`, `ANVIM_ACCOUNT`, `ANVIM_SANDBOX=0`, `ANVIM_CHROME=1` or `0`, `ANVIM_CODEX=0` and `ANVIM_DEBUG=1`. An explicit flag takes precedence. With no effort override, Claude Code's setting, then the model default, decides. With no Chrome override, Claude Code's “Enabled by default” setting decides. `--dangerously-skip-permissions` combines `--no-sandbox` with `--mode bypassPermissions`; see [what that means](permissions.md#without-a-sandbox).
+Environment equivalents are `ANVIM_MODEL`, `ANVIM_EFFORT`, `ANVIM_MODE`, `ANVIM_ACCOUNT`, `ANVIM_SANDBOX=0`, `ANVIM_CHROME=1` or `0`, `ANVIM_CODEX=1` or `0` and `ANVIM_DEBUG=1`. An explicit flag takes precedence. With no effort override, Claude Code's setting, then the model default, decides. With no Chrome override, Claude Code's “Enabled by default” setting decides. `--dangerously-skip-permissions` combines `--no-sandbox` with `--mode bypassPermissions`; see [what that means](permissions.md#without-a-sandbox).
 
 <a id="update"></a>
 

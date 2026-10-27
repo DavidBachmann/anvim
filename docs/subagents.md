@@ -23,7 +23,7 @@ Claude Code sends subagent edits whole. When you follow one, anvim animates the 
 
 ## Codex agents
 
-If the OpenAI Codex CLI is on `PATH` and logged in (`codex login`), Claude gets a `codex` tool and can delegate to it when asked. Disable it with `--no-codex` or `ANVIM_CODEX=0`; `:checkhealth anvim` reports availability and the next run's defaults.
+Start anvim with `--codex` or `ANVIM_CODEX=1`, and Claude gets a `codex` tool that it uses when asked. Codex is off by default, so its startup check runs only when you ask for it. The tool needs the OpenAI Codex CLI on `PATH` with a login (`codex login`). If either is missing, anvim starts without the tool and says why in the transcript. `--no-codex` overrides `ANVIM_CODEX=1` for one run. `:checkhealth anvim` reports availability and the next run's defaults.
 
 A Codex run appears as a background agent such as `Codex 1`, with the same footer, explorer, Overview and follow controls. Its commands and changes appear as Bash, Edit and Write calls. Its changes do not stream; an open file reloads after Codex changes it. The Overview does not show a context percentage because Codex does not provide a window size. The result is returned to Claude and appears in resumed history.
 

@@ -18,7 +18,7 @@ Claude Code's terminal tells you `Read(src/app.ts)`, then `Update(src/app.ts)`. 
 - Watch edits stream in, with old text struck through, before the changes reach disk.
 - Keep tabs on agents by their colored dots in the explorer. Pick one to follow its reads and edits.
 - Peek at the Agent Overview for each agent's task, context use and tool calls.
-- Bring [Codex](docs/subagents.md#codex-agents) along: ask Claude to hand it a task, and it gets its own dot and row like everyone else.
+- Bring [Codex](docs/subagents.md#codex-agents) along with `--codex`: ask Claude to hand it a task, and it gets its own dot and row like everyone else.
 
 Hop out of the prompt to review code with LSP, grep, git log and diffs. `<leader>j` brings you back to Claude when you've found something to point at.
 

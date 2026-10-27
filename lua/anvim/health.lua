@@ -94,11 +94,8 @@ local function start_mode(runs)
 end
 
 local function codex()
-  if config.options.codex == false then
-    health.info(
-      vim.env.ANVIM_CODEX == "0" and "Codex agents are off, because anvim started with --no-codex or ANVIM_CODEX=0"
-        or "Codex agents are off, because a spec sets `codex = false`"
-    )
+  if config.options.codex ~= true then
+    health.info("Codex agents are off. Start anvim with --codex or ANVIM_CODEX=1 to give Claude the codex tool")
     return
   end
   local s = require("anvim.state").codex
@@ -106,7 +103,7 @@ local function codex()
     health.ok("Codex agents are on: Claude has the codex tool, because the codex CLI is installed and logged in")
     health.info(require("anvim.codex").describe())
   elseif s == "missing" then
-    health.info("Codex agents are off, because the codex CLI is not on PATH")
+    health.warn("Codex agents are off, because the codex CLI is not on PATH", { "Install the Codex CLI" })
   elseif s == "logged_out" then
     health.warn("Codex agents are off, because the codex CLI is not logged in", { "Run `codex login`" })
   else

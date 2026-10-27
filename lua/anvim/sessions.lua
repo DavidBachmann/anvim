@@ -84,7 +84,7 @@ function M.start_command(opts)
     append_system_prompt = config.options.append_system_prompt,
     debug = config.options.debug,
     chrome = M.chrome_flag(),
-    codex = config.options.codex ~= false,
+    codex = config.options.codex == true,
     codex_model = require("anvim.codex").model(),
     codex_effort = require("anvim.codex").effort(),
   }, opts or {})

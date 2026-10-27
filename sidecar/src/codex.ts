@@ -294,8 +294,8 @@ async function loggedIn(bin: string): Promise<boolean> {
   }
 }
 
-// Whether Claude gets the codex tool: the user did not turn it off, and a
-// codex CLI with a login is on PATH. Without a login, every run would fail.
+// Whether Claude gets the codex tool: the user asked for it, and a codex CLI
+// with a login is on PATH. Without a login, every run would fail.
 export async function codexState(
   wanted: boolean,
   which: (cmd: string) => string | null = (cmd) => Bun.which(cmd),
@@ -305,6 +305,14 @@ export async function codexState(
   const bin = which("codex");
   if (!bin) return { state: "missing" };
   return (await login(bin)) ? { state: "on", bin } : { state: "logged_out" };
+}
+
+// The user asked for Codex, so a Codex that is not ready gets a warning.
+export function codexWarning(state: CodexState): string | undefined {
+  if (state === "missing") return "You started anvim with --codex, but no codex command is on PATH.";
+  if (state === "logged_out")
+    return "You started anvim with --codex, but Codex is not logged in. Run `codex login`, then restart anvim.";
+  return undefined;
 }
 
 // The running Codex processes of the session.

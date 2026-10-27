@@ -1,5 +1,5 @@
 #!/bin/sh
-# Usage: anvim [--model <model>] [--effort <level>] [--mode <mode>] [--account <name>] [--no-sandbox] [--dangerously-skip-permissions] [--chrome | --no-chrome] [--no-codex] [--debug] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
+# Usage: anvim [--model <model>] [--effort <level>] [--mode <mode>] [--account <name>] [--no-sandbox] [--dangerously-skip-permissions] [--chrome | --no-chrome] [--codex | --no-codex] [--debug] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
 # The permission mode is default, acceptEdits, plan or bypassPermissions. It is
 # bypassPermissions unless --mode or ANVIM_MODE says otherwise: Claude runs
 # tools without asking. The sandbox limits where its Bash commands write, and
@@ -13,9 +13,10 @@
 # is --no-sandbox --mode bypassPermissions: Claude runs every tool anywhere
 # without asking. --chrome (ANVIM_CHROME=1) and
 # --no-chrome (ANVIM_CHROME=0) turn Claude in Chrome on or off, as in Claude
-# Code. Without them, its "Enabled by default" setting decides. --no-codex
-# (ANVIM_CODEX=0) takes away Claude's codex tool, which starts Codex agents
-# when the codex CLI is installed and logged in. --debug
+# Code. Without them, its "Enabled by default" setting decides. --codex
+# (ANVIM_CODEX=1) gives Claude a codex tool, which starts Codex agents. It
+# needs the codex CLI with a login. --no-codex (ANVIM_CODEX=0) is the
+# default. --debug
 # (ANVIM_DEBUG=1) is for anvim's own development: it gives Claude a tool that
 # takes a picture of the screen, and a tool that restarts anvim with the code
 # on disk in the same session. When the repo's lockfiles changed since the
@@ -90,8 +91,8 @@ while [ "$n" -gt 0 ]; do
       shift
       n=$((n - 1))
       ;;
-    --no-codex)
-      ANVIM_CODEX=0
+    --codex | --no-codex)
+      ANVIM_CODEX=$([ "$1" = --codex ] && echo 1 || echo 0)
       shift
       n=$((n - 1))
       ;;

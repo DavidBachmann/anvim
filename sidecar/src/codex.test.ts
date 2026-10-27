@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { SessionMessage } from "@anthropic-ai/claude-agent-sdk";
-import { type CodexSettings, CodexStream, codexArgs, codexSettings, codexState, unwrapShell } from "./codex";
+import { type CodexSettings, CodexStream, codexArgs, codexSettings, codexState, codexWarning, unwrapShell } from "./codex";
 import { historyEvents } from "./sessions";
 
 // As codex-cli 0.164.0 printed it for `codex exec --json`. The error item is
@@ -83,6 +83,10 @@ describe("codexState", () => {
     expect(await codexState(true, which(null), login(true))).toEqual({ state: "missing" });
     expect(await codexState(true, which("/bin/codex"), login(false))).toEqual({ state: "logged_out" });
     expect(await codexState(true, which("/bin/codex"), login(true))).toEqual({ state: "on", bin: "/bin/codex" });
+    expect(codexWarning("missing")).toContain("--codex");
+    expect(codexWarning("logged_out")).toContain("codex login");
+    expect(codexWarning("off")).toBeUndefined();
+    expect(codexWarning("on")).toBeUndefined();
   });
 });
 

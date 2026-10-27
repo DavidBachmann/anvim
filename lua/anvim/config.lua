@@ -19,8 +19,8 @@ M.defaults = {
   sandbox = true,
   ---@type boolean? Claude in Chrome, as Claude Code's --chrome and --no-chrome. Nil follows its "Enabled by default".
   chrome = nil,
-  -- Give Claude the codex tool, which starts OpenAI Codex agents, when the codex CLI is installed and logged in.
-  codex = true,
+  -- Give Claude the codex tool, which starts OpenAI Codex agents. It needs the codex CLI with a login.
+  codex = false,
   -- For anvim's own development: Claude gets the mcp__anvim__screenshot and mcp__anvim__reload tools.
   debug = false,
   bun = "bun",

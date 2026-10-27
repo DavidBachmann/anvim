@@ -17,7 +17,7 @@ import {
   type ChromeMessage,
   setEnabledByDefault,
 } from "./chrome";
-import { CodexRunner, type CodexSettings, codexConfig, codexState } from "./codex";
+import { CodexRunner, type CodexSettings, codexConfig, codexState, codexWarning } from "./codex";
 import { type ImageBlock, imageBlocks } from "./images";
 import { PermissionBridge } from "./permissions";
 import { PreviewBridge } from "./preview";
@@ -252,7 +252,7 @@ export function fallBack(): void {
 async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
   // The tool list is fixed when the session starts, so the login check must
   // end before that. It runs while the rest of the start does.
-  const codexCheck = codexState(cmd.codex !== false);
+  const codexCheck = codexState(cmd.codex === true);
   // Only false turns the sandbox off, so a start without the field keeps it.
   const sandboxOn = cmd.sandbox !== false;
   const sandbox = sandboxSetup(sandboxOn, cmd.cwd);
@@ -278,6 +278,8 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
   );
   const [resume, { state: codexOn, bin: codexBin }] = await Promise.all([resumeTarget(cmd), codexCheck]);
   emit({ type: "codex", state: codexOn, ...(codexOn === "on" ? { config: codexConfig() } : {}) });
+  const codexProblem = codexWarning(codexOn);
+  if (codexProblem) emit({ type: "notice", level: "warn", text: codexProblem });
   codex = codexBin
     ? new CodexRunner({
         bin: codexBin,
