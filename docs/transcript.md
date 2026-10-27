@@ -1,25 +1,26 @@
 # The transcript
 
-The transcript fills the Claude column above the prompt. It looks like Claude Code: your prompts after `❯`, Claude's replies, and a spinner while Claude works.
+<a id="rendering"></a>
 
-## Rendering
+The transcript is the conversation above the prompt: your messages, Claude's replies, activity and notices. Prompts, replies, tool calls and notices carry a dim timestamp when there is room, including in agent logs and resumed sessions.
 
-Claude's replies render their markdown, as in Claude Code: bold, inline code and links show without their markers, and code blocks have syntax colors. Tool lines, their results and your prompts show as they are, so a command such as `grep '**' *.lua` keeps its stars. Paths under the working directory show short: `Bash(find . -name '*.lua')`.
+Claude's replies render Markdown, including syntax-highlighted code blocks. Prompts and tool input remain literal, so shell syntax is not mistaken for Markdown. Paths under the working directory are shortened for display.
 
-Your prompts, each block of Claude's text, tool calls and notices show the time they arrived, dimmed at the right edge. An agent's log shows them too. A time shows only where its row has room for all of it.
+<a id="tool-calls"></a>
+<a id="the-todo-list"></a>
 
-## Tool calls
+## Tool output
 
-With the tool pane on, the transcript keeps one dim line for each run of tool calls, such as `⎿  7 tool calls · 1 failed`, and the pane under the code window lists the calls. With the pane off (`<leader>us`), the calls show in the transcript, as in Claude Code. Claude's questions and your answers always show in the transcript. See [screen.md](screen.md).
+By default, the [tool pane](screen.md#the-tool-pane) holds tool calls and the transcript summarizes each run, for example `7 tool calls · 1 failed`. Hide the pane with `<leader>us` to show calls in the transcript instead. Questions and answers always stay in the transcript.
 
-In the tool pane, a subagent's line shows its last three tool calls while it works, and then a summary such as `Done (12 tool uses · 24.1k tokens · 1m 2s)`. A compaction shows as a notice with the tokens before and after.
+`Ctrl-O` in the prompt toggles verbose mode for the transcript, tool pane and agent logs. It shows full tool input and output in place of abbreviated results; summaries such as `Read 40 lines` remain summaries unless the call failed. The choice lasts until anvim quits.
 
-`Ctrl-O` in the prompt turns verbose mode on and off, as in Claude Code. In verbose mode, each tool call shows its whole input, such as every line of a Bash command. Its result shows every line of the text that Claude got, instead of the first line and a count such as `... +9 lines`. A summary such as `Read 40 lines` stays as it is, unless the call failed. Verbose mode applies to the transcript, the tool pane and each agent's log, and the pane's tab says `verbose`. It lasts until anvim quits.
+An open todo list stays below the newest output, with the active item in bold and named by the spinner. Completed lists stay where they were. Claude Code supplies TodoWrite or TaskCreate/TaskUpdate; for its newest models these tools require `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`.
 
-## The todo list
+<a id="read-mode"></a>
 
-Claude's todo list stays at the end of the transcript, under the newest output, while it has open items. Claude Code keeps it with TodoWrite, or with TaskCreate and TaskUpdate. For its newest models, it offers these tools only when `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` is set. The item in progress is bold, and the spinner names it. Once every item is done, the list stays in the transcript where it was.
+## Scroll, search and copy
 
-## Read mode
+The transcript normally takes no focus. Scroll it with the mouse wheel, `PageUp`/`PageDown`, or `Ctrl-U`, `Ctrl-D`, `Ctrl-B` and `Ctrl-F` in prompt normal mode. New output follows the bottom unless you have scrolled up; scroll back down or send a prompt to follow it again.
 
-The transcript takes no focus. To yank or search in it, enter read mode with `<leader>cr` or `:AnvimTranscript`. `q` or `Esc` goes back to the prompt, and `i`, `a` and the other insert keys go back and type. A mouse drag across the transcript selects text. When you let go of the button, anvim copies the selection to the clipboard, without the transcript's margin, and a notice says so. A drag that started from the prompt then goes back there, and you type on if you were typing. `<leader>cy` yanks Claude's last reply to the clipboard without read mode.
+To use Vim motions, search or yank, enter read mode with `<leader>cr` or `:AnvimTranscript`. `q` or `Esc` returns to the prompt; `i`, `a` and the other insert keys return and begin typing. You can also drag across the transcript: releasing the mouse copies the selection without its margin. `<leader>cy` copies Claude's last reply directly.

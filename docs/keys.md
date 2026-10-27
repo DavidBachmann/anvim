@@ -1,15 +1,19 @@
-# Keys
+# Key reference
 
-`<leader>` is Space. `<leader>?` shows every key of anvim in one view, grouped by where it works, as in the tables below. In the prompt, `?` in normal mode shows it too. While you type, `?` shows it only when the prompt is empty and no request waits. Otherwise it types a `?`. A dim tag names the mode of a key that does not work in normal mode, such as `insert` or `visual`. `j` and `k` scroll the view when it does not fit. `q`, `Esc` or `:q` closes it, and the cursor goes back where it was, in the same mode. Vim's own keys work as usual.
+<a id="keys"></a>
 
-The keys for reading sit where LazyVim puts them, so a LazyVim user finds them at once. Keys that edit, such as code actions, rename and window splits, are left out. So are Neovim's own keys that only change text: `gc` and `gcc`, which comment, `[<Space>` and `]<Space>`, which add blank lines, and `&`, which repeats a substitution. In operator-pending mode `gc` stays, because it selects a comment: `cgc` points Claude at one. In the explorer, the keys that add, delete, rename, copy, move and paste files do nothing, and so does `Ctrl-C`, which would change the working directory. In the git logs, `Enter` goes to the commit's diff and never checks out. Git status and the diff picker stage with `Tab`, but cannot restore.
+`<leader>` is Space. Use `<leader>?` for the live key view, grouped by context. In prompt normal mode, `?` also opens it; in insert mode it does so only in an empty prompt with no request waiting. Otherwise `?` is text. Scroll with `j`/`k`, and close with `q`, `Esc` or `:q`; the previous cursor and mode return. Mode tags identify mappings that need insert or visual mode.
 
-## Everywhere
+The tables below are a quick reference; Vim's normal motions still work. The reading keys follow LazyVim conventions. File-changing mappings such as rename and code actions are unavailable in the read-only viewer; split actions open files in the code window. In the explorer, file operations and `Ctrl-C` (change directory) are disabled. Git pickers can stage with `Tab` but cannot restore files or check out commits. Neovim's text-changing `gc`, `gcc`, `[<Space>`, `]<Space>` and `&` are also disabled; operator-pending `gc` remains a comment text object, so `cgc` can reference a comment for Claude.
+
+<a id="everywhere"></a>
+
+## General navigation
 
 | Key | Action |
 | --- | --- |
-| `<leader>?` | Show every key of anvim |
-| `Ctrl-H`, `Ctrl-J`, `Ctrl-K`, `Ctrl-L` | Go to the window on the left, below, above or on the right |
+| `<leader>?` | Open the key view |
+| `Ctrl-H`, `Ctrl-J`, `Ctrl-K`, `Ctrl-L` | Move left, down, up or right between windows |
 | `Shift-H`, `Shift-L` | Previous and next buffer, outside the code window |
 | `j`, `k` | Move by screen line in wrapped text, by line with a count |
 | `Esc` | Clear the search highlight |
@@ -34,10 +38,10 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 
 | Key | Action |
 | --- | --- |
-| `i`, `a`, `I`, `A`, `o`, `O` | Go to the prompt and type where you stopped |
-| `c` in visual mode | Put a reference to the selected lines in the prompt |
-| `c{motion}`, `cc` | Put a reference to the lines of the motion, or to the current line, in the prompt |
-| `<leader>cb` | Put a reference to the selection, or to the whole file, in the prompt |
+| `i`, `a`, `I`, `A`, `o`, `O` | Move to the prompt and type where you stopped |
+| `c` in visual mode | Insert a reference to the selected lines in the prompt |
+| `c{motion}`, `cc` | Insert a reference to the lines of the motion, or to the current line, in the prompt |
+| `<leader>cb` | Insert a reference to the selection, or to the whole file, in the prompt |
 | `Shift-H`, `Shift-L` | Open the previous and next tab of the bar, around the ends. A click opens a tab |
 | `gd`, `gr`, `gI`, `gy`, `gD` | Definition, references, implementation, type definition, declaration, in a buffer with a language server |
 | `K` | Hover |
@@ -62,17 +66,17 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 | `Ctrl-B`, in insert mode | Move the running agents and Bash commands to the background |
 | `Shift-Tab` | Cycle the permission mode |
 | `Ctrl-G` | Write the prompt in a large window |
-| `Ctrl-O` | Turn verbose mode on and off: tool calls show their whole input and output |
+| `Ctrl-O` | Toggle verbose mode: tool calls show their whole input and output |
 | `j`, `Down` on the last line, in normal mode | Select the agent count in the footer, while agents run |
 | `k`, `Up`, `Esc` | End the selection of the agent count |
 | `f` on the selected agent count | Follow the next agent, and Claude after the last |
 | `Up` on the first line, `Ctrl-P` | Take the queued prompts back into the prompt, to change them, while prompts are queued |
-| `Up` on the first line, `Down` on the last | Go back and forth through past prompts, in insert mode |
-| `Ctrl-P`, `Ctrl-N` | Go back and forth through past prompts, in normal mode |
+| `Up` on the first line, `Down` on the last | Move through prompt history, in insert mode |
+| `Ctrl-P`, `Ctrl-N` | Move through prompt history, in normal mode |
 | `Ctrl-U`, `Ctrl-D`, `Ctrl-B`, `Ctrl-F` | Scroll the transcript, in normal mode |
 | `PageUp`, `PageDown` | Scroll the transcript |
 | `@`, `/` | Complete a file, or a slash command at the start, in insert mode |
-| `?` | Show every key of anvim, in normal mode or in an empty prompt |
+| `?` | Open the key view, in normal mode or in an empty prompt |
 | `Ctrl-Space`, `Ctrl-E` | Show and close the completion menu, in insert mode. `Ctrl-Space` also completes words from the open files |
 | `Ctrl-N`, `Ctrl-P`, `Up`, `Down` | Next and previous item, while the menu is open |
 | `Ctrl-Y`, `Enter` | Accept the highlighted item |
@@ -90,7 +94,7 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 
 | Key | Action |
 | --- | --- |
-| `@` | Put a reference to the file in the prompt |
+| `@` | Insert a reference to the file in the prompt |
 | `Ctrl-H`, `Ctrl-L`, `Ctrl-W h`, `Ctrl-W l` | Go to the code window |
 | `?` | Show the explorer's own keys |
 
@@ -98,8 +102,8 @@ The keys for reading sit where LazyVim puts them, so a LazyVim user finds them a
 
 | Key | Action |
 | --- | --- |
-| `q`, `Esc` | Go back to the prompt |
-| `i`, `a`, `I`, `A`, `o`, `O` | Go back to the prompt and type |
+| `q`, `Esc` | Return to the prompt |
+| `i`, `a`, `I`, `A`, `o`, `O` | Return to the prompt and type |
 | Mouse drag | Select text, and copy it to the clipboard when you let go |
 | Mouse wheel | Scroll the transcript or the tool pane, from any window |
 
@@ -114,7 +118,9 @@ These keys work in the prompt, in normal mode, while Claude waits for your answe
 | `j`, `k` | Move to the next or previous option |
 | `Esc`, a pause, `Esc` | No |
 
-## Claude and its agents
+<a id="claude-and-its-agents"></a>
+
+## Claude and agents
 
 | Key | Action |
 | --- | --- |

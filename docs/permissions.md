@@ -1,72 +1,74 @@
 # Permissions and the sandbox
 
+By default, anvim starts in **bypass mode with the Bash sandbox enabled**. Claude can edit project files and run sandboxed commands without ordinary permission prompts. The sandbox restricts command writes, and anvim guards specific gaps described below. It does not protect your project from changes: keep your work in version control.
+
 ## Modes
 
-anvim starts in bypass mode, with the sandbox on: Claude edits files and runs commands in the project without asking. The sandbox keeps its Bash commands from writing outside the project, and anvim still asks where the sandbox has gaps (see [The sandbox](#the-sandbox)). Without a sandbox, anvim starts in default mode instead, unless you chose a mode.
+Choose a starting mode with `--mode default`, `--mode acceptEdits`, `--mode plan` or `--mode bypassPermissions`. Set `ANVIM_MODE` in your shell to make a choice persistent; `--mode` overrides it. Without an explicit choice, anvim falls back to default mode if the sandbox is off or cannot start.
 
-Start it with `--mode default`, `--mode acceptEdits` or `--mode plan` for another mode. Default mode asks before Claude edits a file or runs a command, as Claude Code does, unless your Claude Code settings allow it. anvim's editor tools never ask, except `codex`, which starts a Codex agent that can write files ([subagents.md](subagents.md#codex-agents)). Default and accept edits mode ask before it runs, bypass mode asks before a run that writes ([The gaps](#the-gaps)), and plan mode runs it read-only. To start in another mode by default, put `export ANVIM_MODE=default`, for example, in your shell profile. `--mode` wins over it.
+In default mode, Claude Code asks before edits and commands that need approval, subject to your Claude Code permission rules. `acceptEdits` accepts edits; plan mode keeps work read-only until a plan is approved. In the prompt, `Shift-Tab` cycles default, accept edits and plan, plus bypass if anvim started in bypass. The statusline shows a changed mode; plan mode always appears.
 
-`Shift-Tab` in the prompt cycles default, accept edits and plan mode, plus bypass when anvim started in it. The statusline shows the mode after the mode block only while it differs from the one anvim started in, such as `⏵⏵ accept edits on`, or `⏵ manual mode on` for default mode. Plan mode always shows.
+anvim's editor tools do not ask for permission. The `codex` tool is an exception: default and accept edits modes ask before it runs, bypass asks before a write-capable run, and plan mode runs it read-only. See [Codex agents](subagents.md#codex-agents) and [the gaps](#the-gaps).
 
-## Requests
+<a id="requests"></a>
 
-When Claude needs your yes, the request appears at the bottom of the Claude column, as in Claude Code. An edit streams into the code window before the request opens, so you see the change before you answer. If you say no, the buffer shows the file on disk again. Claude's questions and its plan, when it wants to leave plan mode, appear the same way.
+## Requests and plans
 
-If your cursor is outside the prompt, anvim leaves it there, posts a notification and shows "⏺ Claude is waiting" in the statusline. A request brings the transcript to its end, even if you scrolled it up. In read mode the transcript stays where you read, and it goes to the request when you leave read mode. `Esc` there takes you back to the prompt and answers nothing. A choice key never answers a request that is out of view: it brings the request into view instead.
+A permission request, question or plan approval appears at the bottom of the Claude column. An edit preview appears in the code window before its request; rejecting it restores the view of the file on disk. If you are elsewhere, the cursor stays put, the statusline says Claude is waiting, and anvim posts a notification. A request brings the transcript to the bottom, except while you are in read mode; leaving read mode brings it into view. `Esc` there returns to the prompt without answering. An answer key pressed while the request is out of view brings it into view first.
 
-### Answering
+<a id="answering"></a>
 
-These keys work in the prompt, in normal mode, while Claude waits:
+### Answering a request
+
+In the prompt's **normal mode**:
 
 | Key | Action |
 | --- | --- |
-| `1` to `9` | Choose that option |
+| `1`–`9` | Choose an option |
 | `Enter` | Choose the highlighted option |
-| `j`, `k` | Move to the next or previous option |
-| `Esc`, a pause, `Esc` | No |
+| `j`, `k` | Move between options |
+| `Esc`, pause, `Esc` | Answer No |
 
-While a request waits, normal mode in the prompt is for choosing. Typing your prompt never answers: if you are typing when a request opens, you keep typing, digits are text, and `Enter` keeps your prompt without sending it or answering. Press `Esc`, then choose. The line above the prompt says which keys answer, and in insert mode it starts with `esc to leave insert mode`. A choice also does nothing within 0.4 s of the request opening or of the last character you typed. Going to the prompt while Claude waits leaves you in normal mode. After you answer, the prompt stays in normal mode, also if you were typing before.
+If a request arrives while you are typing, you can finish your draft: digits remain text and `Enter` keeps the draft without sending or answering. Press `Esc` to leave insert mode, then choose. Choices are ignored for 0.4 seconds after the request opens or after your last typed character. After an answer, the prompt stays in normal mode.
 
-`Esc` answers No only when you press it twice, with a pause of at least 0.4 s between the presses and within 3 s. The first press only arms it, and the request shows that choice in red. See [prompt.md](prompt.md#stopping-claude).
+The first `Esc` in normal mode arms No; press again after at least 0.4 seconds and within three seconds. See [stopping Claude](prompt.md#stopping-claude). Options such as “No, and tell Claude what to do differently”, “No, keep planning” and a question's “Other” accept text. `Enter` sends that text; two Esc presses return to the options. Your draft prompt is restored afterwards.
 
-"No, and tell Claude what to do differently", "No, keep planning" and a question's "Other" take typed text. `Enter` sends it, and `Esc` twice goes back to the options. Your draft prompt comes back afterwards. If Claude Code names a path outside the working directory, the request shows it. "Yes, and don't ask again" names the rules that Claude Code suggests, such as `Bash(npm test:*)`, and applies them all. Claude Code saves project rules in the project's `.claude/settings.local.json`. Plan approval offers Claude Code's choices: accept edits or manual approval, with bypass in place of accept edits when anvim started in bypass mode. The plan stays in the transcript. A multi-select question has a Submit option after its choices. Your answers stay in the transcript too, also with the tool pane on, as in Claude Code: `User answered Claude's questions:`, then each question with your answer, typed text included.
+A request shows paths outside the working directory. “Yes, and don't ask again” displays and applies Claude Code's suggested rules, such as `Bash(npm test:*)`; project rules are saved in `.claude/settings.local.json`. Plan approval offers accept edits or manual approval, with bypass instead of accept edits when anvim started in bypass. Multi-select questions have a Submit option. Plans, questions and your answers remain in the transcript.
 
 ## The sandbox
 
-anvim runs Claude's Bash commands in Claude Code's own sandbox: Seatbelt (`sandbox-exec`) on macOS, and bubblewrap on Linux. A command can write only in the project, in the sandbox's temp dir, `$TMPDIR`, and in the caches of npm, bun and go build. So an accidental `rm -rf ~/something` fails with "Operation not permitted". Commands can still read every file.
+Claude's Bash commands use Claude Code's sandbox: Seatbelt (`sandbox-exec`) on macOS and bubblewrap on Linux. By default, commands can write in the project, the sandbox temp directory and `$TMPDIR`, and the npm, Bun and Go build caches. They can read files outside those locations. The sandbox is designed to catch accidents, not to contain an agent trying to escape.
 
-The sandbox catches accidents. It does not stop an agent that tries to get out, and it does not protect the project itself, so keep your work in git. In default mode, Claude asks before a command as it does without the sandbox: read-only commands such as `ls` and `cat` run without a prompt, and the others ask. Bypass mode runs commands without asking, but still in the sandbox.
+The sandbox applies to Bash; Edit and Write run outside it. anvim guards sensitive edit destinations separately. In default mode, read-only commands such as `ls` and `cat` normally run without a prompt, while other commands ask. Bypass mode runs commands without ordinary prompts, subject to the guards below.
 
-When you start anvim in a subdirectory of a git repo, the sandbox lets commands write in the repo's root too, so that `git add` and `git commit` work. Claude Code keeps `.git/config` and `.git/hooks` read-only, so `git config` fails. This does not apply in a linked worktree or a submodule, whose git dir is elsewhere.
+When started in a subdirectory of a Git repository, the sandbox also permits writes in the repository root so commands such as `git add` and `git commit` work. Claude Code keeps `.git/config` and `.git/hooks` read-only. This additional root allowance does not apply when the repository root is your home directory, or in a linked worktree or submodule whose Git directory is elsewhere.
 
-A command that connects to a new host asks first, in default mode: "Network access" names the host. "Yes, and don't ask again" saves a `WebFetch(domain:<host>)` rule in the project's `.claude/settings.local.json`. That rule also lets Claude's WebFetch tool reach the host without a prompt. In bypass mode, a command can connect to any host without asking.
+In default mode, a command connecting to a new host asks for network access. “Yes, and don't ask again” saves a `WebFetch(domain:<host>)` project rule, which also permits Claude's WebFetch tool to reach that host. In bypass mode, commands can connect to hosts without asking.
 
 ### The gaps
 
-The sandbox has gaps, and anvim asks at each of them, in every mode, bypass mode too. The prompt says why in a yellow line, and it has no "don't ask again", because anvim would ask again anyway:
+The following guards can prompt even in bypass mode. Their yellow explanation says why, and they offer no persistent “don't ask again” choice:
 
-- When a command fails in the sandbox, Claude often runs it again outside the sandbox, with `dangerouslyDisableSandbox`. anvim asks first, under the title "Bash command (unsandboxed)", with the line "runs outside the sandbox".
-- A command that matches `sandbox.excludedCommands` in a settings file runs outside the sandbox, and a repo's own `.claude/settings.json` can list such commands. anvim asks: "runs outside the sandbox (excluded command)". It reads the list from Claude Code for each command. It asks for any command line in which a command, after quotes, `VAR=value` words and wrappers such as `timeout` or `sudo`, starts with an entry's words before its first `*`: with `npm run *`, `npm run build` asks and `npm test` does not. That is more often than Claude Code lets a command out, because Claude Code's parser has forms that anvim cannot follow.
-- Claude's Edit and Write tools run outside the sandbox. anvim asks for an edit outside the trusted dirs: "outside the trusted dirs: ~/notes.txt". Default mode asks there anyway, and it stays one prompt. The trusted dirs are the project, the dirs in `sandbox.filesystem.allowWrite` (the git root above the project and the npm, bun and go build caches among them), the sandbox's temp dir `/tmp/claude-<uid>` (or `claude-<uid>` in `$CLAUDE_CODE_TMPDIR`), and `projects/`, `plans/` and `agent-memory/` in Claude Code's config dir, which hold its memory, its plans and the memory of subagents. Plain `/tmp` asks. Symlinks count where they lead, so a link in the project that points to `~` asks too.
-- An edit of the project's `.claude/settings.json` or `.claude/settings.local.json`, or of those in the git root, asks: "changes the sandbox's settings". These files can widen the sandbox, for example with `allowWrite` or `excludedCommands`.
-- An edit of a file that tools read as config and run, from Claude Code's own list, asks: "changes a config that runs outside the sandbox". The list has dirs such as `.git`, `.claude`, `.vscode` and `.husky`, and files such as `.mcp.json`, `.envrc`, `.npmrc`, `.zshrc` and `lefthook.yml`. An MCP server in `.mcp.json` runs outside the sandbox, and a git hook in `.git/hooks` runs when you use git in your own terminal. Default mode asks for these anyway, and it stays one prompt. As in Claude Code, edits in `.claude/worktrees`, where Claude's worktree agents work, do not ask. A hook script that your settings name in another place stays a gap: an edit of it runs outside the sandbox at the next hook.
-- A Codex agent ([subagents.md](subagents.md#codex-agents)) runs in Codex's own sandbox, which lets it write files in the project that Claude's edits ask for, such as `.envrc`, `.npmrc` and `.claude/settings.json`. anvim asks before a Codex run that may write: "writes outside the sandbox, also files that run code". Default and accept edits mode ask there anyway, and it stays one prompt. A read-only run and plan mode do not ask. This call never goes back to Claude first, because a Codex run that writes has no way inside the sandbox.
+- **Unsandboxed Bash.** A command requesting `dangerouslyDisableSandbox` asks under “Bash command (unsandboxed)”.
+- **Excluded commands.** Commands matching `sandbox.excludedCommands` run outside the sandbox, including entries from a repository's `.claude/settings.json`. anvim checks the list for each command and may ask more often than Claude Code's own parser: it considers command prefixes before an entry's first `*`, including after quotes, environment assignments and wrappers such as `timeout` or `sudo`. For example, `npm run *` catches `npm run build`, not `npm test`.
+- **Edits outside trusted directories.** Trusted locations include the project, non-glob `sandbox.filesystem.allowWrite` entries (including the Git root and configured caches), the sandbox temp directory, and `projects/`, `plans/` and `agent-memory/` in the Claude config directory. The sandbox temp directory is `/tmp/claude-<uid>`, or `claude-<uid>` under `$CLAUDE_CODE_TMPDIR`; plain `/tmp` is not automatically trusted. Glob entries are not trusted by the edit guard, even if the Bash sandbox expands them. Symlinks are checked at their resolved destinations. Default mode combines this with its ordinary approval into one prompt.
+- **Sandbox settings.** Editing the project's or Git root's `.claude/settings.json` or `.claude/settings.local.json` asks because these can expand `allowWrite` or exclude commands.
+- **Configuration that runs code.** Claude Code's list includes directories such as `.git`, `.claude`, `.vscode` and `.husky`, and files such as `.mcp.json`, `.envrc`, `.npmrc`, `.zshrc` and `lefthook.yml`. MCP servers and Git hooks, for example, can run outside the sandbox later. For this configuration-file guard, the first `.claude/worktrees` path component is exempt, as in Claude Code; other guards can still apply. A hook script configured elsewhere remains a gap: editing it can affect a later hook without this guard.
+- **Codex writes.** Codex has its own sandbox and can write project files, including configuration that anvim would guard for Claude. In bypass mode anvim asks before a write-capable Codex run, but not for a read-only run. In default and accept edits modes, Codex calls are subject to ordinary approval. Plan mode runs Codex read-only.
 
-A model sometimes takes one of these ways by accident, when a way inside the sandbox exists. So anvim does not ask at the first such call of Claude or of each subagent. It sends the call back to Claude with a hint. The hint says that anvim has not asked you yet, and it names a way that needs no prompt. It also says that Claude can send the same call again to get your answer. After that one send-back, each such call of that agent asks you. The transcript shows the call's result as "Sent back to Claude: runs outside the sandbox". An agent's log names the agent. `/clear` starts over for Claude. anvim writes each send-back, and each later prompt of that agent, to `~/.local/state/anvim/anvim.log`. These lines start with `send-back:`.
-
-`--no-sandbox` turns these prompts off too.
+For Claude and each subagent, anvim sends the first guarded call back with a hint instead of immediately asking. The hint explains that you have not been asked, suggests an alternative and permits the agent to retry. Later guarded calls from that agent ask you. The transcript shows the send-back, and `~/.local/state/anvim/anvim.log` records send-backs and subsequent prompts with `send-back:`. `/clear` resets Claude's count. Write-capable Codex calls are the exception: they ask directly because there is no equivalent run inside Claude's sandbox. `--no-sandbox` disables these guards as well.
 
 ### Without a sandbox
 
-On Linux, the sandbox needs `bwrap` (from bubblewrap) and `socat`. Without them, anvim warns, commands run without the sandbox, and anvim runs in default mode, so Claude asks before it runs a tool. The same happens when Claude Code finds that the sandbox cannot start. `--no-sandbox` also starts anvim in default mode, without a warning. A mode that you chose with `--mode`, `ANVIM_MODE` or your own spec stays: with `--mode bypassPermissions`, commands then run anywhere without asking. `--dangerously-skip-permissions` is short for `--no-sandbox --mode bypassPermissions`: Claude runs every tool anywhere, and only its questions and plans wait for you.
+On Linux, install `bwrap` and `socat` to run the sandbox. If its pre-check fails or Claude Code cannot start it, anvim warns and uses default mode unless you explicitly chose a mode. `--no-sandbox` or `ANVIM_SANDBOX=0` turns it off and uses the same fallback without a warning; a personal spec can also set `sandbox = false`.
 
-`:checkhealth anvim` says whether the sandbox is on, and which mode anvim starts in and why. `anvim --no-sandbox`, or `ANVIM_SANDBOX=0`, turns it off, also when a settings file turns it on. A spec of your own can set the anvim plugin's `sandbox` option to `false` too.
+An explicitly chosen mode remains in effect. In particular, `--no-sandbox --mode bypassPermissions`, also spelled `--dangerously-skip-permissions`, lets Claude run commands and make edits without the sandbox guards or ordinary approval prompts. anvim's editor tools still enforce their own path restrictions. Questions and plan approvals still wait for you. `:checkhealth anvim` reports the sandbox state and starting mode, including why it was selected.
 
 ### Caches and other dirs
 
-Some tools write to caches outside the project, and fail in the sandbox. anvim lets the sandbox write the caches of npm (`~/.npm`, also for `npx`), bun install (`~/.bun/install/cache`) and go build (`~/Library/Caches/go-build` on macOS, `~/.cache/go-build` on Linux). In bypass mode, Claude's edits there do not ask either. These caches hold code that runs later outside the sandbox, such as the packages in `~/.npm/_npx`, so a command in the sandbox can change what runs outside it. That fits the sandbox's job: it catches accidents, not an agent that tries to get out.
+anvim allows sandboxed writes to npm's `~/.npm` (including `npx`), Bun's `~/.bun/install/cache`, and the Go build cache (`~/Library/Caches/go-build` on macOS or `~/.cache/go-build` on Linux). Those caches can contain code later run outside the sandbox. Bypass mode also allows Claude's edits there without a prompt.
 
-For another tool, add its dir to your own Claude Code settings, `~/.claude/settings.json`. These lists add to anvim's sandbox options:
+To allow another cache, add it to your Claude Code settings, for example `~/.claude/settings.json`:
 
 ```json
 {
@@ -78,7 +80,7 @@ For another tool, add its dir to your own Claude Code settings, `~/.claude/setti
 }
 ```
 
-Each entry lets every sandboxed command write there. Two more keys in `sandbox` make other tools work on macOS, at a cost:
+Every sandboxed command can write to an allowed directory. On macOS, two additional settings can enable tools at a cost:
 
-- `"network": { "allowUnixSockets": ["<path>"] }`, with the real path of `$SSH_AUTH_SOCK`, such as `/private/var/run/com.apple.launchd.../Listeners`, makes `ssh-add` work. Every sandboxed command can then sign with your SSH keys, and the path changes when you log in again. git over ssh works without it.
-- `"enableWeakerNetworkIsolation": true` makes `gh` and `pip` work, because they check TLS certificates through the system's trust service. The Agent SDK's docs say that this opens a possible path for data to leave the machine.
+- `"network": { "allowUnixSockets": ["<path>"] }` with the real path of `$SSH_AUTH_SOCK` permits `ssh-add`. Every sandboxed command can then sign with your SSH keys, and the path changes on login. Git over SSH works without this setting.
+- `"enableWeakerNetworkIsolation": true` enables tools such as `gh` and `pip` that consult the system trust service for TLS. The Agent SDK documentation warns that this can create a path for data to leave the machine.
