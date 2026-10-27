@@ -8,7 +8,7 @@ anvim runs its own Neovim configuration and keeps its plugins and state separate
 
 ## Before you start
 
-Install Neovim 0.12 or newer, Git and [Bun](https://bun.sh). Sign in with Claude Code (`claude auth login`), or add an account from anvim with `/account add personal`. For the full editor experience, also install ripgrep, a C compiler, curl, tar, gzip, Node.js and npm. They support search, parser builds and language server installation. A [Nerd Font](https://www.nerdfonts.com) gives the interface its icons. Google Chrome is needed for PNG output from the development screen tool and the debug screenshot tool.
+Install Neovim 0.12 or newer, Git and [Bun](https://bun.sh). Sign in with Claude Code (`claude auth login`), or add an account from anvim with `/account add personal`. For the full editor experience, also install ripgrep, a C compiler, curl, tar, gzip, Node.js and npm. They support search, parser builds and language server installation. A [Nerd Font](https://www.nerdfonts.com) gives the interface its icons. Google Chrome is needed for PNG output from the development screen tool and the debug screenshot tool. [Codex agents](subagents.md#codex-agents) are optional and off by default. They need the OpenAI Codex CLI, logged in with `codex login`, and anvim started with `--codex`.
 
 On Linux, the Bash sandbox also needs `bwrap` and `socat`. If it cannot start, anvim warns and falls back to default permission mode unless you explicitly chose a mode. See [permissions](permissions.md#without-a-sandbox).
 

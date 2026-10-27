@@ -56,7 +56,7 @@ You'll still need Claude Code's terminal for MCP sign-in, paid cloud reviews and
 
 ## Install
 
-You'll need Neovim 0.12 or newer, git, [Bun](https://bun.sh) and Claude Code, logged in. The [install guide](docs/install.md) has the full list.
+You'll need Neovim 0.12 or newer, git, [Bun](https://bun.sh) and Claude Code, logged in. Codex is optional: bring the Codex CLI, logged in, and start with `--codex`. The [install guide](docs/install.md) has the full list.
 
 ```sh
 git clone https://github.com/DavidBachmann/anvim.git
