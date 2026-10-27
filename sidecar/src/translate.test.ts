@@ -4,6 +4,7 @@ import type { Event } from "./protocol";
 import {
   contextEvent,
   limitsEvent,
+  limitsResetDelay,
   mainThread,
   mcpEvent,
   modelsEvent,
@@ -294,6 +295,12 @@ describe("Translator", () => {
     // The statusline's share of the same answer.
     expect(limitsEvent(answer)).toEqual({ type: "limits", session: 12, week: 33 });
     expect(limitsEvent(apiKey)).toEqual({ type: "limits" });
+    // The statusline fetches again a minute after the first reset, even when idle.
+    const [session, week] = [Date.parse("2026-10-23T22:59:59.901Z"), Date.parse("2026-10-24T02:59:59Z")];
+    expect(limitsResetDelay(answer, session - 1000)).toBe(61_000);
+    expect(limitsResetDelay(answer, session)).toBe(week - session + 60_000);
+    expect(limitsResetDelay(answer, week)).toBeUndefined();
+    expect(limitsResetDelay(apiKey)).toBeUndefined();
   });
 
   test("context_usage draws Claude Code's grid and legend, and sums the MCP tools by server", () => {

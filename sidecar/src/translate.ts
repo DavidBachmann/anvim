@@ -467,6 +467,15 @@ export function limitsEvent(u: SDKControlGetUsageResponse): Event {
   };
 }
 
+// The time until a minute after the first of the two windows resets. The
+// minute gives the usage endpoint time to start the new window.
+export function limitsResetDelay(u: SDKControlGetUsageResponse, now = Date.now()): number | undefined {
+  const resets = [u.rate_limits?.five_hour, u.rate_limits?.seven_day]
+    .map((w) => Date.parse(w?.resets_at ?? ""))
+    .filter((t) => t > now);
+  return resets.length ? Math.min(...resets) - now + 60_000 : undefined;
+}
+
 // The first rows, and how many more there are.
 function top(rows: string[], n = 5): string[] {
   return rows.length > n ? [...rows.slice(0, n), `and ${rows.length - n} more`] : rows;

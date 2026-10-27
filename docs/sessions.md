@@ -18,7 +18,7 @@ Choosing a session restarts Claude and reconstructs its transcript. If Claude Co
 
 `/model` or `<leader>cm` opens the model picker; `/model sonnet` switches directly. `/effort` lists the current model's supported levels and `/effort high` selects one for this session. `/effort default` returns to Claude Code's configured level, or the model default; that default follows a model switch. An explicit level remains selected across model switches. `/effort current` asks Claude Code which level applies.
 
-The statusline shows the model and, when supported, its effort. It also shows context-window use, updated at the end of a turn, and the login's email. For accounts with plan limits, `[S27%/W80%]` gives the five-hour and weekly usage, updated at startup and after turns. API-key logins without plan limits show no such meter. Codex agents have separate [model and effort settings](subagents.md#codex-agents).
+The statusline shows the model and, when supported, its effort. It also shows context-window use, updated at the end of a turn, and the login's email. For accounts with plan limits, `[S27%/W80%]` gives the five-hour and weekly usage, updated at startup, after turns, every five minutes during a long turn, and a minute after a window resets. API-key logins without plan limits show no such meter. Codex agents have separate [model and effort settings](subagents.md#codex-agents).
 
 ## Accounts
 

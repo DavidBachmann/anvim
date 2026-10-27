@@ -29,6 +29,7 @@ import {
   commandsEvent,
   contextEvent,
   limitsEvent,
+  limitsResetDelay,
   mcpEvent,
   modelsEvent,
   sessionInfoEvent,
@@ -128,11 +129,22 @@ async function reportContext(): Promise<void> {
   }
 }
 
+// The end of each turn fetches the plan usage. A long turn also fetches it
+// every five minutes, and a timer fetches it after a window resets.
+const LIMITS_EVERY_MS = 5 * 60_000;
+let limitsAt = 0;
+let limitsReset: ReturnType<typeof setTimeout> | undefined;
+
 // skipBehaviors leaves out the scan of local transcripts that /usage needs.
 async function reportLimits(): Promise<void> {
+  limitsAt = Date.now();
+  clearTimeout(limitsReset);
   try {
     const usage = await session?.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true });
-    if (usage) emit(limitsEvent(usage));
+    if (!usage) return;
+    emit(limitsEvent(usage));
+    const delay = limitsResetDelay(usage);
+    if (delay !== undefined) limitsReset = setTimeout(() => void reportLimits(), delay).unref();
   } catch {
     // As with the context, the next turn tries again.
   }
@@ -349,9 +361,9 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     // /clear: no conversation waits for the result of a Codex agent.
     if ((msg as { type: string }).type === "conversation_reset") codex?.stopAll();
     for (const ev of translate(translator, msg)) emit(ev);
+    if (msg.type === "result" || Date.now() - limitsAt > LIMITS_EVERY_MS) void reportLimits();
     if (msg.type === "result") {
       void reportContext();
-      void reportLimits();
       // A settings file can change the inherited effort meanwhile.
       void control(reportEffort);
     }
@@ -427,7 +439,10 @@ export async function handle(cmd: Command): Promise<void> {
       await control(async (q) => {
         try {
           // The SDK marks this call as one that may change in any release.
-          emit(usageEvent(await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET()));
+          const usage = await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET();
+          emit(usageEvent(usage));
+          // The statusline shows the same numbers as the Usage tab.
+          emit(limitsEvent(usage));
         } catch (err) {
           emit({ type: "usage", error: errorText(err) });
         }
