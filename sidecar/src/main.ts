@@ -276,9 +276,17 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     start,
     fallBack,
   );
-  const [resume, { state: codexOn, bin: codexBin }] = await Promise.all([resumeTarget(cmd), codexCheck]);
-  emit({ type: "codex", state: codexOn, ...(codexOn === "on" ? { config: codexConfig() } : {}) });
-  const codexProblem = codexWarning(codexOn);
+  const [resume, { state: codexOn, bin: codexBin, models: codexModels }] = await Promise.all([
+    resumeTarget(cmd),
+    codexCheck,
+  ]);
+  emit({
+    type: "codex",
+    state: codexOn,
+    ...(codexOn === "on" ? { config: codexConfig() } : {}),
+    ...(codexModels ? { models: codexModels } : {}),
+  });
+  const codexProblem = codexWarning(codexOn, codexModels);
   if (codexProblem) emit({ type: "notice", level: "warn", text: codexProblem });
   codex = codexBin
     ? new CodexRunner({
@@ -287,6 +295,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
         emit,
         notify: (text) => inbox.push(text),
         defaults: () => codexDefaults,
+        models: codexModels,
       })
     : undefined;
   const options: Options = {

@@ -596,7 +596,7 @@ function M.attach()
   sidecar.on("commands", add_commands)
   sidecar.on("history", M.history)
   sidecar.on("codex", function(ev)
-    state.codex, state.codex_config = ev.state, ev.config
+    state.codex, state.codex_config, state.codex_models = ev.state, ev.config, ev.models
   end)
   sidecar.on("reset", M.reset)
   -- A /clear also ends a turn, but saves none.

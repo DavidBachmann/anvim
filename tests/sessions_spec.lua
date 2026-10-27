@@ -247,6 +247,32 @@ describe("sessions", function()
     end)
   end)
 
+  it("/codex-model takes only a model in Codex's model list, when anvim has the list", function()
+    local prefs = require("anvim.prefs")
+    local saved = { state.codex, state.codex_config, state.codex_models }
+    sidecar.dispatch({
+      type = "codex",
+      state = "on",
+      models = {
+        { slug = "gpt-6.1-terra", name = "GPT-6.1 Terra", hidden = false, efforts = { "low", "xhigh" } },
+        { slug = "gpt-reserve", name = "GPT-Reserve", hidden = true, efforts = { "low" } },
+      },
+    })
+    local ok, err = pcall(helpers.capture_sends, function(sent)
+      assert(sessions.command("/codex-model 6.1-terra"))
+      assert.are.same({}, sent)
+      assert.matches("Its models: gpt%-6%.1%-terra %(GPT%-6%.1 Terra%)$", last_line())
+      assert(sessions.command("/codex-model gpt-6.1-terra"))
+      assert.are.same({ { type = "set_codex_defaults", model = "gpt-6.1-terra", effort = vim.NIL } }, sent)
+      -- A hidden model is not listed, but Codex takes it.
+      assert(sessions.command("/codex-model gpt-reserve"))
+      assert.are.same({ type = "set_codex_defaults", model = "gpt-reserve", effort = vim.NIL }, sent[2])
+    end)
+    prefs.set("codex_model", nil)
+    state.codex, state.codex_config, state.codex_models = unpack(saved)
+    assert(ok, err)
+  end)
+
   it("starts in default mode without a sandbox, unless the user chose a mode", function()
     local config = require("anvim.config")
     local saved = { config.options, config.mode_chosen, config.mode_reason }

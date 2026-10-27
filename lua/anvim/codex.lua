@@ -23,6 +23,29 @@ function M.effort()
   return prefs.get("codex_effort")
 end
 
+-- Codex's models, when the sidecar could read its model list.
+---@return { slug: string, name: string, hidden: boolean, efforts: string[] }[]?
+function M.models()
+  local list = state.codex_models
+  return type(list) == "table" and #list > 0 and list or nil
+end
+
+-- The models that Codex's own picker shows. A hidden one still works when typed.
+local function visible()
+  return vim.tbl_filter(function(m)
+    return not m.hidden
+  end, M.models() or {})
+end
+
+---@param slug string?
+local function find(slug)
+  for _, m in ipairs(M.models() or {}) do
+    if m.slug == slug then
+      return m
+    end
+  end
+end
+
 ---@return string[]
 function M.recent()
   local list = prefs.get("codex_models")
@@ -71,12 +94,13 @@ end
 ---@param current string?
 ---@param key 'model'|'effort'
 ---@param set fun(value: string?)
-local function pick(prompt, items, current, key, set)
+---@param label? fun(item: string): string
+local function pick(prompt, items, current, key, set, label)
   vim.ui.select(vim.list_extend({ "default" }, items), {
     prompt = prompt,
     format_item = function(item)
       local mark = (item == "default" and not current or item == current) and "⏺ " or "  "
-      return mark .. (item == "default" and M.default_label(key) or item)
+      return mark .. (item == "default" and M.default_label(key) or (label and label(item) or item))
     end,
   }, function(choice)
     if choice then
@@ -85,12 +109,32 @@ local function pick(prompt, items, current, key, set)
   end)
 end
 
+---@param m { slug: string, name: string }
+local function listed(m)
+  return m.name == m.slug and m.slug or ("%s (%s)"):format(m.slug, m.name)
+end
+
 function M.pick_model()
-  pick("Codex model · /codex-model <name> sets another", M.recent(), M.model(), "model", M.set_model)
+  if not M.models() then
+    return pick("Codex model · /codex-model <name> sets another", M.recent(), M.model(), "model", M.set_model)
+  end
+  local slugs = vim.tbl_map(function(m)
+    return m.slug
+  end, visible())
+  pick("Codex model", slugs, M.model(), "model", M.set_model, function(slug)
+    return listed(find(slug))
+  end)
+end
+
+-- The levels of the model that the next run uses, when Codex's model list knows it.
+---@return string[]
+local function run_levels()
+  local m = find(M.model() or (state.codex_config or {}).model)
+  return m and #m.efforts > 0 and m.efforts or M.levels
 end
 
 function M.pick_effort()
-  pick("Codex effort", M.levels, M.effort(), "effort", M.set_effort)
+  pick("Codex effort", run_levels(), M.effort(), "effort", M.set_effort)
 end
 
 -- A word goes to Codex as a flag's value, so it must not look like a flag.
@@ -107,6 +151,9 @@ function M.model_command(arg)
     M.set_model(nil)
   elseif not valid(arg) then
     transcript.notice("info", "/codex-model takes the name of a Codex model, or default.")
+  elseif M.models() and not find(arg) then
+    local names = table.concat(vim.tbl_map(listed, visible()), ", ")
+    transcript.notice("info", ("Codex has no model %s. Its models: %s"):format(arg, names))
   else
     M.set_model(arg)
   end
@@ -139,9 +186,10 @@ function M.describe()
     end
     return ("Codex's default %s"):format(what)
   end
-  return ("Codex runs with %s and %s"):format(
+  return ("Codex runs with %s and %s. anvim %s."):format(
     part("model", M.model(), config.model),
-    part("effort", M.effort(), config.effort)
+    part("effort", M.effort(), config.effort),
+    M.models() and "checks model names against Codex's model list" or "could not read Codex's model list"
   )
 end
 

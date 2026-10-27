@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { CodexRunner, type CodexModel } from "./codex";
 import type { Event } from "./protocol";
-import { EditorBridge, editorServer, isOwnServer, SERVER } from "./tools";
+import { type Codex, EditorBridge, editorServer, isOwnServer, SERVER } from "./tools";
 
 type Request = Extract<Event, { type: "editor_request" }>;
 
@@ -12,7 +16,7 @@ function bridge(timeoutMs?: number) {
   return { b, sent };
 }
 
-async function connect(b: EditorBridge, opts?: { debug?: boolean }) {
+async function connect(b: EditorBridge, opts?: { debug?: boolean; codex?: Codex }) {
   const server = editorServer(b, opts);
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   await server.instance.connect(serverSide);
@@ -103,5 +107,67 @@ describe("editor MCP server", () => {
     const res = await client.callTool({ name: "lsp_hover", arguments: { path: "a.lua", line: 0, symbol: "x" } });
     expect(res.isError).toBe(true);
     expect(sent).toEqual([]);
+  });
+});
+
+describe("codex tool", () => {
+  const models: CodexModel[] = [
+    { slug: "gpt-6.1-terra", name: "GPT-6.1 Terra", hidden: false, efforts: ["low", "high", "xhigh"] },
+    { slug: "gpt-6-mini", name: "GPT-6 Mini", hidden: false, efforts: ["low", "medium"] },
+    { slug: "gpt-old", name: "GPT Old", hidden: true, efforts: [] },
+  ];
+  const task = { description: "Review", prompt: "Review a.ts" };
+
+  function runner(bin: string, config = {}) {
+    const events: Event[] = [];
+    const notes: string[] = [];
+    const codex = new CodexRunner({
+      bin,
+      cwd: tmpdir(),
+      emit: (ev) => events.push(ev),
+      notify: (text) => notes.push(text),
+      defaults: () => ({}),
+      config: () => config,
+      models,
+    });
+    return { codex, events, notes };
+  }
+
+  const textOf = (res: Awaited<ReturnType<Client["callTool"]>>) => (res.content as { text: string }[])[0]!.text;
+
+  test("lists the visible models to Claude, and refuses a model or an effort that Codex lacks", async () => {
+    const { codex, events } = runner("/nonexistent/codex");
+    const client = await connect(bridge().b, { codex });
+    const tool = (await client.listTools()).tools.find((t) => t.name === "codex")!;
+    const props = tool.inputSchema.properties as Record<string, { description: string }>;
+    expect(props.model!.description).toContain("gpt-6.1-terra (GPT-6.1 Terra), gpt-6-mini (GPT-6 Mini).");
+    expect(props.model!.description).not.toContain("gpt-old");
+    expect(props.effort!.description).toContain("low, high, xhigh, medium");
+
+    const unknown = await client.callTool({ name: "codex", arguments: { ...task, model: "gpt-6.1" } });
+    expect(unknown.isError).toBe(true);
+    expect(textOf(unknown)).toContain("Pass one of these slugs as model: gpt-6.1-terra (GPT-6.1 Terra), gpt-6-mini");
+    const effort = await client.callTool({ name: "codex", arguments: { ...task, model: "gpt-6-mini", effort: "xhigh" } });
+    expect(effort.isError).toBe(true);
+    expect(textOf(effort)).toContain("low, medium");
+    expect(events).toEqual([]);
+  });
+
+  test("the result names the run's model and effort and where each comes from", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "anvim-codex-"));
+    const bin = join(dir, "codex");
+    writeFileSync(bin, "#!/bin/sh\ncat >/dev/null\n");
+    chmodSync(bin, 0o755);
+    const { codex, events, notes } = runner(bin, { effort: "xhigh" });
+    const client = await connect(bridge().b, { codex });
+    // A hidden model is a model too.
+    const res = await client.callTool({ name: "codex", arguments: { ...task, model: "gpt-old", effort: "max" } });
+    expect(res.isError).toBeUndefined();
+    expect(textOf(res)).toMatch(/started in the background with model gpt-old \(from the call\) and effort max \(from the call\)\. /);
+    const res2 = await client.callTool({ name: "codex", arguments: { ...task, model: "gpt-6.1-terra" } });
+    expect(textOf(res2)).toContain("with model gpt-6.1-terra (from the call) and effort xhigh (from Codex's config).");
+    expect(events.filter((e) => e.type === "agent_start")).toHaveLength(2);
+    while (notes.length < 2) await Bun.sleep(5);
+    rmSync(dir, { recursive: true });
   });
 });

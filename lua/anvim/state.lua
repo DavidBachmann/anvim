@@ -22,6 +22,8 @@ local M = {
   codex = nil, ---@type 'on'|'off'|'missing'|'logged_out'|nil
   -- The model and the effort that Codex's config.toml sets, as far as the sidecar could read them.
   codex_config = nil, ---@type { model: string?, effort: string? }?
+  -- Codex's models, when the sidecar could read its model list.
+  codex_models = nil, ---@type { slug: string, name: string, hidden: boolean, efforts: string[] }[]?
   compacting = false,
   -- Set while a permission prompt waits for the user: the hint that says how
   -- to answer.

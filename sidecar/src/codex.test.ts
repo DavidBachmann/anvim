@@ -1,6 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import type { SessionMessage } from "@anthropic-ai/claude-agent-sdk";
-import { type CodexSettings, CodexStream, codexArgs, codexSettings, codexState, codexWarning, unwrapShell } from "./codex";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  type CodexSettings,
+  CodexStream,
+  codexArgs,
+  codexModels,
+  codexSettings,
+  codexState,
+  codexWarning,
+  unwrapShell,
+} from "./codex";
 import { historyEvents } from "./sessions";
 
 // As codex-cli 0.164.0 printed it for `codex exec --json`. The error item is
@@ -82,11 +94,83 @@ describe("codexState", () => {
     expect(await codexState(false, which("/bin/codex"), login(true))).toEqual({ state: "off" });
     expect(await codexState(true, which(null), login(true))).toEqual({ state: "missing" });
     expect(await codexState(true, which("/bin/codex"), login(false))).toEqual({ state: "logged_out" });
-    expect(await codexState(true, which("/bin/codex"), login(true))).toEqual({ state: "on", bin: "/bin/codex" });
+    const none = async () => undefined;
+    expect(await codexState(true, which("/bin/codex"), login(true), none)).toEqual({ state: "on", bin: "/bin/codex" });
+    const terra = [{ slug: "gpt-6.1-terra", name: "GPT-6.1 Terra", hidden: false, efforts: ["low"] }];
+    expect(await codexState(true, which("/bin/codex"), login(false), async () => terra)).toEqual({
+      state: "logged_out",
+    });
     expect(codexWarning("missing")).toContain("--codex");
     expect(codexWarning("logged_out")).toContain("codex login");
     expect(codexWarning("off")).toBeUndefined();
-    expect(codexWarning("on")).toBeUndefined();
+    expect(codexWarning("on", terra)).toBeUndefined();
+    expect(codexWarning("on")).toContain("model list");
+  });
+});
+
+describe("codexModels", () => {
+  function stub(body: string): { bin: string; done: () => void } {
+    const dir = mkdtempSync(join(tmpdir(), "anvim-codex-"));
+    const bin = join(dir, "codex");
+    writeFileSync(bin, `#!/bin/sh\n${body}\n`);
+    chmodSync(bin, 0o755);
+    return { bin, done: () => rmSync(dir, { recursive: true }) };
+  }
+
+  test("reads the model list from codex app-server, page by page", async () => {
+    // As codex app-server answered, with fewer fields.
+    const page1 = {
+      id: 1,
+      result: {
+        data: [
+          {
+            id: "gpt-6.1-terra",
+            model: "gpt-6.1-terra",
+            displayName: "GPT-6.1 Terra",
+            hidden: false,
+            isDefault: true,
+            defaultReasoningEffort: "low",
+            supportedReasoningEfforts: [{ reasoningEffort: "low" }, { reasoningEffort: "xhigh" }],
+          },
+        ],
+        nextCursor: "p2",
+      },
+    };
+    const page2 = {
+      id: 2,
+      result: { data: [{ id: "gpt-old", model: "gpt-old", displayName: "GPT Old", hidden: true }], nextCursor: null },
+    };
+    const { bin, done } = stub(
+      [
+        `[ "$1" = app-server ] || exit 2`,
+        `read line; case "$line" in *'"method":"initialize","id":0'*) ;; *) exit 3;; esac`,
+        `printf '%s\\n' '{"method":"configWarning"}' '{"id":0,"result":{"userAgent":"codex"}}'`,
+        `read line; case "$line" in *'"method":"initialized"'*) ;; *) exit 4;; esac`,
+        `read line; case "$line" in *'"includeHidden":true'*) ;; *) exit 5;; esac`,
+        `printf '%s\\n' '${JSON.stringify(page1)}'`,
+        `read line; case "$line" in *'"cursor":"p2"'*) ;; *) exit 6;; esac`,
+        `printf '%s\\n' '${JSON.stringify(page2)}'`,
+        "while read line; do :; done",
+      ].join("\n"),
+    );
+    expect(await codexModels(bin)).toEqual([
+      { slug: "gpt-6.1-terra", name: "GPT-6.1 Terra", hidden: false, efforts: ["low", "xhigh"] },
+      { slug: "gpt-old", name: "GPT Old", hidden: true, efforts: [] },
+    ]);
+    done();
+  });
+
+  test("gives undefined when codex exits, answers with an error or never answers", async () => {
+    const exits = stub("exit 1");
+    const error = stub(`read line; printf '%s\\n' '{"id":0,"error":{"code":-32600,"message":"no"}}'; cat >/dev/null`);
+    const silent = stub("while read line; do :; done");
+    const started = Date.now();
+    expect(await codexModels(exits.bin, 500)).toBeUndefined();
+    expect(await codexModels(error.bin, 500)).toBeUndefined();
+    expect(await codexModels(silent.bin, 300)).toBeUndefined();
+    expect(await codexModels("/nonexistent/codex", 300)).toBeUndefined();
+    expect(Date.now() - started).toBeLessThan(2000);
+    for (const s of [exits, error, silent]) s.done();
   });
 });
 

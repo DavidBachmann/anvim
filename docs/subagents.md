@@ -35,7 +35,11 @@ The model and reasoning effort are chosen independently, using the first value s
 2. anvim's saved defaults: `/codex-model <model>` and `/codex-effort <level>`. Use `default` to clear either override. These apply to subsequent runs, including after restart.
 3. Codex's own `$CODEX_HOME/config.toml`, or `~/.codex/config.toml` if `CODEX_HOME` is unset. Without an override, anvim passes no flag for that setting.
 
-Without arguments, `/codex-model` lists the default and the last five choices; `/codex-effort` lists default, low, medium, high, xhigh and max. A typed effort is passed through, allowing newer levels. When readable, the pickers show values from Codex's config. anvim passes the model with `-m` and effort as `-c model_reasoning_effort="<level>"`; the Overview shows the values it knows.
+At startup, anvim asks `codex app-server` for Codex's model list, while it checks the login. With the list, the tool's description names each visible model as `slug (Display Name)`, so Claude can match "6.1 Terra" to `gpt-6.1-terra`, and names the effort levels. A call with a model that Codex lacks, or an effort that the run's model does not support, returns an error to Claude and starts nothing. A call may name a hidden model. The tool result names the run's model and effort and where each comes from.
+
+Without arguments, `/codex-model` lists the default and Codex's visible models. `/codex-model <name>` refuses a name that is not in the list, but takes a hidden model. `/codex-effort` lists the levels of the model that the next run uses. When readable, the pickers show values from Codex's config. anvim passes the model with `-m` and effort as `-c model_reasoning_effort="<level>"`; the Overview shows the values it knows.
+
+If anvim cannot read the list, the transcript says so and nothing is checked. `/codex-model` then lists the default and the last five choices, and `/codex-effort` lists low, medium, high, xhigh and max. A typed model or effort goes to Codex as it is.
 
 <a id="new-agents"></a>
 

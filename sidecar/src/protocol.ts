@@ -326,10 +326,13 @@ export type Event =
   // Whether Claude got the codex tool at start. Off: the start command did not
   // ask for it. Missing: no codex CLI is on PATH. Logged out: Codex has no login.
   // config: the model and the effort that Codex's config.toml sets, when it is on.
+  // models: Codex's models with their effort levels, when anvim could read the
+  // list. The pickers show only the models that are not hidden.
   | {
       type: "codex";
       state: "on" | "off" | "missing" | "logged_out";
       config?: { model?: string; effort?: string };
+      models?: { slug: string; name: string; hidden: boolean; efforts: string[] }[];
     }
   // The MCP servers, for the MCP tab. After an action that failed, error says why.
   | { type: "mcp_servers"; servers?: McpServer[]; error?: string }

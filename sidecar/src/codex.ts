@@ -276,9 +276,149 @@ export function codexArgs(bin: string, cwd: string, readOnly: boolean, settings:
   ];
 }
 
+// Where a run's model or effort comes from: the tool call, anvim's default,
+// Codex's config, or Codex's own default, which anvim does not know.
+export type Source = "call" | "anvim" | "config" | "codex";
+export type RunSettings = { model?: string; modelFrom: Source; effort?: string; effortFrom: Source };
+
+export function runSettings(input: CodexInput, defaults: CodexSettings, config: CodexSettings): RunSettings {
+  const pick = (call: unknown, mine: unknown, theirs: unknown): [string | undefined, Source] => {
+    if (setting(call)) return [setting(call), "call"];
+    if (setting(mine)) return [setting(mine), "anvim"];
+    if (setting(theirs)) return [setting(theirs), "config"];
+    return [undefined, "codex"];
+  };
+  const [model, modelFrom] = pick(input.model, defaults.model, config.model);
+  const [effort, effortFrom] = pick(input.effort, defaults.effort, config.effort);
+  return { model, modelFrom, effort, effortFrom };
+}
+
+function describeSetting(what: "model" | "effort", value: string | undefined, from: Source): string {
+  if (from === "codex" || !value) return `Codex's default ${what}`;
+  const source = {
+    call: "from the call",
+    anvim: `anvim's default, set with /codex-${what}`,
+    config: "from Codex's config",
+  }[from];
+  return `${what} ${value} (${source})`;
+}
+
+export function describeRun(run: RunSettings): string {
+  const model = describeSetting("model", run.model, run.modelFrom);
+  return `${model} and ${describeSetting("effort", run.effort, run.effortFrom)}`;
+}
+
+// A model in Codex's model list, as far as anvim needs it. slug is the name
+// that `codex exec -m` takes.
+export type CodexModel = { slug: string; name: string; hidden: boolean; efforts: string[] };
+
+export const listed = (m: CodexModel) => (m.name === m.slug ? m.slug : `${m.slug} (${m.name})`);
+
+export function visibleModels(models: CodexModel[]): CodexModel[] {
+  return models.filter((m) => !m.hidden);
+}
+
+// The visible models' levels, in the order Codex lists them.
+export function modelEfforts(models: CodexModel[]): string[] {
+  return [...new Set(visibleModels(models).flatMap((m) => m.efforts))];
+}
+
+// Why the codex tool must not start this call, or undefined. Only the call's
+// own model and effort are checked: Claude can fix those.
+export function checkInput(
+  input: CodexInput,
+  models: CodexModel[],
+  defaults: CodexSettings,
+  config: CodexSettings,
+): string | undefined {
+  const model = setting(input.model);
+  if (model && !models.some((m) => m.slug === model)) {
+    const slugs = visibleModels(models).map(listed).join(", ");
+    return `Codex has no model ${model}. Pass one of these slugs as model: ${slugs}.`;
+  }
+  const effort = setting(input.effort);
+  const runModel = model ?? setting(defaults.model) ?? setting(config.model);
+  const known = models.find((m) => m.slug === runModel);
+  if (effort && known && known.efforts.length > 0 && !known.efforts.includes(effort)) {
+    return `Codex model ${known.slug} has no effort ${effort}. Pass one of: ${known.efforts.join(", ")}.`;
+  }
+  return undefined;
+}
+
+function toModel(item: unknown): CodexModel | undefined {
+  if (typeof item !== "object" || item === null) return undefined;
+  const m = item as Item;
+  const slug = setting(m.model) ?? setting(m.id);
+  if (!slug) return undefined;
+  const efforts = Array.isArray(m.supportedReasoningEfforts)
+    ? m.supportedReasoningEfforts
+        .map((e: unknown) => setting(typeof e === "object" && e !== null ? (e as Item).reasoningEffort : e))
+        .filter((e: string | undefined): e is string => e !== undefined)
+    : [];
+  return { slug, name: setting(m.displayName) ?? slug, hidden: m.hidden === true, efforts };
+}
+
 export type CodexState = "on" | "off" | "missing" | "logged_out";
 
 const LOGIN_TIMEOUT_MS = 3000;
+const MAX_MODEL_PAGES = 5;
+
+// Asks `codex app-server`, the JSON-RPC server of Codex's IDE clients, for
+// its model list. The list depends on the login, so it runs with the real
+// Codex home, as `codex exec` does. Any failure gives undefined.
+export async function codexModels(bin: string, timeoutMs = LOGIN_TIMEOUT_MS): Promise<CodexModel[] | undefined> {
+  let proc: Bun.Subprocess<"pipe", "pipe", "ignore">;
+  try {
+    proc = Bun.spawn([bin, "app-server"], { stdin: "pipe", stdout: "pipe", stderr: "ignore" });
+  } catch {
+    return undefined;
+  }
+  const send = (msg: object) => {
+    proc.stdin.write(`${JSON.stringify(msg)}\n`);
+    proc.stdin.flush();
+  };
+  const talk = async (): Promise<CodexModel[] | undefined> => {
+    const models: CodexModel[] = [];
+    let id = 0;
+    send({ method: "initialize", id, params: { clientInfo: { name: "anvim", title: "anvim", version: "0" } } });
+    for await (const raw of lines(proc.stdout)) {
+      let m: Item;
+      try {
+        m = JSON.parse(raw);
+      } catch {
+        continue;
+      }
+      // Notifications and server requests can come in between.
+      if (m?.id !== id || m.method !== undefined) continue;
+      if (typeof m.result !== "object" || m.result === null) return undefined;
+      let cursor: string | undefined;
+      if (id === 0) {
+        send({ method: "initialized" });
+      } else {
+        if (!Array.isArray(m.result.data)) return undefined;
+        for (const item of m.result.data) {
+          const model = toModel(item);
+          if (model) models.push(model);
+        }
+        cursor = setting(m.result.nextCursor);
+        if (!cursor || id >= MAX_MODEL_PAGES) return models.length > 0 ? models : undefined;
+      }
+      id++;
+      send({ method: "model/list", id, params: { includeHidden: true, ...(cursor ? { cursor } : {}) } });
+    }
+    return undefined;
+  };
+  let timer: Timer | undefined;
+  const timeout = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), timeoutMs);
+  });
+  try {
+    return await Promise.race([talk().catch(() => undefined), timeout]);
+  } finally {
+    clearTimeout(timer);
+    proc.kill();
+  }
+}
 
 // `codex login status` exits 0 when Codex has a login. A timeout or an error
 // counts as no login.
@@ -295,23 +435,29 @@ async function loggedIn(bin: string): Promise<boolean> {
 }
 
 // Whether Claude gets the codex tool: the user asked for it, and a codex CLI
-// with a login is on PATH. Without a login, every run would fail.
+// with a login is on PATH. Without a login, every run would fail. The model
+// list is read at the same time, and counts only with a login.
 export async function codexState(
   wanted: boolean,
   which: (cmd: string) => string | null = (cmd) => Bun.which(cmd),
   login: (bin: string) => Promise<boolean> = loggedIn,
-): Promise<{ state: CodexState; bin?: string }> {
+  list: (bin: string) => Promise<CodexModel[] | undefined> = codexModels,
+): Promise<{ state: CodexState; bin?: string; models?: CodexModel[] }> {
   if (!wanted) return { state: "off" };
   const bin = which("codex");
   if (!bin) return { state: "missing" };
-  return (await login(bin)) ? { state: "on", bin } : { state: "logged_out" };
+  const [ok, models] = await Promise.all([login(bin), list(bin)]);
+  if (!ok) return { state: "logged_out" };
+  return { state: "on", bin, ...(models ? { models } : {}) };
 }
 
 // The user asked for Codex, so a Codex that is not ready gets a warning.
-export function codexWarning(state: CodexState): string | undefined {
+export function codexWarning(state: CodexState, models?: CodexModel[]): string | undefined {
   if (state === "missing") return "You started anvim with --codex, but no codex command is on PATH.";
   if (state === "logged_out")
     return "You started anvim with --codex, but Codex is not logged in. Run `codex login`, then restart anvim.";
+  if (state === "on" && !models)
+    return "Codex is on, but anvim could not read its model list, so it does not check model names.";
   return undefined;
 }
 
@@ -333,15 +479,33 @@ export class CodexRunner {
       // anvim's defaults now, which the user can change between runs.
       defaults: () => CodexSettings;
       config?: () => CodexSettings;
+      // Codex's model list, when anvim could read it.
+      models?: CodexModel[];
     },
   ) {}
 
+  get models(): CodexModel[] | undefined {
+    return this.opts.models;
+  }
+
+  private config(): CodexSettings {
+    return (this.opts.config ?? codexConfig)();
+  }
+
+  // Why the call must not start a run, or undefined. Without a model list,
+  // anvim checks nothing.
+  check(input: CodexInput): string | undefined {
+    return this.opts.models ? checkInput(input, this.opts.models, this.opts.defaults(), this.config()) : undefined;
+  }
+
   // Returns at once. The run goes on in the background.
-  start(input: CodexInput, toolUseId: string | undefined): { id: string } {
+  start(input: CodexInput, toolUseId: string | undefined): { id: string; run: RunSettings } {
     const id = `codex-${this.stamp}-${this.next++}`;
     const { bin, cwd, emit } = this.opts;
     const stream = new CodexStream(id, toolUseId ?? id, cwd);
-    const settings = codexSettings(input, this.opts.defaults());
+    const defaults = this.opts.defaults();
+    const config = this.config();
+    const settings = codexSettings(input, defaults);
     const proc = Bun.spawn(codexArgs(bin, cwd, input.read_only === true, settings), {
       cwd,
       stdin: new Blob([input.prompt]),
@@ -359,7 +523,7 @@ export class CodexRunner {
       depth: 1,
       background: true,
       // What the run uses, for the Overview: anvim's flags, else Codex's config.
-      ...(this.opts.config ?? codexConfig)(),
+      ...config,
       ...settings,
     });
     const started = Date.now();
@@ -382,7 +546,7 @@ export class CodexRunner {
       emit(end.event);
       this.opts.notify(end.notification);
     })().catch((err) => process.stderr.write(`codex run ${id} failed: ${err}\n`));
-    return { id };
+    return { id, run: runSettings(input, defaults, config) };
   }
 
   stopAll(): void {

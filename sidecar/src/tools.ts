@@ -5,7 +5,15 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
-import type { CodexInput } from "./codex";
+import {
+  type CodexInput,
+  type CodexModel,
+  describeRun,
+  listed,
+  modelEfforts,
+  type RunSettings,
+  visibleModels,
+} from "./codex";
 import type { Command, Event } from "./protocol";
 import { parseDump, png, svg, type Pos } from "./screen";
 
@@ -111,12 +119,35 @@ async function screenshot(bridge: EditorBridge): Promise<Result | ImageResult> {
 // The tool's id, which Claude Code puts in the call's _meta.
 type Extra = { _meta?: Record<string, unknown> };
 
-export type Codex = { start(input: CodexInput, toolUseId: string | undefined): { id: string } };
+export type Codex = {
+  models?: CodexModel[];
+  check(input: CodexInput): string | undefined;
+  start(input: CodexInput, toolUseId: string | undefined): { id: string; run: RunSettings };
+};
 
 // A model name or an effort level, and never a flag.
 const SETTING = /^\w[\w.:/-]*$/;
+const NEVER_CHOOSE = "Never choose one on your own: without it, the user's default applies.";
+
+// With Codex's model list, Claude can match a name such as "6.1 Terra" to its slug.
+function codexDescriptions(models: CodexModel[] | undefined): { model: string; effort: string } {
+  const visible = visibleModels(models ?? []);
+  if (visible.length === 0) {
+    return {
+      model: `The Codex model. Set it only when the user names a Codex model. ${NEVER_CHOOSE}`,
+      effort: `Codex's reasoning effort, such as low or high. Set it only when the user names one for Codex. ${NEVER_CHOOSE}`,
+    };
+  }
+  const list = visible.map(listed).join(", ");
+  const efforts = modelEfforts(models ?? []);
+  return {
+    model: `The Codex model, as one of these slugs: ${list}. Match the name that the user gives, such as a display name or a short form of it, to its slug. Set it only when the user names a Codex model. ${NEVER_CHOOSE}`,
+    effort: `Codex's reasoning effort: ${efforts.length > 0 ? efforts.join(", ") : "such as low or high"}. Each model supports only some levels. Set it only when the user names one for Codex. ${NEVER_CHOOSE}`,
+  };
+}
 
 function codexTool(codex: Codex) {
+  const describe = codexDescriptions(codex.models);
   return tool(
     "codex",
     "Start an OpenAI Codex agent in the background, on a task in this project. Use it when the user asks for Codex, or for the opinion of another model. Codex runs in its own sandbox, and it can write files in the working directory unless read_only is true. It knows only what the prompt says. The call returns at once. Codex's result arrives later, in a message of its own, so do not wait or poll for it.",
@@ -124,27 +155,17 @@ function codexTool(codex: Codex) {
       description: z.string().describe("A short (3-5 word) description of the task"),
       prompt: z.string().describe("The task for Codex, self-contained"),
       read_only: z.boolean().optional().describe("Codex reads and runs commands, but writes no files"),
-      model: z
-        .string()
-        .regex(SETTING)
-        .optional()
-        .describe(
-          "The Codex model. Set it only when the user names a Codex model. Never choose one on your own: without it, the user's default applies.",
-        ),
-      effort: z
-        .string()
-        .regex(SETTING)
-        .optional()
-        .describe(
-          "Codex's reasoning effort, such as low or high. Set it only when the user names one for Codex. Never choose one on your own: without it, the user's default applies.",
-        ),
+      model: z.string().regex(SETTING).optional().describe(describe.model),
+      effort: z.string().regex(SETTING).optional().describe(describe.effort),
     },
     async (args, extra) => {
       const meta = (extra as Extra | undefined)?._meta?.["claudecode/toolUseId"];
+      const problem = codex.check(args);
+      if (problem) return text(problem, true);
       try {
-        const { id } = codex.start(args, typeof meta === "string" ? meta : undefined);
+        const { id, run } = codex.start(args, typeof meta === "string" ? meta : undefined);
         return text(
-          `Codex agent ${id} started in the background. Its result arrives in a message of its own when it ends. Do not wait or poll for it: go on with other work, or end your turn.`,
+          `Codex agent ${id} started in the background with ${describeRun(run)}. Its result arrives in a message of its own when it ends. Do not wait or poll for it: go on with other work, or end your turn.`,
         );
       } catch (err) {
         return text(`Could not start Codex: ${(err as Error)?.message ?? err}`, true);
