@@ -105,7 +105,7 @@ describe("transcript polish", function()
     local updated = {
       "⏺ Todos · 1 of 3 done",
       "  ⎿  ☒ #1 Count the lines",
-      "     ☐ #2 List the files",
+      "     ☐ #2 List the files · lister",
       "     ☐ #3 Add a comment",
     }
     assert.are.same(
@@ -121,7 +121,7 @@ describe("transcript polish", function()
       lines_from("❯ Do three steps")
     )
     assert(vim.tbl_contains(groups_at(row_of("  ⎿  ☒ #1 Count the lines")), "AnvimTodoDone"))
-    assert(vim.tbl_contains(groups_at(row_of("     ☐ #2 List the files")), "AnvimTodoActive"))
+    assert(vim.tbl_contains(groups_at(row_of("     ☐ #2 List the files · lister")), "AnvimTodoActive"))
 
     -- The next prompt goes above it too, as the list waits under the spinner.
     transcript.turn_end()

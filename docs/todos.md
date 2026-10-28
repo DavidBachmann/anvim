@@ -22,6 +22,8 @@ The list belongs to the project, not to a session or an account. `/clear` keeps 
 
 Only the main agent (Claude in the transcript) uses the list. Subagents keep anvim's other tools, but a call to a todo tool returns an error that tells them to report back. Claude marks an item done once it has checked the agent's work.
 
+Claude can give an item to an agent. It names the Agent call and sets that name as the item's owner. For a Codex agent, the owner is the agent id that the codex tool returns. The row shows the owner after the subject, as in `#2 Fix the parser · parser-fix`. While the agent runs, the owner has the agent's color, as in the footer and the tree. The owner is dim once the agent ends, and on a completed row. An owner that anvim does not know, such as after a restart, is plain.
+
 ## Where it lives
 
 The list is a JSON file in anvim's state dir: `~/.local/state/anvim/todos/<dir>-<hash>.json`, where `<dir>` is the project directory's name and `<hash>` comes from its full path. The previous list is `<dir>-<hash>.prev.json` next to it. Two anvims in one project share the file. Each change takes a lock, and each anvim shows the other's changes. A replay has no list file and shows only the recorded list.

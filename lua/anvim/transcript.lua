@@ -1410,6 +1410,14 @@ function M.todos(items)
   end
 end
 
+-- Draws the list again where it is, as when an owner's agent starts or ends.
+-- A list that is not drawn stays so.
+function M.repaint_todos()
+  if todo then
+    M.todos(todos.inline())
+  end
+end
+
 -- Tools that never got a result were cut off by an interrupt or an error.
 -- The next text starts a new reply, such as the reply to a background
 -- agent's end, which no prompt comes before.

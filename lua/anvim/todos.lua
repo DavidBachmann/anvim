@@ -47,8 +47,24 @@ local function blockers(item, items)
   return open
 end
 
--- The rows of the list: a box, the id and the subject. Each mark is
--- { row, col, end_col, group }, with rows from 0.
+local function owned(item)
+  return type(item.owner) == "string" and item.owner ~= ""
+end
+
+-- The owner's color: its agent's slot color while it runs, dim once it ended
+-- or the item is done, and plain for an agent that anvim does not know.
+---@return string?
+local function owner_group(item)
+  local agents = require("anvim.agents")
+  local agent = agents.by_owner(item.owner)
+  if item.status == "completed" or (agent and agent.status ~= "running") then
+    return "AnvimResult"
+  end
+  return agent and agents.group(agent.slot) or nil
+end
+
+-- The rows of the list: a box, the id, the subject and the owner. Each mark
+-- is { row, col, end_col, group }, with rows from 0.
 ---@param items anvim.TodoItem[]
 ---@param lead? fun(i: integer): string The text before the box of row i.
 ---@return string[] lines, table[] marks
@@ -63,6 +79,16 @@ function M.render(items, lead)
     local group = done and "AnvimTodoDone" or item.status == "in_progress" and "AnvimTodoActive" or nil
     if group then
       marks[#marks + 1] = { row, #before + #id + 1, #line, group }
+    end
+    if owned(item) then
+      local sep, owner = " · ", item.owner:gsub("\n", " ")
+      marks[#marks + 1] = { row, #line, #line + #sep, "AnvimResult" }
+      line = line .. sep
+      group = owner_group(item)
+      if group then
+        marks[#marks + 1] = { row, #line, #line + #owner, group }
+      end
+      line = line .. owner
     end
     local blocked = not done and blockers(item, items) or {}
     if #blocked > 0 then
@@ -159,10 +185,40 @@ function M.inline()
   return require("anvim.layout").todos_shown() and {} or M.items
 end
 
+---@type string? The owners' colors at the last check.
+local last_groups
+
+-- An owner's color follows its agent, which can start or end without a
+-- change of the list. AnvimAgents also fires on each focus move, so only a
+-- new color draws again. The view of the todo window stays where it is.
+local function owners_changed()
+  local groups = {}
+  for _, item in ipairs(M.items) do
+    if owned(item) then
+      groups[#groups + 1] = owner_group(item) or ""
+    end
+  end
+  local key = table.concat(groups, ",")
+  if key == last_groups then
+    return
+  end
+  last_groups = key
+  if #groups > 0 then
+    M.buf()
+    draw()
+    require("anvim.transcript").repaint_todos()
+  end
+end
+
 function M.attach(sidecar)
   sidecar.on("todos", function(ev)
     M.set(ev.items)
   end)
+  api.nvim_create_autocmd("User", {
+    group = api.nvim_create_augroup("anvim.todos", {}),
+    pattern = "AnvimAgents",
+    callback = owners_changed,
+  })
 end
 
 return M

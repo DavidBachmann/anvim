@@ -69,7 +69,8 @@ M.defaults = {
     "anvim keeps a todo list for this project, which the user sees.",
     "Use the todo_ tools to plan work of several steps.",
     "Mark an item in_progress when work starts, and completed once the work is done and checked.",
-    "When an agent works on an item, set the item's owner to the name of its Agent call.",
+    "When an agent works on an item, give its Agent call a name, and set the item's owner to that name.",
+    "For a Codex agent, the owner is the agent id that the codex tool returns.",
     "Give the agent its task, and do not mention the list.",
   }, " "),
 }

@@ -179,7 +179,8 @@ function codexTool(codex: Codex) {
 
 const MAIN_ONLY = "Only the main agent uses the todo tools. Subagents report back instead.";
 const ACTIVE_FORM = 'The present-continuous form shown while the item is in progress, such as "Fixing the parser"';
-const OWNER = "The name of the Agent call that works on the item";
+const OWNER =
+  "The agent that works on the item: the name of its Agent call, or the agent id that the codex tool returned";
 const BLOCKED_BY = z.array(z.number().int()).describe("The ids of the items that must be done first");
 
 async function todoResult(fn: () => Promise<string>): Promise<Result> {

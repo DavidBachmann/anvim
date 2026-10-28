@@ -25,6 +25,7 @@ M.slots = 4
 ---@field usage { tool_uses: integer?, tokens: integer?, duration_ms: integer? }? Its totals, once it ended.
 ---@field order integer
 ---@field prompt string? The prompt of the Agent call that started it.
+---@field name string? The name of the Agent call that started it, which todo items name as their owner.
 ---@field model string? A Codex agent's model, as far as anvim knows it.
 ---@field effort string? A Codex agent's reasoning effort, as far as anvim knows it.
 ---@field last_slot integer? The slot it had when it ended.
@@ -63,10 +64,11 @@ local files_changed = M.files_changed
 
 ---@alias anvim.Cleared 'exit'|'restart'|'reset'|'history'
 
--- Agents started, ended or changed slots, or the focus moved. The event's
--- `data.cleared` says why the session forgot every agent. A handler that
--- fires AnvimAgents during a clear, before follow.lua's handler, would make
--- that handler run without the reason, and the exit notice would be lost.
+-- Agents started, ended, changed slots or got a name, or the focus moved.
+-- The event's `data.cleared` says why the session forgot every agent. A
+-- handler that fires AnvimAgents during a clear, before follow.lua's handler,
+-- would make that handler run without the reason, and the exit notice would
+-- be lost.
 ---@param cleared anvim.Cleared?
 function M.changed(cleared)
   api.nvim_exec_autocmds("User", { pattern = "AnvimAgents", modeline = false, data = { cleared = cleared } })
@@ -85,6 +87,27 @@ end
 ---@return anvim.Agent?
 function M.get(id)
   return agents[id]
+end
+
+-- The agent that a todo item's owner names: by the name of its Agent call,
+-- then by its id. Of the agents with that name, a running one comes first,
+-- then the one that started last.
+---@param owner string?
+---@return anvim.Agent?
+function M.by_owner(owner)
+  if type(owner) ~= "string" or owner == "" then
+    return nil
+  end
+  local found
+  for _, agent in pairs(agents) do
+    if agent.name == owner then
+      local running, was = agent.status == "running", found and found.status == "running"
+      if not found or (running and not was) or (running == was and agent.order > found.order) then
+        found = agent
+      end
+    end
+  end
+  return found or agents[owner]
 end
 
 ---@return anvim.Agent?
@@ -185,9 +208,10 @@ local function stop(agent, status)
 end
 
 -- The tool call that started an agent can come before or after agent_start.
+-- Returns whether it gave the agent a name.
 local function fill(agent, input)
   if type(input) ~= "table" then
-    return
+    return false
   end
   agent.type = agent.type or (type(input.subagent_type) == "string" and input.subagent_type or nil)
   if agent.description == "" and type(input.description) == "string" then
@@ -196,6 +220,11 @@ local function fill(agent, input)
   if not agent.prompt and type(input.prompt) == "string" then
     agent.prompt = vim.fn.strcharpart(input.prompt, 0, M.prompt_max)
   end
+  if not agent.name and type(input.name) == "string" and input.name ~= "" then
+    agent.name = input.name
+    return true
+  end
+  return false
 end
 
 -- SendMessage can continue an agent that ended. It starts again with its old
@@ -320,7 +349,10 @@ function M.tool_use(ev)
   if M.spawns(ev.name) then
     local agent = by_tool[ev.id]
     if agent then
-      fill(agent, ev.input)
+      -- A todo item that names it as its owner takes its color.
+      if fill(agent, ev.input) then
+        M.changed()
+      end
     else
       starts[ev.id] = ev.input
     end

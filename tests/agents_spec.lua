@@ -109,6 +109,54 @@ describe("agents", function()
     assert.are.same("completed", agents.get("f1").status)
   end)
 
+  it("colors a todo item's owner as its agent: the slot color while it runs, dim once it ended", function()
+    helpers.fresh()
+    local todos = require("anvim.todos")
+    restore = function()
+      todos.set({})
+    end
+    sidecar.dispatch({
+      type = "todos",
+      items = {
+        { id = 1, subject = "Fix lua", status = "in_progress", owner = "lua-fix" },
+        { id = 2, subject = "Fix docs", status = "pending", owner = "nobody", blocked_by = { 1 } },
+      },
+    })
+    local buf = todos.buf()
+    local ns = api.nvim_get_namespaces()["anvim.todos"]
+    -- The group of the mark that covers text on row 0-based row.
+    local function group_of(row, text)
+      local col = assert(helpers.buf_lines(buf)[row + 1]:find(text, 1, true), text) - 1
+      for _, m in ipairs(api.nvim_buf_get_extmarks(buf, ns, { row, 0 }, { row, -1 }, { details = true })) do
+        if m[3] == col and m[4].end_col == col + #text then
+          return m[4].hl_group
+        end
+      end
+      return "none"
+    end
+    assert.are.same(
+      { "  ☐ #1 Fix lua · lua-fix", "  ☐ #2 Fix docs · nobody  blocked by #1" },
+      helpers.buf_lines(buf)
+    )
+    assert.are.same("none", group_of(0, "lua-fix"))
+
+    sidecar.dispatch({
+      type = "tool_use",
+      id = "toolu_L",
+      name = "Agent",
+      input = { description = "Fix lua", prompt = "Fix it", name = "lua-fix" },
+    })
+    sidecar.dispatch({ type = "agent_start", agent_id = "l1", tool_use_id = "toolu_L", depth = 1, background = true })
+    assert.are.same(agents.group(agents.get("l1").slot), group_of(0, "lua-fix"))
+    assert.are.same("AnvimTodoActive", group_of(0, "Fix lua"))
+    assert.are.same("none", group_of(1, "nobody"))
+
+    sidecar.dispatch({ type = "agent_end", agent_id = "l1", status = "completed" })
+    assert.are.same("AnvimResult", group_of(0, "lua-fix"))
+    agents.clear("reset")
+    assert.are.same("none", group_of(0, "lua-fix"))
+  end)
+
   it("replays three agents in parallel: slots, places, files, bullets and the footer", function()
     helpers.fresh()
     for _, name in ipairs({ "alpha", "beta", "gamma" }) do
