@@ -159,6 +159,15 @@ Snacks.toggle({
   end,
 }):map("<leader>us", { desc = keys.desc("global", "n", "<leader>us") })
 Snacks.toggle({
+  name = "Todo window",
+  get = function()
+    return require("anvim.layout").todo_window()
+  end,
+  set = function(state)
+    require("anvim.layout").set_todo_window(state)
+  end,
+}):map("<leader>ut", { desc = keys.desc("global", "n", "<leader>ut") })
+Snacks.toggle({
   name = "Explorer auto-minimize",
   get = function()
     return require("anvim.tree").minimizes()

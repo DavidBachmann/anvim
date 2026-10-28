@@ -1,6 +1,6 @@
 # The screen
 
-anvim starts with three columns: the explorer, the code window, and Claude's transcript and prompt. A tool pane sits below the code. The cursor starts in the prompt in normal mode; press `i` when you want to type.
+anvim starts with three columns: the explorer, the code window, and Claude's transcript and prompt. A tool pane sits below the code. While Claude keeps a [todo list](todos.md), its window sits on top of the transcript. The cursor starts in the prompt in normal mode; press `i` when you want to type.
 
 <a id="follow-mode"></a>
 

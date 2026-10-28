@@ -30,6 +30,7 @@ The tables below are a quick reference; Vim's normal motions still work. The rea
 | `<leader>uw`, `<leader>ud` | Toggle wrap in the code window, toggle diagnostics |
 | `<leader>uH` | Toggle Claude on the left and the explorer on the right |
 | `<leader>us` | Toggle the tool pane |
+| `<leader>ut` | Toggle the [todo window](todos.md) |
 | `<leader>ue` | Toggle explorer auto-minimize |
 | `<leader>uC` | Pick a colorscheme, with a live preview |
 | `q` | Close a help, quickfix or info window |

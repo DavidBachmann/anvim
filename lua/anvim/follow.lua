@@ -309,7 +309,7 @@ M.on_top = on_top
 -- the code window's file, and the Overview the pane's log.
 local function float_copy(win)
   local wins = layout.wins
-  if win == wins.code or win == wins.input or win == wins.transcript or win == wins.pane then
+  if win == wins.code or win == wins.input or win == wins.transcript or win == wins.pane or win == wins.todos then
     return false
   end
   for _, other in ipairs(vim.fn.win_findbuf(api.nvim_win_get_buf(win))) do

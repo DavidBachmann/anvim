@@ -216,9 +216,9 @@ end
 function M.reset()
   if resetting then
     sidecar.send({ type = "todo_reset" })
-    -- The transcript pins the list again as it clears, so no frame shows the
-    -- old list. The sidecar's todos event confirms the empty list.
-    require("anvim.todos").items = {}
+    -- No frame shows the old list, in the todo window or in the transcript.
+    -- The sidecar's todos event confirms the empty list.
+    require("anvim.todos").set({})
   end
   forget()
   require("anvim.files").clear()

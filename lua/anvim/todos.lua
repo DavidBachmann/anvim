@@ -2,6 +2,11 @@
 -- it with the todo_ tools, and each change comes as a todos event.
 local M = {}
 
+local api = vim.api
+local ns = api.nvim_create_namespace("anvim.todos")
+---@type integer?
+local bufnr
+
 ---@class anvim.TodoItem
 ---@field id integer
 ---@field subject string
@@ -81,10 +86,77 @@ function M.active()
   end
 end
 
+-- The rows of the todo window. Its winbar is the header.
+local function draw()
+  local lines, marks = M.render(M.items, function()
+    return "  "
+  end)
+  vim.bo[bufnr].modifiable = true
+  api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+  vim.bo[bufnr].modifiable = false
+  api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+  for _, m in ipairs(marks) do
+    api.nvim_buf_set_extmark(bufnr, ns, m[1], m[2], { end_col = m[3], hl_group = m[4] })
+  end
+end
+
+-- The todo window's buffer. It follows the list also while the window does
+-- not show, so the window opens with its rows in place.
+function M.buf()
+  if bufnr and api.nvim_buf_is_loaded(bufnr) and vim.b[bufnr].anvim_todos then
+    return bufnr
+  end
+  -- :bdelete keeps the buffer and its name, but clears its options.
+  if bufnr and api.nvim_buf_is_valid(bufnr) then
+    pcall(api.nvim_buf_delete, bufnr, { force = true })
+  end
+  bufnr = api.nvim_create_buf(false, true)
+  vim.b[bufnr].anvim_todos = true
+  require("anvim.windows").stop_at_end(bufnr)
+  pcall(api.nvim_buf_set_name, bufnr, "anvim://todos")
+  vim.bo[bufnr].filetype = "anvim_todos"
+  draw()
+  return bufnr
+end
+
+function M.winbar()
+  local done = #vim.tbl_filter(function(item)
+    return not M.is_open(item)
+  end, M.items)
+  return ("  %%#AnvimToolName#Todos%%#AnvimResult# · %d of %d done%%*"):format(done, #M.items)
+end
+
+-- The view starts at the first open item, so done items scroll out of
+-- sight in a long list. Without one, it shows the end.
+function M.view(win)
+  local row = #M.items
+  for i, item in ipairs(M.items) do
+    if M.is_open(item) then
+      row = i
+      break
+    end
+  end
+  row = math.max(row, 1)
+  api.nvim_win_call(win, function()
+    vim.fn.winrestview({ topline = row, topfill = 0, skipcol = 0, lnum = row, col = 0 })
+  end)
+  require("anvim.windows").clamp(win)
+end
+
+-- Draws the list in the todo window's buffer, then shows the window or the
+-- list in the transcript, in one tick.
 ---@param items anvim.TodoItem[]
 function M.set(items)
   M.items = type(items) == "table" and items or {}
-  require("anvim.transcript").todos(M.items)
+  M.buf()
+  draw()
+  require("anvim.layout").sync_todos()
+end
+
+-- The items that the transcript shows: none while the todo window shows them.
+---@return anvim.TodoItem[]
+function M.inline()
+  return require("anvim.layout").todos_shown() and {} or M.items
 end
 
 function M.attach(sidecar)

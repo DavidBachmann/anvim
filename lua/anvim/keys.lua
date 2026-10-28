@@ -91,6 +91,7 @@ M.places = {
       { "<leader>ud", "Toggle diagnostics" },
       { "<leader>uH", "Toggle Claude on the left" },
       { "<leader>us", "Toggle the tool pane" },
+      { "<leader>ut", "Toggle the todo window" },
       { "<leader>ue", "Toggle explorer auto-minimize" },
       { "<leader>uC", "Pick a colorscheme" },
       { "q", "Close a help, quickfix or info window", ctx = "other" },

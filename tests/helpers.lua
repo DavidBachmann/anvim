@@ -39,10 +39,12 @@ function M.start()
   vim.o.number, vim.o.relativenumber, vim.o.signcolumn = true, true, "yes"
   require("anvim.history").dir = M.tmp .. "/history"
   -- The choices of <leader>u start from none, and no spec keeps them for the next run.
-  -- The tool pane starts off, so the tool calls show in the chat. Its own specs turn it on.
+  -- The tool pane starts off, so the tool calls show in the chat, and the todo
+  -- window too, so the list shows there. Their own specs turn them on.
   local prefs = require("anvim.prefs")
   prefs.path = vim.fn.tempname() .. "/prefs.json"
   prefs.set("tool_pane", false)
+  prefs.set("todo_window", false)
   -- The steps through a Bash call's files go faster than a user's eye needs.
   require("anvim.follow").step_ms = 100
   local anvim = require("anvim")

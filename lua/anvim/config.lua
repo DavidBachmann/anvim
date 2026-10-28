@@ -35,6 +35,11 @@ M.defaults = {
     claude_width = 0.36,
     ---@type number The tool pane's rows, or a fraction of the code column's height.
     pane_height = 0.25,
+    ---@type number The todo window's rows, or a fraction of the Claude column's height.
+    todo_height = 0.3,
+    -- The transcript's fewest rows under the todo window, with the prompt at
+    -- its largest. Without room for them, the list shows in the transcript.
+    transcript_min = 5,
     -- Rows for the prompt, the rule under it and its footer. The window grows
     -- with the prompt.
     input_height = { min = 3, max = 12 },

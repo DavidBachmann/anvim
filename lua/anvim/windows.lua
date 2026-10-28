@@ -1,5 +1,6 @@
 -- The window rules of the anvim tab. The transcript takes no focus, except in
--- read mode, and the tool pane takes none. Only the code window shows files.
+-- read mode, and the tool pane and the todo window take none. Only the code
+-- window shows files.
 -- Closed windows come back.
 local config = require("anvim.config")
 local input = require("anvim.input")
@@ -92,24 +93,37 @@ local function splits()
   end, api.nvim_tabpage_list_wins(0))
 end
 
--- The window before `win` in <C-w>W order, leaving out the Claude column and
--- the pane.
+-- The windows that take no focus at all.
+local function unfocused(win)
+  return win == wins.pane or win == wins.todos
+end
+
+-- The window before `win` in <C-w>W order, leaving out the Claude column, the
+-- pane and the todo window.
 local function window_before(win)
   local list = splits()
   local at = vim.fn.index(list, win) + 1
   for i = 1, #list - 1 do
     local w = list[(at - i - 1) % #list + 1]
-    if w ~= wins.input and w ~= wins.transcript and w ~= wins.pane then
+    if w ~= wins.input and w ~= wins.transcript and not unfocused(w) then
       return w
     end
   end
   return wins.input
 end
 
--- The window after `win` in <C-w>w order.
+-- The window after `win` in <C-w>w order, leaving out the pane and the todo
+-- window.
 local function window_after(win)
   local list = splits()
-  return list[(vim.fn.index(list, win) + 1) % #list + 1]
+  local at = vim.fn.index(list, win) + 1
+  for i = 1, #list - 1 do
+    local w = list[(at + i - 1) % #list + 1]
+    if not unfocused(w) then
+      return w
+    end
+  end
+  return win
 end
 
 local mouse_keys = {}
@@ -117,14 +131,16 @@ for _, key in ipairs({ "<LeftMouse>", "<2-LeftMouse>", "<3-LeftMouse>", "<RightM
   mouse_keys[vim.keycode(key)] = true
 end
 
--- Moves the cursor out of the pane. A click goes back to the window that the
--- cursor left, <C-w>w and <C-w>W go on past the pane, and other moves go to
--- the code window. The cursor hops back first, so that <C-w>p still goes
--- where it went before.
+-- Moves the cursor out of the pane or the todo window. A click goes back to
+-- the window that the cursor left, and <C-w>w and <C-w>W go on past it. Other
+-- moves go to the window next to it: the code window from the pane, and the
+-- prompt from the todo window. The cursor hops back first, so that <C-w>p
+-- still goes where it went before.
 local function leave_pane()
   local tab = api.nvim_get_current_tabpage()
+  local current = api.nvim_get_current_win()
   local function here(win)
-    return valid(win) and win ~= wins.pane and api.nvim_win_get_tabpage(win) == tab
+    return valid(win) and not unfocused(win) and api.nvim_win_get_tabpage(win) == tab
   end
   local code = valid(wins.code) and wins.code or nil
   local from = here(left) and left or code
@@ -151,10 +167,14 @@ local function leave_pane()
     return
   end
   local to = code or from
+  if current == wins.todos then
+    -- From read mode in the transcript, the cursor stays there.
+    to = from == wins.transcript and from or wins.input or from
+  end
   if last_key == "W" then
-    to = window_before(wins.pane)
+    to = window_before(current)
   elseif last_key == "w" or last_key == "\23" then
-    to = window_after(wins.pane)
+    to = window_after(current)
   end
   if to ~= from then
     api.nvim_set_current_win(to)
@@ -390,7 +410,7 @@ local function fold(win)
   end
 end
 
----@return 'code'|'copy'|nil kind A second window that shows code, or a copy of the prompt, the compose window, the transcript or the pane.
+---@return 'code'|'copy'|nil kind A second window that shows code, or a copy of the prompt, the compose window, the transcript, the pane or the todo window.
 local function extra(win)
   if win == wins.code or api.nvim_win_get_config(win).relative ~= "" or vim.w[win].snacks_win then
     return
@@ -402,6 +422,8 @@ local function extra(win)
     return win ~= wins.transcript and "copy" or nil
   elseif vim.b[buf].anvim_tool_log or vim.b[buf].anvim_agentlog then
     return win ~= wins.pane and "copy" or nil
+  elseif vim.b[buf].anvim_todos then
+    return win ~= wins.todos and "copy" or nil
   elseif layout.is_code(buf) then
     return "code"
   end
@@ -429,7 +451,7 @@ local function fix()
   local current = api.nvim_get_current_win()
   if current == wins.transcript and not reading(current) then
     leave_transcript()
-  elseif current == wins.pane then
+  elseif unfocused(current) then
     leave_pane()
   end
 end
@@ -555,7 +577,7 @@ function M.setup()
       local win = api.nvim_get_current_win()
       if in_tab() and win == wins.transcript and not reading(win) then
         leave_transcript()
-      elseif in_tab() and win == wins.pane then
+      elseif in_tab() and unfocused(win) then
         leave_pane()
       elseif in_tab() and win == wins.input then
         enter_input()
@@ -584,13 +606,14 @@ function M.setup()
       end
     end,
   })
-  -- :q in the code window, the prompt, the transcript or the pane quits anvim.
+  -- :q in the code window, the prompt, the transcript, the pane or the todo
+  -- window quits anvim.
   -- Closing the other tabs and windows first makes :q close the last one.
   api.nvim_create_autocmd("QuitPre", {
     group = group,
     callback = function()
       local current = api.nvim_get_current_win()
-      local own = current == wins.code or current == wins.input or current == wins.transcript or current == wins.pane
+      local own = current == wins.code or current == wins.input or current == wins.transcript or unfocused(current)
       if not (in_tab() and own) then
         return
       end

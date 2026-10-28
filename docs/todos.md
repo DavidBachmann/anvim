@@ -6,9 +6,13 @@ Claude Code's own task tools (TodoWrite and the Task tools) are turned off, so C
 
 ## What you see
 
-The list appears in the transcript as `⏺ Todos · 2 of 5 done`, with one row per item: a box, the id and the subject. Items in progress are bold, and completed items are dim and struck through. A row ends with `blocked by #2` while an open item blocks it. The tool calls themselves draw no line, and the tool pane does not count them.
+The list has one row per item: a box, the id and the subject. Items in progress are bold, and completed items are dim and struck through. A row ends with `blocked by #2` while an open item blocks it. The tool calls themselves draw no line, and the tool pane does not count them. The spinner names the item that Claude itself works on, such as `Fixing the parser...`.
 
-While the list has open items, it stays below the newest output and updates in place. Once every item is done, the list stays where it is. When the list gets open items again, it moves back to the end. The spinner names the item that Claude itself works on, such as `Fixing the parser...`.
+The todo window sits on top of the Claude column, above the transcript, while the list has items. Its bar reads `Todos · 2 of 5 done`, and a rule separates it from the transcript. Long subjects wrap. In a long list, the view starts at the first open item, so done items scroll out of sight. The window takes no focus; use the mouse wheel to scroll it.
+
+The window takes 30% of the column's rows (`layout.todo_height`). It never leaves the transcript fewer than 5 rows (`layout.transcript_min`) next to the prompt at its largest. On a terminal too short for that, the window closes until the room comes back. Drag the rule under it to change its share for this run.
+
+`<leader>ut` turns the window off and on, and the choice persists across starts. Without the window, the list shows in the transcript as `⏺ Todos · 2 of 5 done` with the same rows. While the list has open items, it stays below the newest output and updates in place. Once every item is done, the list stays where it is. When the list gets open items again, it moves back to the end. A list with open items shows in one place only. A finished list that stays in the transcript is history, as the output around it is.
 
 ## Sessions and agents
 

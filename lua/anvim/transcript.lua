@@ -1493,7 +1493,7 @@ function M.clear()
     end, b)
   end
   -- The todo list outlives the conversation.
-  M.todos(todos.items)
+  M.todos(todos.inline())
 end
 
 function M.attach(sidecar)

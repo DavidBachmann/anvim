@@ -1,15 +1,16 @@
--- The three columns: tree | code (above the tool pane) | claude (transcript
--- above input), or mirrored, with Claude on the left.
+-- The three columns: tree | code (above the tool pane) | claude (todo window
+-- above transcript above input), or mirrored, with Claude on the left.
 local config = require("anvim.config")
 local input = require("anvim.input")
 local prefs = require("anvim.prefs")
+local todos = require("anvim.todos")
 local transcript = require("anvim.transcript")
 
 local M = {}
 
 local api = vim.api
 
----@type { code: integer?, transcript: integer?, input: integer?, pane: integer? }
+---@type { code: integer?, transcript: integer?, input: integer?, pane: integer?, todos: integer? }
 M.wins = {}
 ---@type integer? The tab page that holds the layout.
 M.tab = nil
@@ -81,6 +82,7 @@ local function is_special(win)
   return win == M.wins.transcript
     or win == M.wins.input
     or win == M.wins.pane
+    or win == M.wins.todos
     or vim.bo[api.nvim_win_get_buf(win)].buftype ~= ""
 end
 
@@ -334,6 +336,176 @@ local function sync_pane()
   api.nvim_win_set_cursor(win, { api.nvim_buf_line_count(buf), 0 })
 end
 
+-- The user's choice of the todo window.
+local todo_on = true
+---@type number? The todo window's share of the Claude column, since the user resized it in this session.
+local todo_share
+-- The list shows in the todo window, and the transcript leaves it out.
+local in_window = false
+
+---@return boolean
+function M.todo_window()
+  return todo_on
+end
+
+-- Whether the todo window shows the list now.
+function M.todos_shown()
+  return valid(M.wins.todos) == true
+end
+
+-- The rows of the Claude column: its windows and the rows between them.
+local function claude_rows()
+  local rows = -1
+  for _, role in ipairs({ "todos", "transcript", "input" }) do
+    local win = M.wins[role]
+    if valid(win) then
+      rows = rows + api.nvim_win_get_height(win) + 1
+    end
+  end
+  return math.max(rows, 0)
+end
+
+-- The todo window's rows in a Claude column of `rows`, or nil without room.
+-- The rest holds the prompt at its largest, its winbar, the two rows between
+-- the windows and the transcript's minimum, so a prompt that grows never
+-- squeezes the transcript below it.
+---@return integer?
+local function todo_height(rows)
+  local opts = config.options.layout
+  local fewest = min_rows() + 1
+  local most = rows - (opts.input_height.max + 1) - 2 - opts.transcript_min
+  if most < fewest then
+    return nil
+  end
+  local height = todo_share or opts.todo_height
+  height = height < 1 and math.floor(rows * height + 1e-6) or height
+  return math.max(fewest, math.min(height, most))
+end
+
+-- The todo window's own options, as for the pane. The row under it is a
+-- rule, drawn with the window's own 'fillchars' and WinSeparator.
+local todo_options = {
+  winbar = "%!v:lua.require'anvim.todos'.winbar()",
+  winhighlight = "Normal:AnvimNormal,NormalNC:AnvimNormal,WinBar:AnvimNormal,WinBarNC:AnvimNormal,"
+    .. "WinSeparator:AnvimSeparator",
+  number = false,
+  relativenumber = false,
+  signcolumn = "no",
+  foldcolumn = "0",
+  statuscolumn = "",
+  foldenable = false,
+  wrap = true,
+  linebreak = true,
+  breakindent = true,
+  breakindentopt = "shift:2",
+  showbreak = "NONE",
+  cursorline = false,
+  colorcolumn = "",
+  conceallevel = 0,
+  list = false,
+  spell = false,
+  scrolloff = 0,
+  smoothscroll = false,
+  winfixwidth = true,
+  winfixheight = true,
+  winfixbuf = true,
+}
+
+local function setup_todo_win(win)
+  local fill = (vim.go.fillchars ~= "" and vim.go.fillchars .. "," or "") .. "horiz:─"
+  for name, value in pairs(vim.tbl_extend("force", todo_options, { fillchars = fill })) do
+    if vim.wo[win][name] ~= value then
+      vim.wo[win][name] = value
+    end
+  end
+end
+
+-- The transcript shows the list only while the todo window does not.
+---@param changed boolean? The list changed.
+local function sync_inline(changed)
+  local shown = M.todos_shown()
+  if changed or shown ~= in_window then
+    in_window = shown
+    transcript.todos(shown and {} or todos.items)
+  end
+end
+
+-- Opens the todo window on top of the Claude column while the list has
+-- items, or closes it, as the user chose. Without room, it stays closed.
+local function sync_todo_win()
+  local win = M.wins.todos
+  local want = todo_on and #todos.items > 0
+  if not want then
+    if valid(win) then
+      api.nvim_win_close(win, true)
+    end
+    M.wins.todos = nil
+    return
+  elseif valid(win) or not (in_tab() and valid(M.wins.transcript)) then
+    return
+  end
+  local height = todo_height(claude_rows())
+  if not height then
+    return
+  end
+  local opts = { split = "above", win = M.wins.transcript, height = height }
+  local ok, new = pcall(api.nvim_open_win, todos.buf(), false, opts)
+  if not ok then
+    return
+  end
+  M.wins.todos = new
+  setup_todo_win(new)
+  api.nvim_win_set_config(new, { focusable = false })
+  todos.view(new)
+end
+
+-- Whether the todo window is as the user chose. A missing one waits for room.
+local function todos_ok()
+  if not (todo_on and #todos.items > 0) then
+    return not valid(M.wins.todos)
+  end
+  return valid(M.wins.todos) or not todo_height(claude_rows())
+end
+
+-- After each change of the list: the window, then the list in the
+-- transcript, in one tick.
+function M.sync_todos()
+  sync_todo_win()
+  if valid(M.wins.todos) then
+    todos.view(M.wins.todos)
+  end
+  sync_inline(true)
+end
+
+---@param on boolean
+function M.set_todo_window(on)
+  todo_on = on
+  prefs.set("todo_window", on)
+  sync_todo_win()
+  sync_inline()
+end
+
+-- While the whole Claude column fills the screen's rows, a drag or :resize
+-- sets the todo window's share of the column. A drag past the cap or the
+-- minimum stops there.
+local function fit_todos()
+  local win = M.wins.todos
+  if not (valid(win) and valid(M.wins.transcript) and valid(M.wins.input)) then
+    return
+  end
+  local rows = claude_rows()
+  local height = api.nvim_win_get_height(win)
+  if rows ~= screen_rows() or height == todo_height(rows) then
+    return
+  end
+  todo_share = height / rows
+  local fit = todo_height(rows)
+  if fit and fit ~= height then
+    todo_share = fit / rows
+    api.nvim_win_set_height(win, fit)
+  end
+end
+
 -- The side of the Claude column, as the user last chose it.
 ---@return 'left'|'right'
 function M.claude_side()
@@ -517,19 +689,22 @@ end
 -- A prompt or transcript window that lost its buffer, as after :bdelete, opens
 -- again with a new one.
 function M.repair()
-  for role, buf in pairs({ transcript = transcript.buf(), input = input.buf() }) do
+  for role, buf in pairs({ transcript = transcript.buf(), input = input.buf(), todos = todos.buf() }) do
     local win = M.wins[role]
     if valid(win) and api.nvim_win_get_buf(win) ~= buf then
       pcall(api.nvim_win_close, win, true)
     end
   end
-  if valid(M.wins.code) and valid(M.wins.transcript) and valid(M.wins.input) and pane_ok() then
+  if valid(M.wins.code) and valid(M.wins.transcript) and valid(M.wins.input) and pane_ok() and todos_ok() then
+    sync_inline()
     return
   end
   if not valid(M.wins.transcript) then
     local opts = { split = M.claude_side(), win = -1, width = claude_width() }
     if valid(M.wins.input) then
       opts = { split = "above", win = M.wins.input }
+    elseif valid(M.wins.todos) then
+      opts = { split = "below", win = M.wins.todos }
     end
     M.wins.transcript = api.nvim_open_win(transcript.buf(), false, opts)
     setup_transcript_win(M.wins.transcript)
@@ -545,6 +720,13 @@ function M.repair()
   end
   M.code_win()
   sync_pane()
+  sync_todo_win()
+  -- A transcript that opens again takes its rows from its neighbors.
+  local height = valid(M.wins.todos) and todo_height(claude_rows())
+  if height then
+    api.nvim_win_set_height(M.wins.todos, height)
+  end
+  sync_inline()
   api.nvim_win_set_width(M.wins.transcript, claude_width())
   input.render()
 end
@@ -567,18 +749,35 @@ end
 ---@param side 'left'|'right'
 function M.set_claude_side(side)
   prefs.set("claude_side", side)
-  local code, top, bottom = M.wins.code, M.wins.transcript, M.wins.input
-  if not (valid(code) and valid(top) and valid(bottom)) then
+  local code, middle, bottom = M.wins.code, M.wins.transcript, M.wins.input
+  if not (valid(code) and valid(middle) and valid(bottom)) then
     return
   end
+  local todo = valid(M.wins.todos) and M.wins.todos or nil
+  local top = todo or middle
+  -- The transcript changes its height on the way, which can cut off its end.
+  local last = api.nvim_buf_line_count(api.nvim_win_get_buf(middle))
+  local tail = todo and vim.fn.line("w$", middle) >= last
   -- With win -1, the split goes to the current tab page. Make that the
   -- layout's tab page.
   api.nvim_win_call(code, function()
     api.nvim_win_set_config(top, { split = side, win = -1 })
   end)
-  api.nvim_win_set_config(bottom, { split = "below", win = top })
+  if todo then
+    api.nvim_win_set_config(middle, { split = "below", win = todo })
+  end
+  api.nvim_win_set_config(bottom, { split = "below", win = middle })
   api.nvim_win_set_width(top, claude_width())
+  if todo then
+    api.nvim_win_set_height(todo, todo_height(claude_rows()) or api.nvim_win_get_height(todo))
+  end
   input.render()
+  if tail then
+    api.nvim_win_call(middle, function()
+      vim.fn.winrestview({ topline = last, lnum = last })
+    end)
+    require("anvim.windows").clamp(middle)
+  end
   -- Last, because snacks flushes a redraw when it lays the explorer out. The
   -- layout takes the side from M.tree_side().
   local explorer = require("anvim.tree").explorer()
@@ -606,6 +805,7 @@ end
 function M.setup()
   pane_on = prefs.get("tool_pane") ~= false
   transcript.pane_on = pane_on
+  todo_on = prefs.get("todo_window") ~= false
   local group = api.nvim_create_augroup("anvim.layout", {})
   -- The Claude column and the pane keep their share of the screen.
   -- 'winfixwidth' and 'winfixheight' alone would keep them at the smallest
@@ -626,6 +826,17 @@ function M.setup()
       if valid(M.wins.pane) then
         api.nvim_win_set_height(M.wins.pane, pane_height(column_rows()))
       end
+      if valid(M.wins.todos) and not todo_height(claude_rows()) then
+        api.nvim_win_close(M.wins.todos, true)
+        M.wins.todos = nil
+      elseif in_tab() then
+        sync_todo_win()
+      end
+      local height = valid(M.wins.todos) and todo_height(claude_rows())
+      if height then
+        api.nvim_win_set_height(M.wins.todos, height)
+      end
+      sync_inline()
     end,
   })
   -- As the prompt does, before the redraw.
@@ -633,6 +844,7 @@ function M.setup()
     group = group,
     callback = function()
       fit_pane()
+      fit_todos()
     end,
   })
   api.nvim_create_autocmd("User", { group = group, pattern = "AnvimAgents", callback = M.sync_pane_buf })

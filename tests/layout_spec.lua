@@ -205,3 +205,63 @@ describe("the tool pane", function()
     assert.is_true(transcript.pane_on)
   end)
 end)
+
+describe("the todo window", function()
+  local api = vim.api
+  local config = require("anvim.config")
+  local sidecar = require("anvim.sidecar")
+  local todos = require("anvim.todos")
+  local max
+
+  local function list(items)
+    sidecar.dispatch({ type = "todos", items = items })
+  end
+
+  local function inline()
+    local text = table.concat(api.nvim_buf_get_lines(transcript.buf(), 0, -1, false), "\n")
+    return text:find("Todos · ", 1, true) ~= nil
+  end
+
+  after_each(function()
+    config.options.layout.input_height.max = max
+    layout.set_todo_window(false)
+    todos.set({})
+  end)
+
+  it("shows the list on top of the Claude column, or inline when it is off or has no room", function()
+    helpers.start()
+    max = config.options.layout.input_height.max
+    local items = {
+      { id = 1, subject = "Read the file", status = "completed" },
+      { id = 2, subject = "Fix the bug", status = "in_progress" },
+    }
+    layout.set_todo_window(true)
+    assert.is_true(require("anvim.prefs").get("todo_window"))
+    -- The test screen has 24 rows: too few next to a prompt of up to 12.
+    list(items)
+    assert.is_nil(layout.wins.todos)
+    assert.is_true(inline())
+
+    config.options.layout.input_height.max = 3
+    list(items)
+    local win = assert(layout.wins.todos, "no todo window")
+    assert.are.same({ "  ☒ #1 Read the file", "  ☐ #2 Fix the bug" }, helpers.buf_lines(api.nvim_win_get_buf(win)))
+    local bar = api.nvim_eval_statusline(vim.wo[win].winbar, { winid = win, use_winbar = true })
+    assert.are.same("  Todos · 1 of 2 done", bar.str)
+    assert.is_false(api.nvim_win_get_config(win).focusable)
+    local top, below = vim.fn.win_screenpos(win), vim.fn.win_screenpos(layout.wins.transcript)
+    assert.are.same({ top[1] + api.nvim_win_get_height(win) + 1, top[2] }, below)
+    assert.is_false(inline(), "the list shows twice")
+
+    layout.set_todo_window(false)
+    assert.is_false(api.nvim_win_is_valid(win))
+    assert.is_true(inline())
+    layout.set_todo_window(true)
+    assert.is_true(layout.todos_shown())
+    assert.is_false(inline())
+
+    list({})
+    assert.is_nil(layout.wins.todos)
+    assert.is_false(inline())
+  end)
+end)
