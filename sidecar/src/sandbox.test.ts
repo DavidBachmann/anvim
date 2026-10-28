@@ -12,6 +12,8 @@ import {
   type GuardSettings,
   type Host,
   preToolUse,
+  refuseSubagentTodos,
+  TODO_REFUSAL,
   REASONS,
   realPath,
   SandboxGuard,
@@ -22,7 +24,7 @@ import {
   startMode,
 } from "./sandbox";
 import { SendBack } from "./sendback";
-import { CODEX_TOOL } from "./tools";
+import { CODEX_TOOL, TODO_TOOLS } from "./tools";
 
 // A host with these dirs and files, and these commands on PATH.
 function host(platform: NodeJS.Platform, dirs: string[] = [], cmds: string[] = [], files: string[] = []): Host {
@@ -518,7 +520,10 @@ describe("the edit guard", () => {
 
   test("off registers no guard hooks, on runs the edit guard after the preview", async () => {
     const preview: HookCallback = async () => ({});
-    expect(preToolUse(preview)).toEqual([{ matcher: "Edit|Write|NotebookEdit", hooks: [preview] }]);
+    expect(preToolUse(preview)).toEqual([
+      { matcher: "Edit|Write|NotebookEdit", hooks: [preview] },
+      { matcher: TODO_TOOLS.join("|"), hooks: [refuseSubagentTodos] },
+    ]);
     const order: string[] = [];
     const slow: HookCallback = async () => {
       order.push("preview starts");
@@ -537,9 +542,9 @@ describe("the edit guard", () => {
       },
     });
     const hooks = preToolUse(slow, g);
-    expect(hooks.map((h) => h.matcher)).toEqual(["Edit|Write|NotebookEdit", "Bash", CODEX_TOOL]);
+    expect(hooks.map((h) => h.matcher)).toEqual(["Edit|Write|NotebookEdit", "Bash", CODEX_TOOL, TODO_TOOLS.join("|")]);
     // A prompt from the guard waits for the user, not for Claude Code's default timeout.
-    expect(hooks.map((h) => h.timeout)).toEqual([GUARD_TIMEOUT_S, GUARD_TIMEOUT_S, GUARD_TIMEOUT_S]);
+    expect(hooks.map((h) => h.timeout)).toEqual([GUARD_TIMEOUT_S, GUARD_TIMEOUT_S, GUARD_TIMEOUT_S, undefined]);
     expect(hooks[1]!.hooks).toEqual([g.bash]);
     const out = await hooks[0]!.hooks[0]!(
       {
@@ -554,5 +559,40 @@ describe("the edit guard", () => {
     );
     expect(out).toEqual({});
     expect(order).toEqual(["preview starts", "preview ends", "guard asks"]);
+  });
+});
+
+describe("the todo tools", () => {
+  // Claude Code matches a matcher of plain names and | by exact name.
+  const matches = (matcher: string | undefined, tool: string) => (matcher ?? "").split("|").includes(tool);
+
+  test("a subagent's todo call is refused in every mode, and its other anvim tools and the main agent's pass", async () => {
+    const preview: HookCallback = async () => ({});
+    const guard = new SandboxGuard({ cwd, tmpDir: join(root, "sbtmp"), settings: async () => ({}) });
+    for (const hooks of [preToolUse(preview), preToolUse(preview, guard)]) {
+      const run = async (tool: string, agent_id?: string, permission_mode = "bypassPermissions") => {
+        const input = { ...base, permission_mode, tool_name: tool, tool_input: {}, tool_use_id: "toolu_t", agent_id };
+        const outs = [];
+        for (const h of hooks.filter((h) => matches(h.matcher, tool))) {
+          for (const fn of h.hooks) outs.push(await fn(input as HookInput, "toolu_t", { signal }));
+        }
+        return outs;
+      };
+      const denied = [
+        {
+          hookSpecificOutput: {
+            hookEventName: "PreToolUse" as const,
+            permissionDecision: "deny" as const,
+            permissionDecisionReason: TODO_REFUSAL,
+          },
+        },
+      ];
+      for (const tool of TODO_TOOLS) {
+        expect(await run(tool, "a1")).toEqual(denied);
+        expect(await run(tool, "a1", "default")).toEqual(denied);
+        expect(await run(tool)).toEqual([{}]);
+      }
+      expect(await run("mcp__anvim__diagnostics", "a1")).toEqual([]);
+    }
   });
 });

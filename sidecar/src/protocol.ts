@@ -58,6 +58,19 @@ export type ChromeState = {
   urls: { install: string; reconnect: string; permissions: string };
 };
 
+// An item of anvim's todo list (todos.ts). Ids count from 1 and are never
+// used again in a list. blocked_by names the items that must end first.
+export type TodoStatus = "pending" | "in_progress" | "completed";
+export type TodoItem = {
+  id: number;
+  subject: string;
+  description?: string;
+  active_form?: string;
+  status: TodoStatus;
+  owner?: string;
+  blocked_by?: number[];
+};
+
 export type Command =
   | {
       type: "start";
@@ -88,6 +101,8 @@ export type Command =
       // Codex's own config decides.
       codex_model?: string;
       codex_effort?: string;
+      // The project's todo list. Without it, Claude gets no todo tools.
+      todos_path?: string;
     }
   // Absolute paths of the images that the prompt's [Image #N] chips stand for.
   // id is a UUID, which Claude Code's prompt_state events name.
@@ -299,6 +314,8 @@ export type Event =
   | { type: "output"; text: string }
   // /clear dropped the conversation. The init that follows has the new session id.
   | { type: "reset" }
+  // The whole todo list, at start and after each change, also another anvim's.
+  | { type: "todos"; items: TodoItem[] }
   // Claude Code summarized the conversation to free context.
   | { type: "compact"; trigger?: string; pre_tokens?: number; post_tokens?: number }
   // How full the context window is, at start and after each turn.

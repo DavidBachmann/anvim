@@ -24,6 +24,7 @@ import { PreviewBridge } from "./preview";
 import type { Command, EffortLevel, Event } from "./protocol";
 import { preToolUse, SandboxGuard, SandboxNotice, sandboxSetup, startMode } from "./sandbox";
 import * as sessions from "./sessions";
+import { TodoStore } from "./todos";
 import { EditorBridge, editorServer, SERVER } from "./tools";
 import {
   commandsEvent,
@@ -310,6 +311,8 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
         models: codexModels,
       })
     : undefined;
+  const todos = cmd.todos_path ? new TodoStore(cmd.todos_path, emit) : undefined;
+  todos?.start();
   const options: Options = {
     ...sandbox.options,
     cwd: cmd.cwd,
@@ -324,10 +327,15 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     hooks: {
       PreToolUse: preToolUse(previews.hook, guard),
       PostToolUse: postToolUse(() => session, cmd.cwd),
+      ...(todos
+        ? { SessionStart: [{ hooks: [todos.sessionStart] }], UserPromptSubmit: [{ hooks: [todos.firstPrompt] }] }
+        : {}),
     },
+    // anvim's todo list is the only one, also if Claude Code offers its own again.
+    disallowedTools: ["TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"],
     systemPrompt: { type: "preset", preset: "claude_code", append: cmd.append_system_prompt },
     extraArgs: chromeArgs(cmd.chrome),
-    mcpServers: { [SERVER]: editorServer(editor, { debug: cmd.debug === true, codex }) },
+    mcpServers: { [SERVER]: editorServer(editor, { debug: cmd.debug === true, codex, todos }) },
     canUseTool: permissions.canUseTool,
     stderr: (data) => {
       process.stderr.write(data);

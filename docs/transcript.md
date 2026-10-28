@@ -15,7 +15,7 @@ By default, the [tool pane](screen.md#the-tool-pane) holds tool calls and the tr
 
 `Ctrl-O` in the prompt toggles verbose mode for the transcript, tool pane and agent logs. It shows full tool input and output in place of abbreviated results; summaries such as `Read 40 lines` remain summaries unless the call failed. The choice lasts until anvim quits.
 
-An open todo list stays below the newest output, with the active item in bold and named by the spinner. Completed lists stay where they were. Claude Code supplies TodoWrite or TaskCreate/TaskUpdate; for its newest models these tools require `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`.
+Claude's [todo list](todos.md) stays below the newest output while it has open items, and the spinner names the item in progress.
 
 <a id="read-mode"></a>
 

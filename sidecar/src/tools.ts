@@ -16,10 +16,13 @@ import {
 } from "./codex";
 import type { Command, Event } from "./protocol";
 import { parseDump, png, svg, type Pos } from "./screen";
+import { listText, TodoError, type TodoStore } from "./todos";
 
 export const SERVER = "anvim";
 // It starts an agent that can write files, so it follows the permission mode.
 export const CODEX_TOOL = `mcp__${SERVER}__codex`;
+// Only the main agent keeps the todo list (sandbox.ts refuses subagents).
+export const TODO_TOOLS = ["todo_add", "todo_update", "todo_list"].map((name) => `mcp__${SERVER}__${name}`);
 const TIMEOUT_MS = 10_000;
 
 type Response = Extract<Command, { type: "editor_response" }>;
@@ -174,7 +177,70 @@ function codexTool(codex: Codex) {
   );
 }
 
-function editorTools(bridge: EditorBridge, opts: { debug?: boolean; codex?: Codex } = {}) {
+const MAIN_ONLY = "Only the main agent uses the todo tools. Subagents report back instead.";
+const ACTIVE_FORM = 'The present-continuous form shown while the item is in progress, such as "Fixing the parser"';
+const OWNER = "The name of the Agent call that works on the item";
+const BLOCKED_BY = z.array(z.number().int()).describe("The ids of the items that must be done first");
+
+async function todoResult(fn: () => Promise<string>): Promise<Result> {
+  try {
+    return text(await fn());
+  } catch (err) {
+    if (err instanceof TodoError) return text(err.message, true);
+    return text(`Could not change the todo list: ${(err as Error)?.message ?? err}`, true);
+  }
+}
+
+// anvim's todo list, which the user sees. The sidecar runs these tools itself.
+function todoTools(store: TodoStore) {
+  return [
+    tool(
+      "todo_add",
+      `Add items to the project's todo list, which the user sees. Use it to plan work of several steps. New items are pending. ${MAIN_ONLY} It returns the whole list.`,
+      {
+        items: z
+          .array(
+            z.object({
+              subject: z.string().describe('A short title in the imperative, such as "Fix the parser"'),
+              description: z.string().optional().describe("What to do, and how to check that it is done"),
+              active_form: z.string().optional().describe(ACTIVE_FORM),
+              owner: z.string().optional().describe(OWNER),
+              blocked_by: BLOCKED_BY.optional(),
+            }),
+          )
+          .min(1),
+      },
+      (args) =>
+        todoResult(async () => {
+          const { ids, items } = await store.add(args.items);
+          return `Added ${ids.map((id) => `#${id}`).join(", ")}.\n\n${listText(items)}`;
+        }),
+    ),
+    tool(
+      "todo_update",
+      `Change an item of the todo list. Mark it in_progress when work starts, and completed once it is done and checked. Status deleted removes it. ${MAIN_ONLY} It returns the whole list.`,
+      {
+        id: z.number().int().describe("The item's id"),
+        status: z.enum(["pending", "in_progress", "completed", "deleted"]).optional(),
+        subject: z.string().optional(),
+        description: z.string().optional(),
+        active_form: z.string().optional().describe(ACTIVE_FORM),
+        owner: z.string().nullable().optional().describe(`${OWNER}. null clears it.`),
+        blocked_by: BLOCKED_BY.optional().describe("The ids of the items that must be done first. [] clears them."),
+      },
+      (args) => todoResult(async () => listText(await store.update(args))),
+    ),
+    tool(
+      "todo_list",
+      `Show the project's todo list: each item's id, status, subject, owner and blockers, and the description of each open item. ${MAIN_ONLY}`,
+      {},
+      () => todoResult(async () => listText(store.items())),
+      readOnly,
+    ),
+  ];
+}
+
+function editorTools(bridge: EditorBridge, opts: { debug?: boolean; codex?: Codex; todos?: TodoStore } = {}) {
   const call = (method: string) => (args: Record<string, unknown>) => bridge.request(method, args);
   // These tools are for anvim's own development, so only --debug adds them.
   const debug = opts.debug
@@ -251,13 +317,15 @@ function editorTools(bridge: EditorBridge, opts: { debug?: boolean; codex?: Code
     ),
     ...debug,
     ...(opts.codex ? [codexTool(opts.codex)] : []),
+    ...(opts.todos ? todoTools(opts.todos) : []),
   ];
 }
 
-// codex adds the codex tool, which needs the Codex CLI.
+// codex adds the codex tool, which needs the Codex CLI. todos adds the todo
+// tools, and a replay has no store.
 export function editorServer(
   bridge: EditorBridge,
-  opts: { debug?: boolean; codex?: Codex } = {},
+  opts: { debug?: boolean; codex?: Codex; todos?: TodoStore } = {},
 ): McpSdkServerConfigWithInstance {
   // Always loaded, so the tools never hide behind tool search.
   return createSdkMcpServer({ name: SERVER, tools: editorTools(bridge, opts), alwaysLoad: true });
@@ -270,8 +338,8 @@ export function isOwnServer(mcpServer: { name: string; source: string } | undefi
   return mcpServer?.source === "sdk" && mcpServer.name === SERVER;
 }
 
-// Editor tools need no permission prompt. The codex tool starts an agent
-// that can write files, so it is not one of them.
+// Editor tools need no permission prompt, the todo tools included. The codex
+// tool starts an agent that can write files, so it is not one of them.
 export function isEditorTool(mcpServer: { name: string; source: string } | undefined, tool: string): boolean {
   return isOwnServer(mcpServer) && tool !== CODEX_TOOL;
 }

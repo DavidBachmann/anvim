@@ -7,6 +7,7 @@ When you need a particular answer:
 - [Keys](keys.md) is the reference for navigation, review and requests. `<leader>` means Space.
 - [Sessions and settings](sessions.md) covers resuming work, starting over, accounts, models, slash commands, MCP and Chrome.
 - [The transcript](transcript.md) explains tool output, reading and copying.
+- [The todo list](todos.md) covers the project's todo list, which Claude keeps and the transcript shows.
 - [Subagents](subagents.md) covers following Claude's agents and using Codex.
 - [Permissions and the sandbox](permissions.md) explains what can run without asking, what the sandbox protects and where it has gaps. Read this before relying on the default mode.
 - [Architecture](architecture.md) traces an event from Claude Code to the screen and points contributors to the relevant modules.

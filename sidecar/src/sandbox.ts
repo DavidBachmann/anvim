@@ -18,7 +18,7 @@ import type {
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
-import { CODEX_TOOL } from "./tools";
+import { CODEX_TOOL, TODO_TOOLS } from "./tools";
 
 export type Host = {
   platform: NodeJS.Platform;
@@ -597,12 +597,29 @@ export class SandboxGuard {
   }
 }
 
-// The PreToolUse hooks: the preview handshake, and the guards while the
-// sandbox is on. The edit guard runs after the preview hook in one callback,
-// because Claude Code runs the hooks of a matcher in parallel. So its prompt
-// opens once the preview has caught up.
+export const TODO_REFUSAL =
+  "The todo list belongs to the main agent. Do your task and report back. The main agent updates the list.";
+
+// A subagent gets a task and delivers it. The main agent marks the item done
+// once it has checked the work. A deny holds in every mode.
+export const refuseSubagentTodos: HookCallback = async (input) => {
+  if (!(input as PreToolUseHookInput).agent_id) return {};
+  return {
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: TODO_REFUSAL,
+    },
+  } satisfies HookJSONOutput;
+};
+
+// The PreToolUse hooks: the preview handshake, the todo tools' refusal, and
+// the guards while the sandbox is on. The edit guard runs after the preview
+// hook in one callback, because Claude Code runs the hooks of a matcher in
+// parallel. So its prompt opens once the preview has caught up.
 export function preToolUse(preview: HookCallback, guard?: SandboxGuard): HookCallbackMatcher[] {
-  if (!guard) return [{ matcher: "Edit|Write|NotebookEdit", hooks: [preview] }];
+  const todos = { matcher: TODO_TOOLS.join("|"), hooks: [refuseSubagentTodos] };
+  if (!guard) return [{ matcher: "Edit|Write|NotebookEdit", hooks: [preview] }, todos];
   const edit: HookCallback = async (input, toolUseID, opts) => {
     await preview(input, toolUseID, opts);
     return guard.edit(input, toolUseID, opts);
@@ -614,6 +631,7 @@ export function preToolUse(preview: HookCallback, guard?: SandboxGuard): HookCal
     { matcher: "Edit|Write|NotebookEdit", hooks: [edit], timeout: GUARD_TIMEOUT_S },
     { matcher: "Bash", hooks: [guard.bash], timeout: GUARD_TIMEOUT_S },
     { matcher: CODEX_TOOL, hooks: [guard.codex], timeout: GUARD_TIMEOUT_S },
+    todos,
   ];
 }
 

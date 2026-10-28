@@ -30,6 +30,16 @@ function M.resolve(path)
   return vim.fs.normalize(path)
 end
 
+-- A file of the working directory in `dir`, such as its prompt history. The
+-- name has the directory's name for people, and a hash of its path, so that
+-- /a/b-c and /a/b/c get files of their own.
+---@param dir string
+---@return string
+function M.project_file(dir)
+  local name = vim.fs.basename(state.cwd):gsub("[^%w%-_.]", "-"):sub(1, 40)
+  return ("%s/%s-%s.json"):format(dir, name, vim.fn.sha256(state.cwd):sub(1, 12))
+end
+
 -- #L12-30, or #L12 for one line.
 function M.range(first, last)
   return ("#L%d"):format(first) .. (last and last > first and ("-%d"):format(last) or "")

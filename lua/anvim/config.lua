@@ -61,6 +61,11 @@ M.defaults = {
     "When you explain code or say where something is, call show_user so they see it, with a short note.",
     "For code symbols, use the lsp_ tools before grep. They ask the language servers that run in the editor.",
     "To find where a symbol is used, locate it with lsp_workspace_symbols, then call lsp_references.",
+    "anvim keeps a todo list for this project, which the user sees.",
+    "Use the todo_ tools to plan work of several steps.",
+    "Mark an item in_progress when work starts, and completed once the work is done and checked.",
+    "When an agent works on an item, set the item's owner to the name of its Agent call.",
+    "Give the agent its task, and do not mention the list.",
   }, " "),
 }
 

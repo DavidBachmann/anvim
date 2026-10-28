@@ -4,6 +4,7 @@
 local config = require("anvim.config")
 local sidecar = require("anvim.sidecar")
 local state = require("anvim.state")
+local todos = require("anvim.todos")
 local transcript = require("anvim.transcript")
 
 local M = {}
@@ -610,7 +611,7 @@ end
 -- As in Claude Code, the todo item in progress names what Claude does.
 ---@return string verb, integer ms
 local function working()
-  local active = transcript.todo_active()
+  local active = todos.active()
   local verb = state.compacting and "Compacting..."
     or active and (active:gsub("%.+$", "") .. "...")
     or state.thinking and "Thinking..."

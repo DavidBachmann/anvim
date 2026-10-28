@@ -417,8 +417,7 @@ end
 
 function M.tool_use(ev)
   local agent = agents.of(ev)
-  -- As in the transcript, the todo list shows what these do.
-  if agent and not transcript.todo_tools[ev.name] then
+  if agent then
     local log = agent.status == "running" and log_of(agent) or logs[agent.id]
     if log then
       tool_use(log, agent, ev)

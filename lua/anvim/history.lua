@@ -18,12 +18,8 @@ local index
 ---@type string[]? The prompt as the user left it before going back.
 local draft
 
--- The directory's name for people, and a hash of its path, so that /a/b-c
--- and /a/b/c get files of their own.
 function M.path()
-  local cwd = require("anvim.state").cwd
-  local name = vim.fs.basename(cwd):gsub("[^%w%-_.]", "-"):sub(1, 40)
-  return ("%s/%s-%s.json"):format(M.dir, name, vim.fn.sha256(cwd):sub(1, 12))
+  return require("anvim.paths").project_file(M.dir)
 end
 
 ---@return string[]

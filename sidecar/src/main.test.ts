@@ -123,6 +123,8 @@ describe("the sidecar's session", () => {
     ).finally(() => (sandboxProblem = undefined));
     expect(started.map((o) => [o.model, o.effort, o.resume])).toEqual([["haiku", undefined, "s1"]]);
     expect(started[0]!.sandbox).toEqual({ enabled: false });
+    // anvim's todo list is the only one.
+    expect(started[0]!.disallowedTools).toEqual(["TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"]);
     // The history draws the transcript again, so the warning comes after it.
     const order = events.filter((e) => e.type === "history" || e.type === "notice").map((e) => e.text ?? e.type);
     expect(order).toEqual([

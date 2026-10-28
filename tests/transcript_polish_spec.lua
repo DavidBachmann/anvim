@@ -34,46 +34,58 @@ local function id()
   return "polish" .. next_id
 end
 
-local function todos(list)
-  local tid = id()
-  transcript.tool_start(tid, "TodoWrite")
-  transcript.tool_use({ id = tid, name = "TodoWrite", input = { todos = list }, parent_id = nil })
-  transcript.tool_result({ id = tid, is_error = false, text = "Todos have been modified successfully." })
+-- A todos event, as the sidecar sends the whole list after each change.
+local function todos(...)
+  local items = {}
+  for i, it in ipairs({ ... }) do
+    items[i] = vim.tbl_extend("force", { id = i }, it)
+  end
+  require("anvim.sidecar").dispatch({ type = "todos", items = items })
 end
 
-local function item(content, status)
-  return { content = content, status = status, activeForm = content:gsub("^%a+", "%0ing") }
+local function item(subject, status, extra)
+  local active_form = subject:gsub("^%a+", "%0ing")
+  return vim.tbl_extend("force", { subject = subject, status = status, active_form = active_form }, extra or {})
+end
+
+-- The list lasts across specs as it lasts across /clear, so each spec ends with none.
+local function no_todos()
+  require("anvim.todos").set({})
 end
 
 describe("transcript polish", function()
   before_each(function()
     helpers.start()
+    no_todos()
     transcript.clear()
   end)
 
   after_each(function()
     transcript.turn_end()
+    no_todos()
     transcript.clear()
   end)
 
   it("keeps the todo list last while it has open items, and updates it in place", function()
     transcript.user("Do three steps")
-    todos({
+    -- anvim's todo tools draw no tool line.
+    transcript.tool_start("todo1", "mcp__anvim__todo_add")
+    transcript.tool_use({ id = "todo1", name = "mcp__anvim__todo_add", input = { items = {} }, parent_id = nil })
+    transcript.tool_result({ id = "todo1", is_error = false, text = "Added #1, #2, #3." })
+    todos(
       item("Count the lines", "in_progress"),
-      item("List the files", "pending"),
-      item("Add a comment", "pending"),
-    })
+      item("List the files", "pending", { blocked_by = { 1 } }),
+      item("Add a comment", "pending")
+    )
     local list = {
       "⏺ Todos · 0 of 3 done",
-      "  ⎿  ☐ Count the lines",
-      "     ☐ List the files",
-      "     ☐ Add a comment",
+      "  ⎿  ☐ #1 Count the lines",
+      "     ☐ #2 List the files  blocked by #1",
+      "     ☐ #3 Add a comment",
     }
     assert.are.same(vim.list_extend({ "❯ Do three steps", "" }, list), lines_from("❯ Do three steps"))
-    assert.are.same("Counting the lines", transcript.todo_active())
     input.set_busy(true)
     assert(input.activity():find("Counting the lines...", 1, true), input.activity())
-    input.set_busy(false)
 
     -- New output goes above the list.
     transcript.text_delta("Counting now.")
@@ -82,16 +94,19 @@ describe("transcript polish", function()
     transcript.tool_start(bash, "Bash")
     transcript.tool_use({ id = bash, name = "Bash", input = { command = "wc -l notes.lua" }, parent_id = nil })
     transcript.tool_result({ id = bash, is_error = false, text = "16 notes.lua" })
-    todos({
+    -- An agent's item in progress is not the main agent's work.
+    todos(
       item("Count the lines", "completed"),
-      item("List the files", "in_progress"),
-      item("Add a comment", "pending"),
-    })
+      item("List the files", "in_progress", { blocked_by = { 1 }, owner = "lister" }),
+      item("Add a comment", "pending")
+    )
+    assert.is_nil(input.activity():find("Listing the files", 1, true), input.activity())
+    input.set_busy(false)
     local updated = {
       "⏺ Todos · 1 of 3 done",
-      "  ⎿  ☒ Count the lines",
-      "     ☐ List the files",
-      "     ☐ Add a comment",
+      "  ⎿  ☒ #1 Count the lines",
+      "     ☐ #2 List the files",
+      "     ☐ #3 Add a comment",
     }
     assert.are.same(
       vim.list_extend({
@@ -105,8 +120,8 @@ describe("transcript polish", function()
       }, updated),
       lines_from("❯ Do three steps")
     )
-    assert(vim.tbl_contains(groups_at(row_of("  ⎿  ☒ Count the lines")), "AnvimTodoDone"))
-    assert(vim.tbl_contains(groups_at(row_of("     ☐ List the files")), "AnvimTodoActive"))
+    assert(vim.tbl_contains(groups_at(row_of("  ⎿  ☒ #1 Count the lines")), "AnvimTodoDone"))
+    assert(vim.tbl_contains(groups_at(row_of("     ☐ #2 List the files")), "AnvimTodoActive"))
 
     -- The next prompt goes above it too, as the list waits under the spinner.
     transcript.turn_end()
@@ -115,22 +130,33 @@ describe("transcript polish", function()
     assert.are.same(updated, vim.list_slice(all, #all - 3))
     assert.are.same("❯ Go on", all[#all - 5])
 
+    -- /clear keeps the list, which pins again.
+    transcript.clear()
+    assert.are.same(updated, buf_lines(transcript.buf()))
+
     -- Once all are done, the list stays where it is, and new output follows it.
-    todos({
-      item("Count the lines", "completed"),
-      item("List the files", "completed"),
-      item("Add a comment", "completed"),
-    })
+    todos(item("Count the lines", "completed"), item("List the files", "completed"), item("Add a comment", "completed"))
     transcript.text_delta("All done.")
     all = buf_lines(transcript.buf())
     assert.are.same(
-      { "⏺ Todos · 3 of 3 done", "  ⎿  ☒ Count the lines" },
+      { "⏺ Todos · 3 of 3 done", "  ⎿  ☒ #1 Count the lines" },
       vim.list_slice(all, #all - 5, #all - 4)
     )
     assert.are.same("⏺ All done.", all[#all])
-    assert.is_nil(transcript.todo_active())
-    -- TodoWrite draws no tool line of its own.
-    assert.are.same(-1, row_of("⏺ TodoWrite"))
+    assert.is_nil(require("anvim.todos").active())
+    -- A list without open items draws nothing more, as a start or another
+    -- anvim's change sends it again. A new open item pins it at the end.
+    todos(item("Count the lines", "completed"), item("List the files", "completed"), item("Add a comment", "completed"))
+    assert.are.same(all, buf_lines(transcript.buf()))
+    todos(item("Count the lines", "completed"), item("Write the notes", "pending"))
+    assert.are.same({
+      "⏺ All done.",
+      "",
+      "⏺ Todos · 1 of 2 done",
+      "  ⎿  ☒ #1 Count the lines",
+      "     ☐ #2 Write the notes",
+    }, lines_from("⏺ All done."))
+    assert.are.same(-1, row_of("⏺ mcp__anvim__todo_add"))
   end)
 end)
 
@@ -140,6 +166,7 @@ describe("item times", function()
 
   before_each(function()
     helpers.start()
+    no_todos()
     transcript.clear()
     now = start
     transcript.clock = function()
@@ -150,6 +177,7 @@ describe("item times", function()
   after_each(function()
     transcript.clock = os.time
     transcript.turn_end()
+    no_todos()
     transcript.clear()
   end)
 
@@ -236,15 +264,15 @@ describe("item times", function()
         ask and " and before a request" or ""
       )
       it(name, function()
-        todos({ item("Read the file", "in_progress"), item("Fix the bug", "pending") })
+        todos(item("Read the file", "in_progress"), item("Fix the bug", "pending"))
         local block = ask and transcript.block({ "  Do you want to proceed?", "  ❯ 1. Yes" }, {})
         first[2]()
-        todos({ item("Read the file", "completed"), item("Fix the bug", "in_progress") })
+        todos(item("Read the file", "completed"), item("Fix the bug", "in_progress"))
         local want = vim.list_extend(vim.list_slice(first[3]), {
           "",
           "⏺ Todos · 1 of 2 done",
-          "  ⎿  ☒ Read the file",
-          "     ☐ Fix the bug",
+          "  ⎿  ☒ #1 Read the file",
+          "     ☐ #2 Fix the bug",
         })
         if block then
           local all = buf_lines(transcript.buf())
@@ -252,7 +280,7 @@ describe("item times", function()
           transcript.remove_block(block)
         end
         assert.are.same(want, buf_lines(transcript.buf()))
-        assert(vim.tbl_contains(groups_at(row_of("  ⎿  ☒ Read the file")), "AnvimTodoDone"))
+        assert(vim.tbl_contains(groups_at(row_of("  ⎿  ☒ #1 Read the file")), "AnvimTodoDone"))
         assert.are.same({ { 0, "09:05:07" } }, times())
         local ns_text = api.nvim_get_namespaces()["anvim.transcript.text"]
         local text_marks = vim.tbl_map(function(m)

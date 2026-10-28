@@ -3,6 +3,7 @@
 local agents = require("anvim.agents")
 local paths = require("anvim.paths")
 local state = require("anvim.state")
+local todos = require("anvim.todos")
 
 local M = {}
 
@@ -50,7 +51,7 @@ M.verbose = false
 ---@field body integer? Rows under the tool line: a subagent's calls, or the result.
 ---@field result { is_error: boolean, summary: string|string[], group: string?, label: string? }? As drawn, for a redraw.
 ---@field full string? The text whose first line the result shows.
----@field todo boolean? A TodoWrite or Task tool, which updates the todo list instead of a line.
+---@field todo boolean? One of anvim's todo tools, which have no line. The todo list shows what they do.
 ---@field held boolean? A background agent's line, which lives on after its result.
 ---@field live boolean? Held for an agent of this sidecar, not of a resumed session's past.
 
@@ -81,16 +82,10 @@ local text_open = false
 -- line. The buffer tells a block from a mark of a rebuilt transcript.
 ---@type table<integer, { buf: integer, count: integer }>
 local blocks = {}
--- Claude's todo list. While it has open items it stays the last item, as
--- Claude Code keeps it under the spinner. New items go above it.
----@type { id: integer, lines: string[], marks: table[], active: string? }?
+-- The todo list, while it is pinned. While it has open items it stays the
+-- last item, as Claude Code keeps it under the spinner. New items go above it.
+---@type { id: integer, lines: string[], marks: table[] }?
 local todo
--- The tasks that TaskCreate adds and TaskUpdate changes, Claude Code's other
--- todo list. Their ids are strings.
-local tasks = { order = {}, by_id = {} } ---@type { order: string[], by_id: table<string, table> }
--- Claude Code draws no tool line for these. The todo list shows what they do.
-local todo_tools = { TodoWrite = true, TaskCreate = true, TaskUpdate = true, TaskGet = true, TaskList = true }
-M.todo_tools = todo_tools
 -- Claude's questions and the user's answers stay in the chat, also with the
 -- tool pane on, as in Claude Code.
 local chat_tools = { AskUserQuestion = true }
@@ -895,7 +890,7 @@ end
 
 function M.tool_start(id, name)
   text_open, reply_done = false, true
-  if todo_tools[name] then
+  if todos.tools[name] then
     tools[id] = { id = id, name = name, todo = true }
     return
   end
@@ -980,9 +975,6 @@ function M.tool_use(ev)
   end
   tool.input = ev.input
   if tool.todo then
-    if ev.name == "TodoWrite" then
-      M.todos(type(ev.input) == "table" and ev.input.todos or {})
-    end
     return
   end
   set_tool_line(tool, nil, pending(tool))
@@ -1052,8 +1044,6 @@ local function finish_question(tool, ev)
   end
 end
 
-local task_result
-
 -- A background agent's tool call returns as the agent starts. A saved
 -- session keeps no result, but the text says so. A Codex agent always runs
 -- in the background.
@@ -1077,9 +1067,6 @@ function M.tool_result(ev)
   end
   if tool and tool.todo then
     tool.done = true
-    if not ev.is_error then
-      task_result(tool, ev)
-    end
   elseif tool and not (tool.done or tool.held) then
     if tool.name == "AskUserQuestion" then
       finish_question(tool, ev)
@@ -1372,97 +1359,54 @@ end
 
 -- The todo list as Claude Code shows it: ☒ for done, and the item in
 -- progress in bold.
-local function todo_lines(list)
+local function todo_lines(items)
   local done = 0
-  for _, item in ipairs(list) do
-    done = done + (item.status == "completed" and 1 or 0)
+  for _, item in ipairs(items) do
+    done = done + (todos.is_open(item) and 0 or 1)
   end
-  local head, count = "⏺ Todos", (" · %d of %d done"):format(done, #list)
-  local lines = { head .. count }
+  local head = "⏺ Todos"
+  local lines = { head .. (" · %d of %d done"):format(done, #items) }
   local marks = {
-    { 0, 0, #"⏺", done == #list and "AnvimToolOk" or "AnvimClaude" },
+    { 0, 0, #"⏺", done == #items and "AnvimToolOk" or "AnvimClaude" },
     { 0, #"⏺ ", #head, "AnvimToolName" },
     { 0, #head, #lines[1], "AnvimResult" },
   }
-  local groups = { completed = "AnvimTodoDone", in_progress = "AnvimTodoActive" }
-  for i, item in ipairs(list) do
-    local prefix = (i == 1 and "  ⎿  " or "     ") .. (item.status == "completed" and "☒ " or "☐ ")
-    lines[#lines + 1] = prefix .. tostring(item.content or ""):gsub("\n", " ")
-    marks[#marks + 1] = { #lines - 1, #prefix, #lines[#lines], groups[item.status] or "Normal" }
+  local rows, row_marks = todos.render(items, function(i)
+    return i == 1 and "  ⎿  " or "     "
+  end)
+  vim.list_extend(lines, rows)
+  for _, m in ipairs(row_marks) do
+    marks[#marks + 1] = { m[1] + 1, m[2], m[3], m[4] }
   end
-  return lines, marks, done == #list
+  return lines, marks
 end
 
----@return string? activeForm of the item in progress, for the activity line.
-function M.todo_active()
-  return todo and todo.active
-end
-
--- Draws Claude's todo list in place. Once every item is done, the list stays
--- where it is as a plain item, and the next list starts at the end.
-function M.todos(list)
-  if type(list) ~= "table" or #list == 0 then
+-- Draws the todo list in place. Once every item is done, the list stays where
+-- it is as a plain item. A list that has open items again pins anew at the
+-- end, and a list with none draws nothing unless it is pinned.
+---@param items anvim.TodoItem[]
+function M.todos(items)
+  local open = vim.iter(items):any(todos.is_open)
+  if #items == 0 or not (open or todo) then
     if todo then
       M.remove_block(todo.id)
       todo = nil
     end
     return
   end
-  local lines, marks, all_done = todo_lines(list)
+  local lines, marks = todo_lines(items)
   local quiet = { quiet = true }
   if not (todo and M.set_block(todo.id, lines, marks, quiet)) then
+    if not open then
+      todo = nil
+      return
+    end
     todo = { id = M.block(lines, marks, quiet) }
   end
-  todo.lines, todo.marks, todo.active = lines, marks, nil
-  for _, item in ipairs(list) do
-    if item.status == "in_progress" and type(item.activeForm) == "string" then
-      todo.active = item.activeForm
-    end
-  end
-  if all_done then
+  todo.lines, todo.marks = lines, marks
+  if not open then
     M.keep_block(todo.id)
     todo = nil
-  end
-end
-
--- A task changes once its tool call worked. Saved sessions keep no result, so
--- there a new task's id comes from the result text.
-function task_result(tool, ev)
-  local input = type(tool.input) == "table" and tool.input or {}
-  if tool.name == "TaskCreate" then
-    local r = type(ev.result) == "table" and type(ev.result.task) == "table" and ev.result.task or {}
-    local id = r.id or (ev.text or ""):match("Task #(%w+) created")
-    if not id then
-      return
-    end
-    id = tostring(id)
-    if not tasks.by_id[id] then
-      tasks.order[#tasks.order + 1] = id
-    end
-    tasks.by_id[id] = { content = input.subject or r.subject or "", activeForm = input.activeForm, status = "pending" }
-  elseif tool.name == "TaskUpdate" and input.taskId then
-    local id = tostring(input.taskId)
-    local task = tasks.by_id[id]
-    if not task then
-      return
-    elseif input.status == "deleted" then
-      tasks.by_id[id] = nil
-    else
-      task.status = input.status or task.status
-      task.content = input.subject or task.content
-      task.activeForm = input.activeForm or task.activeForm
-    end
-  else
-    return
-  end
-  local list = {}
-  for _, id in ipairs(tasks.order) do
-    list[#list + 1] = tasks.by_id[id]
-  end
-  M.todos(list)
-  -- As with TodoWrite, a list that is all done is over, and the next one starts new.
-  if not todo then
-    tasks = { order = {}, by_id = {} }
   end
 end
 
@@ -1529,7 +1473,7 @@ function M.set_verbose(on)
 end
 
 -- Empties the transcript and the main log, for /clear and before a resumed
--- session draws.
+-- session draws. A todo list with open items pins again.
 function M.clear()
   local buf = M.buf()
   for id, block in pairs(blocks) do
@@ -1539,7 +1483,6 @@ function M.clear()
   end
   tools, held, drawn, todo, reply, reply_done, text_open, texts = {}, {}, {}, nil, {}, true, false, {}
   sent_back, run = {}, nil
-  tasks = { order = {}, by_id = {} }
   for _, b in ipairs({ buf, log_loaded() }) do
     api.nvim_buf_clear_namespace(b, ns, 0, -1)
     api.nvim_buf_clear_namespace(b, ns_text, 0, -1)
@@ -1549,6 +1492,8 @@ function M.clear()
       api.nvim_buf_set_lines(b, 0, -1, false, {})
     end, b)
   end
+  -- The todo list outlives the conversation.
+  M.todos(todos.items)
 end
 
 function M.attach(sidecar)

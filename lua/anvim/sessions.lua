@@ -87,6 +87,7 @@ function M.start_command(opts)
     codex = config.options.codex == true,
     codex_model = require("anvim.codex").model(),
     codex_effort = require("anvim.codex").effort(),
+    todos_path = require("anvim.todos").path(),
   }, opts or {})
 end
 
