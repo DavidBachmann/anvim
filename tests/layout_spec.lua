@@ -253,6 +253,18 @@ describe("the todo window", function()
     assert.are.same({ top[1] + api.nvim_win_get_height(win) + 1, top[2] }, below)
     assert.is_false(inline(), "the list shows twice")
 
+    -- A short list takes only its rows and the winbar. A long one stops at the share.
+    assert.are.same(3, api.nvim_win_get_height(win))
+    local long = {}
+    for i = 1, 12 do
+      long[i] = { id = i, subject = "Item " .. i, status = "pending" }
+    end
+    list(long)
+    local height = api.nvim_win_get_height(win)
+    assert.is_true(height > 3 and height < 13, "the window does not stop at its share: " .. height)
+    list(items)
+    assert.are.same(3, api.nvim_win_get_height(win))
+
     layout.set_todo_window(false)
     assert.is_false(api.nvim_win_is_valid(win))
     assert.is_true(inline())
