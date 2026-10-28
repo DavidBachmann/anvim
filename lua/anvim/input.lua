@@ -649,10 +649,14 @@ function M.activity()
   elseif state.busy and state.turn_started then
     local frame = spinner_frames[math.floor(vim.uv.now() / 120) % #spinner_frames + 1]
     local verb, elapsed = working()
-    local hint = ("(%s · esc twice to stop%s)"):format(
-      transcript.duration(elapsed, true),
-      foreground_agent() and " · ctrl+b to background" or ""
-    )
+    local time = transcript.duration(elapsed, true)
+    local hint = ("(%s · esc twice to stop%s)"):format(time, foreground_agent() and " · ctrl+b to background" or "")
+    -- A todo item's verb can be long. In a narrow column, the keys go first,
+    -- then the end of the verb.
+    if vim.fn.strdisplaywidth(("%s %s %s "):format(frame, verb, hint)) > win_width(vim.g.statusline_winid) then
+      hint = ("(%s)"):format(time)
+    end
+    verb = fit(verb, vim.fn.strdisplaywidth(("%s  %s "):format(frame, hint)))
     text = ("%%#AnvimClaude#%s %s %%#Comment#%s "):format(frame, (verb:gsub("%%", "%%%%")), hint)
     width = vim.fn.strdisplaywidth(("%s %s %s "):format(frame, verb, hint))
   end

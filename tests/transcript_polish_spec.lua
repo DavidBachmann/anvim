@@ -86,6 +86,17 @@ describe("transcript polish", function()
     assert.are.same(vim.list_extend({ "❯ Do three steps", "" }, list), lines_from("❯ Do three steps"))
     input.set_busy(true)
     assert(input.activity():find("Counting the lines...", 1, true), input.activity())
+    -- A long verb keeps its start, where Neovim would cut the line at the spinner.
+    local long = "Count the lines " .. ("of every file "):rep(8)
+    todos(item(long, "in_progress"), item("List the files", "pending"), item("Add a comment", "pending"))
+    local win = require("anvim.layout").wins.input
+    local bar = vim.api.nvim_eval_statusline(vim.wo[win].winbar, { winid = win, use_winbar = true }).str
+    assert(bar:find("Counting the", 1, true) and not bar:find("<", 1, true), bar)
+    todos(
+      item("Count the lines", "in_progress"),
+      item("List the files", "pending", { blocked_by = { 1 } }),
+      item("Add a comment", "pending")
+    )
 
     -- New output goes above the list.
     transcript.text_delta("Counting now.")
