@@ -400,10 +400,17 @@ local function todo_height(rows)
   return height and math.max(min_rows(), math.min(height, list_rows()))
 end
 
+---@type integer? The todo window's height as anvim set it last.
+local todo_set
+
 local function size_todo_win()
   local win = M.wins.todos
   local height = valid(win) and todo_height(claude_rows())
-  if height and height ~= api.nvim_win_get_height(win) then
+  if not height then
+    return
+  end
+  todo_set = height
+  if height ~= api.nvim_win_get_height(win) then
     api.nvim_win_set_height(win, height)
   end
 end
@@ -526,10 +533,13 @@ local function fit_todos()
   if rows ~= screen_rows() or height == todo_height(rows) then
     return
   end
-  todo_share = height / rows
-  local fit = share_height(rows)
-  if fit and fit ~= height then
-    todo_share = fit / rows
+  -- A new width wraps the list again, and only a new height is a drag.
+  if height ~= todo_set then
+    todo_share = height / rows
+    local fit = share_height(rows)
+    if fit and fit ~= height then
+      todo_share = fit / rows
+    end
   end
   size_todo_win()
 end
