@@ -208,6 +208,8 @@ function M.setup_win(win)
   wo.linebreak = true
   -- A reference ends in a space, which 'list' would mark.
   wo.list = false
+  -- The transcript's conceal would hide the backticks that the user types.
+  wo.conceallevel = 0
   wo.spell = false
   wo.winfixheight = true
   wo.winfixbuf = true

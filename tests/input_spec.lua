@@ -30,6 +30,11 @@ describe("input", function()
     assert.are.same("", stc)
     assert.are.same("", winbar)
   end)
+
+  it("shows the backticks that the user types", function()
+    helpers.start()
+    assert.are.same(0, vim.wo[require("anvim.layout").wins.input].conceallevel)
+  end)
 end)
 
 describe("sidecar", function()

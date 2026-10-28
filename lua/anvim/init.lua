@@ -222,6 +222,7 @@ function M.setup(opts)
     end,
   })
   api.nvim_ui_send("\27]11;?\7")
+  require("anvim.markdown").setup()
   require("anvim.statusline").setup()
   readonly.setup()
   layout.setup()
