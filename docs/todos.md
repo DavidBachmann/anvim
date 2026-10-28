@@ -1,6 +1,6 @@
 # The todo list
 
-anvim keeps one todo list per project directory. Claude fills it with three tools on anvim's own MCP server: `todo_add`, `todo_update` and `todo_list`. They run without a permission prompt. Each item has an id, a subject, a status (pending, in progress or completed), and optionally a description, an owner and the ids of the items that block it. Ids count up from 1 and are never used twice in a list.
+anvim keeps one todo list per project directory. Claude fills it with three tools on anvim's own MCP server: `todo_add`, `todo_update` and `todo_list`. They run without a permission prompt. Claude adds items on its own for work of 3 or more steps, or when you give several tasks. It skips the list for a small task or a question. Each item has an id, a subject, a status (pending, in progress or completed), and optionally a description, an owner and the ids of the items that block it. Ids count up from 1 and are never used twice in a list.
 
 Claude Code's own task tools (TodoWrite and the Task tools) are turned off, so Claude has one list.
 

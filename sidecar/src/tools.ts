@@ -178,6 +178,19 @@ function codexTool(codex: Codex) {
 }
 
 const MAIN_ONLY = "Only the main agent uses the todo tools. Subagents report back instead.";
+// The model's habits come from Claude Code's TaskCreate, whose description
+// lists when to use it and when not to.
+const TODO_ADD = [
+  "Add items to the project's todo list, which the user sees. New items are pending.",
+  "Use it on your own, without a request from the user:",
+  "- for a task of 3 or more steps, or a task that needs a plan",
+  "- when the user gives several tasks, such as a numbered list",
+  "- when the user gives a new task while other work is open",
+  "- for follow-up work that you find while you work",
+  "Skip it for one small task, for fewer than 3 easy steps, and for a question or a chat.",
+  "The list outlives the session. Call todo_list first, so that no item goes on twice.",
+  `${MAIN_ONLY} It returns the whole list.`,
+].join("\n");
 const ACTIVE_FORM = 'The present-continuous form shown while the item is in progress, such as "Fixing the parser"';
 const OWNER =
   "The agent that works on the item: the name of its Agent call, or the agent id that the codex tool returned";
@@ -197,7 +210,7 @@ function todoTools(store: TodoStore) {
   return [
     tool(
       "todo_add",
-      `Add items to the project's todo list, which the user sees. Use it to plan work of several steps. New items are pending. ${MAIN_ONLY} It returns the whole list.`,
+      TODO_ADD,
       {
         items: z
           .array(

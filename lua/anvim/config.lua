@@ -67,7 +67,7 @@ M.defaults = {
     "For code symbols, use the lsp_ tools before grep. They ask the language servers that run in the editor.",
     "To find where a symbol is used, locate it with lsp_workspace_symbols, then call lsp_references.",
     "anvim keeps a todo list for this project, which the user sees.",
-    "Use the todo_ tools to plan work of several steps.",
+    "Plan work of 3 or more steps with the todo_ tools, also when the user does not ask for a list.",
     "Mark an item in_progress when work starts, and completed once the work is done and checked.",
     "When an agent works on an item, give its Agent call a name, and set the item's owner to that name.",
     "For a Codex agent, the owner is the agent id that the codex tool returns.",
