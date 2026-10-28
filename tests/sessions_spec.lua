@@ -199,6 +199,44 @@ describe("sessions", function()
     assert.are.same({ 1, 1 }, { #picks, #models })
   end)
 
+  it("/reset sends /clear, and its reset deletes the todo list; a plain /clear keeps it", function()
+    local todos = require("anvim.todos")
+    local function todo_rows()
+      return vim.tbl_filter(function(l)
+        return l:find("Before the reset", 1, true) ~= nil
+      end, buf_lines(transcript.buf()))
+    end
+    helpers.fresh()
+    helpers.capture_sends(function(sent)
+      todos.set({ { id = 1, subject = "Before the reset", status = "pending" } })
+      assert.are.same(1, #todo_rows())
+      vim.api.nvim_buf_set_lines(input.buf(), 0, -1, false, { "/reset" })
+      input.submit()
+      assert.are.same({ "prompt", "/clear" }, { sent[1].type, sent[1].text })
+      sidecar.dispatch({ type = "reset" })
+      assert.are.same({ type = "todo_reset" }, sent[2])
+      -- No frame shows the old list after the clear.
+      assert.are.same({}, todos.items)
+      assert.are.same({}, todo_rows())
+      -- A plain /clear sends no todo_reset.
+      todos.set({ { id = 1, subject = "Before the reset", status = "pending" } })
+      assert.is_false(sessions.command("/clear"))
+      sidecar.dispatch({ type = "reset" })
+      assert.are.same(2, #sent)
+      assert.are.same(1, #todo_rows())
+      assert(sessions.command("/undo-reset"))
+      assert.are.same({ type = "todo_reset", undo = true }, sent[3])
+      -- A /reset that <Up> took back from the queue deletes nothing.
+      assert(sessions.command("/reset"))
+      sidecar.dispatch({ type = "prompt_state", id = sent[4].id, state = "cancelled" })
+      sidecar.dispatch({ type = "reset" })
+      assert.are.same(4, #sent)
+      assert.are.same(1, #todo_rows())
+    end)
+    input.set_busy(false)
+    todos.set({})
+  end)
+
   local haiku = {
     value = "haiku",
     name = "Haiku 5.5",

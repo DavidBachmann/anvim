@@ -14,8 +14,10 @@ While the list has open items, it stays below the newest output and updates in p
 
 The list belongs to the project, not to a session or an account. `/clear` keeps it, and the list moves back to the end of the empty transcript. When a session starts, resumes, clears or compacts, Claude learns the open items, so it can go on with them.
 
+`/reset` clears the conversation and deletes the list, so the ids start again at 1. The deleted list becomes the previous list. anvim keeps one previous list, and the next `/reset` replaces it. A `/reset` of an empty list keeps the previous list. `/undo-reset` swaps the list and the previous list, so a second `/undo-reset` swaps them back. It does not clear the conversation.
+
 Only the main agent (Claude in the transcript) uses the list. Subagents keep anvim's other tools, but a call to a todo tool returns an error that tells them to report back. Claude marks an item done once it has checked the agent's work.
 
 ## Where it lives
 
-The list is a JSON file in anvim's state dir: `~/.local/state/anvim/todos/<dir>-<hash>.json`, where `<dir>` is the project directory's name and `<hash>` comes from its full path. Two anvims in one project share the file. Each change takes a lock, and each anvim shows the other's changes. A replay has no list file and shows only the recorded list.
+The list is a JSON file in anvim's state dir: `~/.local/state/anvim/todos/<dir>-<hash>.json`, where `<dir>` is the project directory's name and `<hash>` comes from its full path. The previous list is `<dir>-<hash>.prev.json` next to it. Two anvims in one project share the file. Each change takes a lock, and each anvim shows the other's changes. A replay has no list file and shows only the recorded list.

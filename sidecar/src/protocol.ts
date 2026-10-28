@@ -142,6 +142,9 @@ export type Command =
   | { type: "chrome_browsers" }
   | { type: "chrome_select"; device_id: string }
   | { type: "preview_done"; req: number }
+  // /reset deletes the todo list, and keeps it as the previous list. With
+  // undo, the list and the previous list swap. The answer is a todos event.
+  | { type: "todo_reset"; undo?: boolean }
   // The answer to an editor_request: plain text for Claude, or an error.
   | { type: "editor_response"; req: number; result?: string; error?: string }
   // The user's answer to a permission_request (permissions.ts).

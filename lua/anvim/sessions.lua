@@ -95,9 +95,16 @@ local function redraw()
   require("anvim.input").redraw()
 end
 
+-- The id of the /clear that a /reset sent. The todo list goes when that
+-- /clear takes effect, which can be after the turn that runs now. Until then,
+-- Claude may still change the list.
+---@type string?
+local resetting
+
 -- What belongs to one session. A new session starts with none of it.
 local function forget()
   state.session_id, state.context, state.turns = nil, nil, 0
+  resetting = nil
   require("anvim.follow").forget()
 end
 
@@ -194,6 +201,8 @@ function M.restart(what)
     return require("anvim.accounts").pick()
   end
   local id = (state.turns or 0) > 0 and state.session_id or nil
+  -- A queued /clear ends with the old sidecar.
+  resetting = nil
   -- Tool calls that the old sidecar runs end with it.
   transcript.turn_end()
   transcript.notice("info", (what or "Restarting Claude") .. (id and " in this session" or ""))
@@ -205,6 +214,12 @@ end
 -- /clear: Claude Code drops the conversation, and the next init names the
 -- new session. The view starts over too, as a resume does.
 function M.reset()
+  if resetting then
+    sidecar.send({ type = "todo_reset" })
+    -- The transcript pins the list again as it clears, so no frame shows the
+    -- old list. The sidecar's todos event confirms the empty list.
+    require("anvim.todos").items = {}
+  end
   forget()
   require("anvim.files").clear()
   require("anvim.trail").clear()
@@ -494,6 +509,12 @@ function M.command(text)
   elseif name == "/resume" then
     M.pick()
     return true
+  elseif name == "/reset" then
+    resetting = require("anvim.input").send("/clear", "/reset")
+    return true
+  elseif name == "/undo-reset" then
+    sidecar.send({ type = "todo_reset", undo = true })
+    return true
   elseif name == "/model" and arg == "" then
     M.pick_model()
     return true
@@ -555,6 +576,8 @@ end
 -- would keep Enter from sending it.
 local own_commands = {
   { name = "resume", description = "Resume a session of this directory" },
+  { name = "reset", description = "Clear the conversation and delete the todo list" },
+  { name = "undo-reset", description = "Bring back the todo list that /reset deleted" },
   { name = "model", description = "Choose Claude's model", argument_hint = "[model]" },
   { name = "effort", description = "Set the effort level for this session", argument_hint = "[level]" },
   { name = "status", description = "Show the login, the model and the session" },
@@ -602,6 +625,12 @@ function M.attach()
     state.codex, state.codex_config, state.codex_models = ev.state, ev.config, ev.models
   end)
   sidecar.on("reset", M.reset)
+  -- <Up> took the /reset back, or Claude Code dropped it.
+  sidecar.on("prompt_state", function(ev)
+    if ev.id == resetting and ev.state == "cancelled" then
+      resetting = nil
+    end
+  end)
   -- A /clear also ends a turn, but saves none.
   sidecar.on("turn_end", function(ev)
     if (ev.num_turns or 0) > 0 then

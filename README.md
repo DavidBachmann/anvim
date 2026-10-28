@@ -33,6 +33,7 @@ Your skills, plugins, MCP servers, hooks, settings, permission rules, subagents 
 The SDK leaves the interface to us. Here's what *anvim* puts back:
 
 - The transcript and tool pane.
+- A todo list per project, which `/clear` keeps and `/reset` deletes.
 - The prompt: `@` and `/` completion, past prompts and pasted images.
 - `Ctrl-G` for long prompts, `Up` to retrieve queued prompts, `Ctrl-B` to background agents.
 - Permission requests, Claude's questions and plan approval.

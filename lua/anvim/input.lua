@@ -364,21 +364,24 @@ local function take(id)
   end
 end
 
-function M.send(text)
+---@param seen? string What the user sees and <Up> takes back, such as /reset for its /clear.
+---@return string id
+function M.send(text, seen)
   local id = uuid()
   -- While Claude works, the prompt waits under the box. In the transcript, it
   -- would split the reply that streams in.
   if state.busy then
-    queued[#queued + 1] = { id = id, text = text }
+    queued[#queued + 1] = { id = id, text = seen or text }
     M.render()
   else
-    shown(text)
+    shown(seen or text)
   end
   local images = require("anvim.images").take(text)
   sidecar.send({ type = "prompt", text = text, images = #images > 0 and images or nil, id = id })
   if not state.busy then
     M.set_busy(true)
   end
+  return id
 end
 
 -- Takes the queued prompts back into the prompt, ahead of what it holds, so

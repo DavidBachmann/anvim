@@ -100,6 +100,8 @@ const previews = new PreviewBridge(emit);
 let codex: CodexRunner | undefined;
 // The user's model and effort for the next Codex runs.
 let codexDefaults: CodexSettings = {};
+// The project's todo list. A start without todos_path has none.
+let todos: TodoStore | undefined;
 
 // The session to resume, after its history went out. Claude Code fails to
 // start on an id it cannot find, so a missing one starts a new session.
@@ -311,7 +313,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
         models: codexModels,
       })
     : undefined;
-  const todos = cmd.todos_path ? new TodoStore(cmd.todos_path, emit) : undefined;
+  todos = cmd.todos_path ? new TodoStore(cmd.todos_path, emit) : undefined;
   todos?.start();
   const options: Options = {
     ...sandbox.options,
@@ -554,6 +556,12 @@ export async function handle(cmd: Command): Promise<void> {
         }
         await emitChrome(q, message);
       });
+      return;
+    case "todo_reset":
+      if (!cmd.undo) await todos?.reset();
+      else if (todos && !(await todos.undo())) {
+        emit({ type: "notice", level: "info", text: "There is no previous todo list to bring back." });
+      }
       return;
     case "preview_done":
       previews.done(cmd.req);

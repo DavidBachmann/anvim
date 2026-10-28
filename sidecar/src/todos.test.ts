@@ -89,8 +89,10 @@ describe("the todo store", () => {
     const second = store(first.path);
     first.s.start();
     second.s.start();
+    // The watch starts to listen a moment after start(), later under load.
+    await Bun.sleep(200);
     await second.s.add([{ subject: "From the other anvim" }]);
-    for (let i = 0; i < 200 && first.events.length < 2; i++) await Bun.sleep(10);
+    for (let i = 0; i < 500 && first.events.length < 2; i++) await Bun.sleep(10);
     expect(first.events.map((e) => subjects(e.items))).toEqual([[], ["#1 pending From the other anvim"]]);
     // The store's own change after it sends one event, not a second from the watch.
     await first.s.update({ id: 1, status: "completed" });
@@ -100,10 +102,76 @@ describe("the todo store", () => {
     second.s.close();
   });
 
+  test("/reset keeps the list as the previous list, and /undo-reset swaps the two", async () => {
+    const { s, events, path } = store();
+    s.start();
+    await s.add([{ subject: "Old one" }, { subject: "Old two" }]);
+    await s.reset();
+    expect(s.items()).toEqual([]);
+    expect(existsSync(path)).toBe(false);
+    expect(JSON.parse(readFileSync(s.prevPath, "utf8")).items.length).toBe(2);
+    // Ids start again at 1.
+    expect((await s.add([{ subject: "New one" }])).ids).toEqual([1]);
+    expect(await s.undo()).toBe(true);
+    expect(subjects(s.items())).toEqual(["#1 pending Old one", "#2 pending Old two"]);
+    expect(await s.undo()).toBe(true);
+    expect(subjects(s.items())).toEqual(["#1 pending New one"]);
+    // A reset of an empty list keeps the previous list.
+    await s.update({ id: 1, status: "deleted" });
+    await s.reset();
+    expect(await s.undo()).toBe(true);
+    expect(subjects(s.items())).toEqual(["#1 pending Old one", "#2 pending Old two"]);
+    // Each reset and swap sends one event, and the watch adds none.
+    await Bun.sleep(100);
+    expect(events.map((e) => subjects(e.items).join(", "))).toEqual([
+      "",
+      "#1 pending Old one, #2 pending Old two",
+      "",
+      "#1 pending New one",
+      "#1 pending Old one, #2 pending Old two",
+      "#1 pending New one",
+      "",
+      "",
+      "#1 pending Old one, #2 pending Old two",
+    ]);
+    s.close();
+  });
+
+  test("/undo-reset without a previous list changes nothing", async () => {
+    const { s, events } = store();
+    s.start();
+    await s.add([{ subject: "Kept" }]);
+    expect(await s.undo()).toBe(false);
+    expect(subjects(s.items())).toEqual(["#1 pending Kept"]);
+    expect(events.length).toBe(2);
+    s.close();
+  });
+
+  test("another anvim sees a reset and an undo", async () => {
+    const first = store();
+    const second = store(first.path);
+    first.s.start();
+    second.s.start();
+    const last = () => subjects(first.events.at(-1)!.items).join(", ");
+    const until = async (text: string) => {
+      for (let i = 0; i < 500 && last() !== text; i++) await Bun.sleep(10);
+      expect(last()).toBe(text);
+    };
+    await Bun.sleep(200);
+    await second.s.add([{ subject: "Shared" }]);
+    await until("#1 pending Shared");
+    await second.s.reset();
+    await until("");
+    await second.s.undo();
+    await until("#1 pending Shared");
+    first.s.close();
+    second.s.close();
+  });
+
   test("a new session learns the open items", async () => {
     const { s } = store();
     const context = async () =>
-      s.sessionStart({ hook_event_name: "SessionStart", source: "clear" } as HookInput, undefined, { signal });
+      s.sessionStart({ hook_event_name: "SessionStart", source: "compact" } as HookInput, undefined, { signal });
     expect(await context()).toEqual({});
     await s.add([{ subject: "Done one" }, { subject: "Open one", owner: "explorer" }]);
     await s.update({ id: 1, status: "completed" });
@@ -129,6 +197,11 @@ describe("the todo store", () => {
     expect(first.hookSpecificOutput.hookEventName).toBe("UserPromptSubmit");
     expect(first.hookSpecificOutput.additionalContext).toContain("#1 [pending] Open one");
     expect(await prompt()).toEqual({});
+    // A clear's hook tells nothing, because a /reset may delete the list next.
+    // The next prompt tells.
+    const clear = { hook_event_name: "SessionStart", source: "clear" } as HookInput;
+    expect(await s.sessionStart(clear, undefined, { signal })).toEqual({});
+    expect(JSON.stringify(await prompt())).toContain("#1 [pending] Open one");
   });
 });
 

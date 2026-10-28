@@ -9,6 +9,7 @@ import {
   openSync,
   readFileSync,
   renameSync,
+  rmSync,
   statSync,
   unlinkSync,
   watch,
@@ -144,6 +145,23 @@ function setText(item: StoredTodo, key: "description" | "active_form" | "owner",
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function readText(path: string): string | undefined {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+// A rename replaces the file whole, so no reader sees half of it.
+function writeFile(path: string, text: string): void {
+  const tmp = join(dirname(path), `.${basename(path)}.${process.pid}.tmp`);
+  writeFileSync(tmp, text);
+  renameSync(tmp, path);
+}
+
+const serialize = (file: TodoFile) => JSON.stringify(file, null, 2) + "\n";
+
 export class TodoStore {
   private last: string | undefined;
   private watcher: FSWatcher | undefined;
@@ -175,14 +193,13 @@ export class TodoStore {
     this.watcher = undefined;
   }
 
+  // The list that the last /reset replaced.
+  get prevPath(): string {
+    return this.path.replace(/(\.json)?$/, ".prev.json");
+  }
+
   read(): TodoFile {
-    let text: string | undefined;
-    try {
-      text = readFileSync(this.path, "utf8");
-    } catch {
-      text = undefined;
-    }
-    return parse(text);
+    return parse(readText(this.path));
   }
 
   items(): TodoItem[] {
@@ -251,24 +268,65 @@ export class TodoStore {
     return items;
   }
 
+  // /reset: the list becomes the previous list, and ids start at 1 again. An
+  // empty list leaves the previous list alone, so a second /reset loses nothing.
+  async reset(): Promise<void> {
+    try {
+      await this.locked(() => {
+        if (this.read().items.length > 0) renameSync(this.path, this.prevPath);
+        else rmSync(this.path, { force: true });
+      });
+    } finally {
+      this.resend();
+    }
+  }
+
+  // /undo-reset: swaps the list and the previous list, so a second undo swaps
+  // them back. False when there is no previous list.
+  async undo(): Promise<boolean> {
+    const swapped = await this.locked(() => {
+      const prev = readText(this.prevPath);
+      if (prev === undefined) return false;
+      const current = readText(this.path) ?? serialize(parse(undefined));
+      writeFile(this.path, prev);
+      writeFile(this.prevPath, current);
+      return true;
+    });
+    if (swapped) {
+      this.resend();
+      // Claude learns the list that came back with the next prompt.
+      this.told = false;
+    }
+    return swapped;
+  }
+
+  // The plugin empties its list ahead of a /reset, so the answer goes out
+  // also when the list did not change.
+  private resend(): void {
+    this.last = undefined;
+    this.sync();
+  }
+
   // Reads, changes and writes the file under the lock. A change that throws
   // writes nothing.
   private async change<T>(fn: (file: TodoFile) => T): Promise<{ result: T; items: TodoItem[] }> {
-    await this.lock();
-    let items: TodoItem[];
-    let result: T;
-    try {
+    const { result, items } = await this.locked(() => {
       const file = this.read();
-      result = fn(file);
-      const tmp = join(dirname(this.path), `.${basename(this.path)}.${process.pid}.tmp`);
-      writeFileSync(tmp, JSON.stringify(file, null, 2) + "\n");
-      renameSync(tmp, this.path);
-      items = plain(file);
+      const result = fn(file);
+      writeFile(this.path, serialize(file));
+      return { result, items: plain(file) };
+    });
+    this.sync(items);
+    return { result, items };
+  }
+
+  private async locked<T>(fn: () => T): Promise<T> {
+    await this.lock();
+    try {
+      return fn();
     } finally {
       this.unlock();
     }
-    this.sync(items);
-    return { result, items };
   }
 
   private get lockPath(): string {
@@ -306,17 +364,21 @@ export class TodoStore {
     }
   }
 
-  // Tells a session that clears or compacts what is still open.
+  // Tells a session that compacts what is still open. After a clear, the next
+  // prompt tells: Claude Code runs this hook just after conversation_reset,
+  // before a /reset can delete the list.
   sessionStart: HookCallback = async (input) => {
-    this.told = true;
-    const { hook_event_name } = input as SessionStartHookInput;
+    const { hook_event_name, source } = input as SessionStartHookInput;
+    this.told = source !== "clear";
+    if (!this.told) return {};
     const context = hook_event_name === "SessionStart" ? openText(this.items()) : undefined;
     if (!context) return {};
     return { hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: context } };
   };
 
   // Claude Code 2.1.304 runs an SDK's SessionStart hook for clear and compact,
-  // but not for startup or resume. So the first prompt tells those.
+  // but not for startup or resume. So the first prompt tells those, and the
+  // first prompt after a clear.
   private told = false;
   firstPrompt: HookCallback = async () => {
     if (this.told) return {};
