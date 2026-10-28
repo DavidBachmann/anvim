@@ -92,6 +92,9 @@ describe("transcript polish", function()
     local win = require("anvim.layout").wins.input
     local bar = vim.api.nvim_eval_statusline(vim.wo[win].winbar, { winid = win, use_winbar = true }).str
     assert(bar:find("Counting the", 1, true) and not bar:find("<", 1, true), bar)
+    todos(item(("界"):rep(60), "in_progress"))
+    bar = vim.api.nvim_eval_statusline(vim.wo[win].winbar, { winid = win, use_winbar = true }).str
+    assert(bar:find("界", 1, true) and not bar:find("<", 1, true), bar)
     todos(
       item("Count the lines", "in_progress"),
       item("List the files", "pending", { blocked_by = { 1 } }),

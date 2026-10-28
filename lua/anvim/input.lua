@@ -626,10 +626,15 @@ end
 -- `spare` columns stay for the rest of the line.
 local function fit(text, spare)
   local room = win_width(vim.g.statusline_winid) - spare
-  if api.nvim_strwidth(text) > room then
-    return vim.trim(vim.fn.strcharpart(text, 0, math.max(room - 3, 0))) .. "..."
+  if api.nvim_strwidth(text) <= room then
+    return text
   end
-  return text
+  -- Wide characters take two columns.
+  local n = math.max(room - 3, 0)
+  while n > 0 and api.nvim_strwidth(vim.fn.strcharpart(text, 0, n)) > room - 3 do
+    n = n - 1
+  end
+  return vim.trim(vim.fn.strcharpart(text, 0, n)) .. "..."
 end
 
 -- The line between transcript and prompt: a rule, with the spinner while Claude works.
