@@ -27,7 +27,7 @@ Start anvim with `--codex` or `ANVIM_CODEX=1`, and Claude gets a `codex` tool th
 
 A Codex run appears as a background agent such as `Codex 1`, with the same footer, explorer, Overview and follow controls. Its commands and changes appear as Bash, Edit and Write calls. Its changes do not stream; an open file reloads after Codex changes it. The Overview does not show a context percentage because Codex does not provide a window size. The result is returned to Claude and appears in resumed history.
 
-Codex runs `codex exec` in the working directory under its own sandbox. It can write there unless the run is read-only. It does not ask for permissions during the run; anvim can ask before starting a write-capable run, as described in [permissions](permissions.md#the-gaps). `Esc` stops Claude, not Codex; `/clear` stops all Codex agents.
+Codex runs `codex exec` in the working directory under its own sandbox. It can write there unless the run is read-only. It does not ask for permissions during the run; anvim can ask before starting a write-capable run, as described in [permissions](permissions.md#the-gaps). `Esc` stops Claude, not Codex; `/clear` stops all Codex agents. Inside cmux, `codex` is cmux's wrapper. anvim sets `CMUX_CODEX_HOOKS_DISABLED=1` for its runs, so the wrapper adds no cmux hooks and no cmux computer-use server.
 
 The model and reasoning effort are chosen independently, using the first value set for each:
 

@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { SessionMessage } from "@anthropic-ai/claude-agent-sdk";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  CodexRunner,
   type CodexSettings,
   CodexStream,
   codexArgs,
@@ -193,5 +194,27 @@ describe("codexArgs", () => {
       ...tail,
     ]);
     expect(args(task, {})).toEqual([...head, "-s", "workspace-write", ...tail]);
+  });
+});
+
+describe("CodexRunner", () => {
+  test("turns off cmux's Codex hooks for the run", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "anvim-codex-"));
+    const bin = join(dir, "codex");
+    writeFileSync(bin, `#!/bin/sh\nprintf %s "$CMUX_CODEX_HOOKS_DISABLED" > "${dir}/env"\ncat >/dev/null\n`);
+    chmodSync(bin, 0o755);
+    const notes: string[] = [];
+    const codex = new CodexRunner({
+      bin,
+      cwd: dir,
+      emit: () => {},
+      notify: (text) => notes.push(text),
+      defaults: () => ({}),
+      config: () => ({}),
+    });
+    codex.start({ description: "Review", prompt: "Review a.ts" }, undefined);
+    while (notes.length === 0) await Bun.sleep(5);
+    expect(readFileSync(join(dir, "env"), "utf8")).toBe("1");
+    rmSync(dir, { recursive: true });
   });
 });

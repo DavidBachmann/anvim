@@ -508,6 +508,10 @@ export class CodexRunner {
     const settings = codexSettings(input, defaults);
     const proc = Bun.spawn(codexArgs(bin, cwd, input.read_only === true, settings), {
       cwd,
+      // Inside cmux, `codex` is cmux's wrapper. Its hooks call the cmux app
+      // on every tool call, which drops them, and a burst of them once
+      // crashed cmux. The variable makes the wrapper run plain Codex.
+      env: { ...process.env, CMUX_CODEX_HOOKS_DISABLED: "1" },
       stdin: new Blob([input.prompt]),
       stdout: "pipe",
       stderr: "pipe",
