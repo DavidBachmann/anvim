@@ -344,7 +344,7 @@ function M.pick()
   })
 end
 
--- A resumed session replays its past into empty lists.
+-- A resumed session replays its past into empty lists. /clear empties them.
 function M.clear()
   lists, edits, reals = {}, {}, {}
   changed()

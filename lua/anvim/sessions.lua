@@ -202,9 +202,11 @@ function M.restart(what)
 end
 
 -- /clear: Claude Code drops the conversation, and the next init names the
--- new session.
+-- new session. The view starts over too, as a resume does.
 function M.reset()
   forget()
+  require("anvim.files").clear()
+  require("anvim.trail").clear()
   transcript.clear()
   redraw()
 end

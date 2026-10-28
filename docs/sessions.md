@@ -8,7 +8,11 @@ Claude Code owns session storage; anvim reads and displays it through the Agent 
 
 Start with `anvim -c` for the latest session in the directory, `anvim --resume <id>` for a specific one, or `anvim --resume` to choose. Inside anvim, `/resume` or `<leader>cs` opens the picker. It shows the title or first prompt, last change, size and branch, with a preview.
 
-Choosing a session restarts Claude and reconstructs its transcript. If Claude Code compacted the conversation, history starts at the saved compaction summary. Saved timestamps are shown, but past subagents do not receive live numbers, colors or dots. `/clear` starts a new session and clears the transcript.
+Choosing a session restarts Claude and reconstructs its transcript. If Claude Code compacted the conversation, history starts at the saved compaction summary. Saved timestamps are shown, but past subagents do not receive live numbers, colors or dots.
+
+## Start over
+
+`/clear` starts a new session, and the view starts over with it. anvim clears the transcript, the agents, the code window's tabs, the `<leader>cf` file list and the `<leader>ct` trail. Claude's count of send-backs starts again, and Codex runs stop. The code window keeps its file, and the prompt history stays.
 
 `<leader>cR` or `:AnvimRestart` restarts Claude in the same session if it exits or hangs, keeping the chosen model and effort. With default effort, the restart uses the level a new session would use.
 
