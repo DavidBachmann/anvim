@@ -101,8 +101,13 @@ export class Translator {
           num_turns: m.num_turns ?? 0,
         });
         this.learnWindows(m, out);
-        if (m.subtype !== "success" && Array.isArray(m.errors) && m.errors.length) {
-          out.push({ type: "notice", level: "error", text: m.errors.join("\n") });
+        // Claude Code puts its own diagnostic line first when a turn ends early,
+        // such as when the user stops it after a tool result.
+        const errors = Array.isArray(m.errors)
+          ? m.errors.filter((e: unknown) => !String(e).startsWith("[ede_diagnostic]"))
+          : [];
+        if (m.subtype !== "success" && errors.length) {
+          out.push({ type: "notice", level: "error", text: errors.join("\n") });
         }
         break;
     }

@@ -397,6 +397,14 @@ describe("Translator", () => {
     expect(events.at(-1)).toEqual({ type: "notice", level: "error", text: "Compaction failed: too short" });
   });
 
+  test("a turn that the user stops after a tool result shows no diagnostic, but other errors", () => {
+    const diagnostic = "[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use";
+    const result = (errors: string[]) =>
+      msg({ type: "result", subtype: "error_during_execution", is_error: true, duration_ms: 1, num_turns: 1, errors });
+    expect(run([result([diagnostic])]).map((ev) => ev.type)).toEqual(["turn_end"]);
+    expect(run([result([diagnostic, "boom"])]).at(-1)).toEqual({ type: "notice", level: "error", text: "boom" });
+  });
+
   // Shapes as Claude Code 2.1.304 sends them for a foreground subagent.
   test("a subagent's life and tool calls", () => {
     const agent = { parent_tool_use_id: "toolu_A", agent_id: "a1", subagent_type: "general-purpose", task_description: "Edit alpha.js" };
