@@ -691,6 +691,29 @@ describe("stack", function()
     assert.are.same({ ft = "image", lines = { "" } }, out)
   end)
 
+  it("shows the images of Markdown links inline, but no <img> tag", function()
+    start()
+    local out = lua([[
+      local api = vim.api
+      local buf = api.nvim_create_buf(false, true)
+      api.nvim_buf_set_lines(buf, 0, -1, false, { "![a](a.png)" })
+      vim.bo[buf].filetype = "markdown"
+      local srcs
+      Snacks.image.doc.find(buf, function(imgs)
+        srcs = vim.tbl_map(function(img)
+          return img.src
+        end, imgs)
+      end)
+      vim.wait(3000, function()
+        return srcs ~= nil
+      end, 10)
+      api.nvim_buf_delete(buf, { force = true })
+      -- The test install has no HTML parser, so snacks's HTML query would fail to parse here.
+      return { srcs = srcs, html = vim.treesitter.query.get("html", "images") ~= nil }
+    ]])
+    assert.are.same({ srcs = { "a.png" }, html = false }, out)
+  end)
+
   it("toggles the explorer with <leader>e, and the explorer changes no files", function()
     start()
     local function closed(what)

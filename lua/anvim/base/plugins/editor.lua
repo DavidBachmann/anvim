@@ -21,6 +21,13 @@ return {
     },
     config = function(_, opts)
       require("snacks").setup(opts)
+      -- Only Markdown shows its images inline. Without an images query,
+      -- snacks shows no <img> tag or CSS url() as an image, also in Markdown.
+      for _, lang in ipairs(Snacks.image.langs()) do
+        if lang ~= "markdown" and lang ~= "markdown_inline" then
+          vim.treesitter.query.set(lang, "images", "")
+        end
+      end
       -- snacks asks ImageMagick's identify for the size of each image, and
       -- shows an error without it. Without that step, snacks reads the size
       -- from the PNG itself. Bun takes the place of ImageMagick's convert.

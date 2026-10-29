@@ -48,6 +48,6 @@ The `:` command line and `/` or `?` search open in a window over the code, separ
 
 ## Images and editor tools
 
-Terminals supporting the kitty graphics protocol, including Ghostty, cmux and kitty, can display PNG, JPG, GIF, WebP, BMP and TIFF in the code window and inline in Markdown. GIFs show their first frame. Bun converts non-PNG images and limits large images to 1920×1080; snacks.image uses ImageMagick when available. Changed image files reload.
+Terminals supporting the kitty graphics protocol, including Ghostty, cmux and kitty, can display PNG, JPG, GIF, WebP, BMP and TIFF in the code window and inline in Markdown. Only Markdown image links show inline: an HTML `<img>` tag or a CSS `url()` stays text, also inside Markdown. GIFs show their first frame. Bun converts non-PNG images and limits large images to 1920×1080; snacks.image uses ImageMagick when available. Changed image files reload.
 
 Claude can use anvim's editor tools to show a location with a note, inspect diagnostics, and ask language servers for definitions, references, hover text and symbols. The note remains until your next prompt. These tools can run in every permission mode; tools that return file content restrict paths to the working directory, while `show_user` may point outside it. See [architecture](architecture.md#from-a-prompt-to-the-screen).
