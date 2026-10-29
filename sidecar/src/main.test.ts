@@ -73,7 +73,8 @@ mock.module("./sandbox", () => ({
     return sandboxProblem ? { ...setup, problem: sandboxProblem } : setup;
   },
 }));
-const { fallBack, handle, settingsEffort } = await import("./main");
+const { fallBack, handle } = await import("./main");
+const { settingsEffort } = await import("./effort");
 
 // The events that the sidecar writes while fn runs.
 async function emitted(fn: () => Promise<unknown>, until: (events: any[]) => boolean): Promise<any[]> {

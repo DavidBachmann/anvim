@@ -2,6 +2,7 @@ import type {
   AccountInfo,
   McpServerStatus,
   ModelInfo,
+  RewindFilesResult,
   SDKControlGetContextUsageResponse,
   SDKControlGetUsageResponse,
   SDKMessage,
@@ -613,6 +614,20 @@ export function sessionInfoEvent(version: string | undefined, account: AccountIn
   };
 }
 
+export function rewindFilesEvent(uuid: string, dryRun: boolean, r: RewindFilesResult): Event {
+  return {
+    type: "rewind_files",
+    uuid,
+    dry_run: dryRun,
+    can_rewind: r.canRewind,
+    error: r.error,
+    files: r.filesChanged,
+    insertions: r.insertions,
+    deletions: r.deletions,
+    skipped: r.skippedLinks || undefined,
+  };
+}
+
 // The text of a slash command's output message, or undefined for other text.
 export function commandOutput(content: string): string | undefined {
   const match = content.match(/^<local-command-(?:stdout|stderr)>([\s\S]*)<\/local-command-(?:stdout|stderr)>$/);
@@ -626,6 +641,10 @@ export function resultText(content: unknown): string {
     .filter((b: AnyRecord) => b.type === "text")
     .map((b: AnyRecord) => b.text)
     .join("\n");
+}
+
+export function errorText(err: unknown): string {
+  return String((err as Error)?.message ?? err);
 }
 
 // The first `end` characters, without a lone half of a UTF-16 surrogate pair.

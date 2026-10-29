@@ -7,6 +7,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { CodexServer } from "./codex";
 import type { ChromeState, Event } from "./protocol";
+import { errorText } from "./translate";
 
 export const CHROME_SERVER = "claude-in-chrome";
 
@@ -117,6 +118,40 @@ function chromeStatus(servers: McpServerStatus[]): ChromeState["status"] {
 }
 
 export type ChromeMessage = NonNullable<Extract<Event, { type: "chrome" }>["message"]>;
+
+// The dialog's actions. Each one answers with what it did, and never throws.
+export async function reconnectChrome(q: Query): Promise<ChromeMessage> {
+  try {
+    await q.reconnectMcpServer(CHROME_SERVER);
+    return {
+      text: "Reconnected to Claude in Chrome. Its browser tools are back in this session. If a browser action still doesn't work, check that Chrome is open and the extension is signed in.",
+      level: "info",
+    };
+  } catch (err) {
+    return {
+      text: `Could not reconnect Claude in Chrome: ${errorText(err)} Select "Reconnect extension" to try again, or open /mcp and select claude-in-chrome for details.`,
+      level: "error",
+    };
+  }
+}
+
+export async function setChromeDefault(on: boolean): Promise<ChromeMessage | undefined> {
+  try {
+    await setEnabledByDefault(on);
+    return undefined;
+  } catch (err) {
+    return { text: `The setting was not saved: ${errorText(err)}`, level: "error" };
+  }
+}
+
+export async function selectChrome(q: Query, deviceId: string): Promise<ChromeMessage | undefined> {
+  try {
+    const { name } = await chromeCalls(q).selectChromeBrowser(deviceId);
+    return name ? { text: `Now using browser "${name}" for Chrome actions.`, level: "info" } : undefined;
+  } catch (err) {
+    return { text: `Couldn't switch browser: ${errorText(err)}`, level: "error" };
+  }
+}
 
 export function chromeEvent(
   dialog: ChromeDialog,

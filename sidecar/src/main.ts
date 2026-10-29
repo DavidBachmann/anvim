@@ -5,7 +5,7 @@ import {
   type SDKMessage,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import { appendFileSync } from "node:fs";
+import { openSync, writeSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { postToolUse } from "./agentfiles";
 import {
@@ -16,13 +16,17 @@ import {
   chromeEvent,
   chromeForCodex,
   type ChromeMessage,
-  setEnabledByDefault,
+  reconnectChrome,
+  selectChrome,
+  setChromeDefault,
 } from "./chrome";
 import { CodexRunner, type CodexSettings, codexConfig, codexState, codexWarning } from "./codex";
+import { Effort, getSettings } from "./effort";
 import { type ImageBlock, imageBlocks } from "./images";
+import { Limits } from "./limits";
 import { PermissionBridge } from "./permissions";
 import { PreviewBridge } from "./preview";
-import type { Command, EffortLevel, Event } from "./protocol";
+import type { Command, Event } from "./protocol";
 import { preToolUse, SandboxGuard, SandboxNotice, sandboxSetup, startMode } from "./sandbox";
 import * as sessions from "./sessions";
 import { TodoStore } from "./todos";
@@ -30,21 +34,37 @@ import { EditorBridge, editorServer, SERVER } from "./tools";
 import {
   commandsEvent,
   contextEvent,
+  errorText,
   limitsEvent,
-  limitsResetDelay,
   mcpEvent,
   modelsEvent,
+  rewindFilesEvent,
   sessionInfoEvent,
   Translator,
   usageEvent,
 } from "./translate";
 
-const record = process.env.ANVIM_RECORD;
+type Start = Extract<Command, { type: "start" }>;
+// The answers to the plugin's requests, which carry an error when their call fails.
+type Answer = Extract<Event, { error?: string }>;
+
+const record = process.env.ANVIM_RECORD ? openSync(process.env.ANVIM_RECORD, "a") : undefined;
 
 function emit(ev: Event): void {
   const line = JSON.stringify(ev);
   process.stdout.write(line + "\n");
-  if (record) appendFileSync(record, `${Date.now()} ${line}\n`);
+  if (record !== undefined) writeSync(record, `${Date.now()} ${line}\n`);
+}
+
+function emitNotice(level: "info" | "warn" | "error", text: string): void {
+  emit({ type: "notice", level, text });
+}
+
+const warn = (text: string) => emitNotice("warn", text);
+
+// An answer that the view can do without. A failed call stays silent.
+function emitLater(answer: Promise<Event>): void {
+  answer.then(emit).catch(() => {});
 }
 
 // Turns pushed prompts into the AsyncIterable that streaming input mode reads.
@@ -86,10 +106,11 @@ class Inbox implements AsyncIterable<SDKUserMessage> {
 
 const inbox = new Inbox();
 let session: Query | null = null;
-let sessionReady!: (q: Query) => void;
+const effort = new Effort(emit);
+const starting = Promise.withResolvers<Query>();
 // The start's effort goes out before any change runs.
-const ready = new Promise<Query>((resolve) => (sessionReady = resolve)).then(async (q) => {
-  await reportEffort(q);
+const ready = starting.promise.then(async (q) => {
+  await effort.report(q);
   return q;
 });
 let controls: Promise<void> = Promise.resolve();
@@ -108,15 +129,15 @@ let cwd = process.cwd();
 
 // The session to resume, after its history went out. Claude Code fails to
 // start on an id it cannot find, so a missing one starts a new session.
-async function resumeTarget(cmd: Extract<Command, { type: "start" }>): Promise<string | undefined> {
+async function resumeTarget(cmd: Start): Promise<string | undefined> {
   let id = cmd.resume;
   if (!id && cmd.continue) {
     id = await sessions.latest(cmd.cwd);
-    if (!id) emit({ type: "notice", level: "info", text: "No earlier session in this directory, so this one is new." });
+    if (!id) emitNotice("info", "No earlier session in this directory, so this one is new.");
   }
   if (!id) return undefined;
   if (!(await sessions.exists(id, cmd.cwd))) {
-    emit({ type: "notice", level: "warn", text: `No session ${id} in this directory, so this one is new.` });
+    warn(`No session ${id} in this directory, so this one is new.`);
     return undefined;
   }
   if (cmd.history) {
@@ -137,27 +158,6 @@ async function reportContext(): Promise<void> {
   }
 }
 
-// The end of each turn fetches the plan usage. A long turn also fetches it
-// every five minutes, and a timer fetches it after a window resets.
-const LIMITS_EVERY_MS = 5 * 60_000;
-let limitsAt = 0;
-let limitsReset: ReturnType<typeof setTimeout> | undefined;
-
-// skipBehaviors leaves out the scan of local transcripts that /usage needs.
-async function reportLimits(): Promise<void> {
-  limitsAt = Date.now();
-  clearTimeout(limitsReset);
-  try {
-    const usage = await session?.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true });
-    if (!usage) return;
-    emit(limitsEvent(usage));
-    const delay = limitsResetDelay(usage);
-    if (delay !== undefined) limitsReset = setTimeout(() => void reportLimits(), delay).unref();
-  } catch {
-    // As with the context, the next turn tries again.
-  }
-}
-
 // Model and effort changes wait for the session, which a resume starts only
 // after its history went out. They run one at a time, in order.
 function control(fn: (q: Query) => Promise<void>): Promise<void> {
@@ -166,88 +166,34 @@ function control(fn: (q: Query) => Promise<void>): Promise<void> {
   return next;
 }
 
-// What getSettings() answers. The SDK has the method, but not in its types.
-type SettingsAnswer = {
-  effective?: Record<string, any>;
-  sources?: { source: string; settings?: Record<string, any> | null }[];
-  applied?: { model?: string; effort?: EffortLevel | null };
-};
+// Emits what fn answers. When fn throws, the failed answer goes out with the error.
+async function reply(failed: Answer, fn: () => Promise<Event | Event[]>): Promise<void> {
+  try {
+    for (const ev of [await fn()].flat()) emit(ev);
+  } catch (err) {
+    emit({ ...failed, error: errorText(err) });
+  }
+}
+
+// A reply that needs the session.
+function answer(failed: Answer, fn: (q: Query) => Promise<Event | Event[]>): Promise<void> {
+  return control((q) => reply(failed, () => fn(q)));
+}
 
 // Claude Code starts the Chrome server with the mode that the session starts
 // in, and in bypass mode, the extension skips its site checks.
 let chromeSkipsChecks = false;
 
-async function emitChrome(q: Query, message?: ChromeMessage): Promise<void> {
-  try {
+function emitChrome(q: Query, message?: ChromeMessage): Promise<void> {
+  return reply({ type: "chrome" }, async () => {
     const [dialog, servers] = await Promise.all([chromeCalls(q).getChromeDialog(), q.mcpServerStatus()]);
-    emit(chromeEvent(dialog, servers, chromeSkipsChecks, message));
-  } catch (err) {
-    emit({ type: "chrome", error: errorText(err) });
-  }
-}
-
-function errorText(err: unknown): string {
-  return String((err as Error)?.message ?? err);
-}
-
-function getSettings(q: Query): Promise<SettingsAnswer> {
-  return (q as unknown as { getSettings(): Promise<SettingsAnswer> }).getSettings();
-}
-
-// claude-opus-5-5[1m] and claude-opus-5-5-20261001 are claude-opus-5-5.
-function canonical(model: string): string {
-  return model.replace(/\[1m\]$/i, "").replace(/-\d{8}$/, "");
-}
-
-// The level that a new session takes from the settings files for a model:
-// the model's modelSettings entry, or a file's top-level effortLevel, from
-// the highest file that has either. Claude Code applies the user's own
-// top-level effortLevel only to some older models, so it does not count here.
-// The flag settings are anvim's own. null leaves the model's own level.
-export function settingsEffort(answer: SettingsAnswer, model: string): EffortLevel | null {
-  const name = canonical(model);
-  for (const { source, settings } of [...(answer.sources ?? [])].reverse()) {
-    if (source === "flagSettings" || !settings) continue;
-    const entries = Object.entries(settings.modelSettings ?? {}) as [string, { effortLevel?: EffortLevel }][];
-    const own = entries.find(([key]) => key === name) ?? entries.find(([key]) => canonical(key) === name);
-    const level = own?.[1]?.effortLevel ?? (source === "userSettings" ? undefined : settings.effortLevel);
-    if (level) return level;
-  }
-  return null;
-}
-
-// A session that started without an effort inherits it: Claude Code takes it
-// from the settings for each model, as in a new session. A level from
-// set_effort ends that, and the flag settings cannot bring it back. After
-// set_effort null, a model switch applies the settings' level for the new
-// model, so the default follows the model as an inherited effort does.
-let inheriting = false;
-let followSettings = false;
-// The levels that the session inherited, by model. They are Claude Code's own
-// answer, which settingsEffort() only comes close to.
-const inherited = new Map<string, EffortLevel | null>();
-
-async function reportEffort(q: Query): Promise<void> {
-  try {
-    const { applied } = await getSettings(q);
-    const level = applied?.effort ?? null;
-    if (inheriting && applied?.model) inherited.set(applied.model, level);
-    emit({ type: "effort", level });
-  } catch {
-    // Without get_settings, the statusline shows no effort.
-  }
-}
-
-async function defaultEffort(q: Query): Promise<EffortLevel | null> {
-  const answer = await getSettings(q);
-  const model = answer.applied?.model;
-  if (!model) return null;
-  return inherited.has(model) ? inherited.get(model)! : settingsEffort(answer, model);
+    return chromeEvent(dialog, servers, chromeSkipsChecks, message);
+  });
 }
 
 // A message that the translator cannot read goes to the log. It must not end
 // the session.
-function translate(translator: Translator, msg: SDKMessage): Event[] {
+function translate(msg: SDKMessage): Event[] {
   try {
     return translator.translate(msg);
   } catch (err) {
@@ -269,7 +215,7 @@ export function fallBack(): void {
   });
 }
 
-async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
+async function run(cmd: Start): Promise<void> {
   // The tool list is fixed when the session starts, so the login check must
   // end before that. It runs while the rest of the start does.
   const codexCheck = codexState(cmd.codex === true);
@@ -292,11 +238,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
       })
     : undefined;
   permissions.useGuard(guard);
-  const notice = new SandboxNotice(
-    (text) => emit({ type: "notice", level: "warn", text }),
-    start,
-    fallBack,
-  );
+  const notice = new SandboxNotice(warn, start, fallBack);
   const [resume, { state: codexOn, bin: codexBin, models: codexModels }] = await Promise.all([
     resumeTarget(cmd),
     codexCheck,
@@ -308,7 +250,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     ...(codexModels ? { models: codexModels } : {}),
   });
   const codexProblem = codexWarning(codexOn, codexModels);
-  if (codexProblem) emit({ type: "notice", level: "warn", text: codexProblem });
+  if (codexProblem) warn(codexProblem);
   codex = codexBin
     ? new CodexRunner({
         bin: codexBin,
@@ -357,36 +299,28 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
   };
   // After a resumed session's history, which draws the transcript again.
   notice.warn(sandbox.problem);
-  inheriting = !cmd.effort;
+  effort.start(cmd.effort);
   session = query({ prompt: inbox, options });
-  sessionReady(session);
+  starting.resolve(session);
   // A resumed session shows how full it is before its first turn.
   void reportContext();
-  session
-    .supportedCommands()
-    .then((commands) => emit(commandsEvent(commands)))
-    .catch(() => {});
+  emitLater(session.supportedCommands().then(commandsEvent));
   // The effort picker needs the models' effort levels.
-  session
-    .supportedModels()
-    .then((models) => emit(modelsEvent(models)))
-    .catch(() => {});
+  emitLater(session.supportedModels().then(modelsEvent));
   // The statusline names the login, so a work login and a personal one differ.
-  session
-    .accountInfo()
-    .then((a) => emit({ type: "account", email: a.email }))
-    .catch(() => {});
-  void reportLimits();
+  emitLater(session.accountInfo().then((a) => ({ type: "account", email: a.email })));
+  const limits = new Limits(emit, session);
+  void limits.report();
   for await (const msg of session) {
     permissions.message(msg);
     // /clear: no conversation waits for the result of a Codex agent.
-    if ((msg as { type: string }).type === "conversation_reset") codex?.stopAll();
-    for (const ev of translate(translator, msg)) emit(ev);
-    if (msg.type === "result" || Date.now() - limitsAt > LIMITS_EVERY_MS) void reportLimits();
+    if (msg.type === "conversation_reset") codex?.stopAll();
+    for (const ev of translate(msg)) emit(ev);
+    limits.message(msg);
     if (msg.type === "result") {
       void reportContext();
       // A settings file can change the inherited effort meanwhile.
-      void control(reportEffort);
+      void control((q) => effort.report(q));
     }
   }
 }
@@ -399,25 +333,19 @@ export async function handle(cmd: Command): Promise<void> {
       run(cmd).then(
         () => process.exit(0),
         (err) => {
-          emit({ type: "notice", level: "error", text: String(err?.stack ?? err) });
+          emitNotice("error", String(err?.stack ?? err));
           process.exit(1);
         },
       );
       return;
     case "prompt":
-      inbox.push(
-        cmd.text,
-        imageBlocks(cmd.images ?? [], (text) => emit({ type: "notice", level: "warn", text })),
-        cmd.id,
-      );
+      inbox.push(cmd.text, imageBlocks(cmd.images ?? [], warn), cmd.id);
       return;
     case "interrupt":
       await session?.interrupt();
       return;
     case "background":
-      await session?.backgroundTasks().catch((err) => {
-        emit({ type: "notice", level: "warn", text: `Could not move the tasks to the background: ${err}` });
-      });
+      await session?.backgroundTasks().catch((err) => warn(`Could not move the tasks to the background: ${err}`));
       return;
     case "cancel_prompt":
       // Query has cancelAsyncMessage, but the SDK's types do not name it.
@@ -430,25 +358,10 @@ export async function handle(cmd: Command): Promise<void> {
       await session?.setPermissionMode(cmd.mode);
       return;
     case "set_model":
-      await control(async (q) => {
-        await q.setModel(cmd.model);
-        if (followSettings && !inheriting) await q.applyFlagSettings({ effortLevel: await defaultEffort(q) });
-        await reportEffort(q);
-      });
+      await control((q) => effort.setModel(q, cmd.model));
       return;
     case "set_effort":
-      await control(async (q) => {
-        followSettings = cmd.effort === null;
-        // An inherited effort is the default already.
-        if (!(followSettings && inheriting)) {
-          const level = cmd.effort ?? (await defaultEffort(q));
-          inheriting = false;
-          // The flag layer, so the effort lasts for this session only, and no
-          // settings file changes.
-          await q.applyFlagSettings({ effortLevel: level });
-        }
-        await reportEffort(q);
-      });
+      await control((q) => effort.set(q, cmd.effort));
       return;
     case "set_codex_defaults":
       codexDefaults = { model: cmd.model ?? undefined, effort: cmd.effort ?? undefined };
@@ -457,35 +370,18 @@ export async function handle(cmd: Command): Promise<void> {
       await control(async (q) => emit(modelsEvent(await q.supportedModels())));
       return;
     case "usage":
-      await control(async (q) => {
-        try {
-          // The SDK marks this call as one that may change in any release.
-          const usage = await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET();
-          emit(usageEvent(usage));
-          // The statusline shows the same numbers as the Usage tab.
-          emit(limitsEvent(usage));
-        } catch (err) {
-          emit({ type: "usage", error: errorText(err) });
-        }
+      await answer({ type: "usage" }, async (q) => {
+        // The SDK marks this call as one that may change in any release.
+        const usage = await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET();
+        // The statusline shows the same numbers as the Usage tab.
+        return [usageEvent(usage), limitsEvent(usage)];
       });
       return;
     case "context_usage":
-      await control(async (q) => {
-        try {
-          emit(contextEvent(await q.getContextUsage({ detail: "full" })));
-        } catch (err) {
-          emit({ type: "context_usage", error: errorText(err) });
-        }
-      });
+      await answer({ type: "context_usage" }, async (q) => contextEvent(await q.getContextUsage({ detail: "full" })));
       return;
     case "mcp_servers":
-      await control(async (q) => {
-        try {
-          emit(mcpEvent(await q.mcpServerStatus()));
-        } catch (err) {
-          emit({ type: "mcp_servers", error: errorText(err) });
-        }
-      });
+      await answer({ type: "mcp_servers" }, async (q) => mcpEvent(await q.mcpServerStatus()));
       return;
     case "mcp_action":
       await control(async (q) => {
@@ -506,106 +402,49 @@ export async function handle(cmd: Command): Promise<void> {
       });
       return;
     case "session_info":
-      await control(async (q) => {
-        try {
-          const init = await q.initializationResult();
-          emit(sessionInfoEvent(init.claude_code_version, await q.accountInfo(), await q.mcpServerStatus()));
-        } catch (err) {
-          emit({ type: "session_info", error: errorText(err) });
-        }
+      await answer({ type: "session_info" }, async (q) => {
+        const init = await q.initializationResult();
+        return sessionInfoEvent(init.claude_code_version, init.account, await q.mcpServerStatus());
       });
       return;
     case "chrome":
       await control((q) => emitChrome(q));
       return;
     case "chrome_reconnect":
-      await control(async (q) => {
-        let message: ChromeMessage;
-        try {
-          await q.reconnectMcpServer(CHROME_SERVER);
-          message = {
-            text: "Reconnected to Claude in Chrome. Its browser tools are back in this session. If a browser action still doesn't work, check that Chrome is open and the extension is signed in.",
-            level: "info",
-          };
-        } catch (err) {
-          message = {
-            text: `Could not reconnect Claude in Chrome: ${errorText(err)} Select "Reconnect extension" to try again, or open /mcp and select claude-in-chrome for details.`,
-            level: "error",
-          };
-        }
-        await emitChrome(q, message);
-      });
+      await control(async (q) => emitChrome(q, await reconnectChrome(q)));
       return;
     case "chrome_default":
-      await control(async (q) => {
-        let message: ChromeMessage | undefined;
-        try {
-          await setEnabledByDefault(cmd.enabled);
-        } catch (err) {
-          message = { text: `The setting was not saved: ${errorText(err)}`, level: "error" };
-        }
-        await emitChrome(q, message);
-      });
+      await control(async (q) => emitChrome(q, await setChromeDefault(cmd.enabled)));
       return;
     case "chrome_browsers":
-      await control(async (q) => {
-        try {
-          emit(browsersEvent((await chromeCalls(q).getChromeBrowsers()).browsers));
-        } catch (err) {
-          emit({ type: "chrome_browsers", error: errorText(err) });
-        }
-      });
+      await answer({ type: "chrome_browsers" }, async (q) =>
+        browsersEvent((await chromeCalls(q).getChromeBrowsers()).browsers),
+      );
       return;
     case "chrome_select":
-      await control(async (q) => {
-        let message: ChromeMessage | undefined;
-        try {
-          const { name } = await chromeCalls(q).selectChromeBrowser(cmd.device_id);
-          if (name) message = { text: `Now using browser "${name}" for Chrome actions.`, level: "info" };
-        } catch (err) {
-          message = { text: `Couldn't switch browser: ${errorText(err)}`, level: "error" };
-        }
-        await emitChrome(q, message);
-      });
+      await control(async (q) => emitChrome(q, await selectChrome(q, cmd.device_id)));
       return;
     case "todo_reset":
       if (!cmd.undo) await todos?.reset();
-      else if (todos && !(await todos.undo())) {
-        emit({ type: "notice", level: "info", text: "There is no previous todo list to bring back." });
-      }
+      else if (todos && !(await todos.undo())) emitNotice("info", "There is no previous todo list to bring back.");
       return;
     case "preview_done":
       previews.done(cmd.req);
       return;
     case "rewind_points":
-      try {
-        const points = sessions.rewindPoints(await sessions.messages(cmd.session_id, cwd, cmd.at));
-        emit({ type: "rewind_points", session_id: cmd.session_id, points });
-      } catch (err) {
-        emit({ type: "rewind_points", session_id: cmd.session_id, error: errorText(err) });
-      }
+      await reply({ type: "rewind_points", session_id: cmd.session_id }, async () => ({
+        type: "rewind_points",
+        session_id: cmd.session_id,
+        points: sessions.rewindPoints(await sessions.messages(cmd.session_id, cwd, cmd.at)),
+      }));
       return;
-    case "rewind_files":
-      await control(async (q) => {
-        const dry_run = cmd.dry_run === true;
-        try {
-          const r = await q.rewindFiles(cmd.uuid, { dryRun: dry_run });
-          emit({
-            type: "rewind_files",
-            uuid: cmd.uuid,
-            dry_run,
-            can_rewind: r.canRewind,
-            error: r.error,
-            files: r.filesChanged,
-            insertions: r.insertions,
-            deletions: r.deletions,
-            skipped: r.skippedLinks || undefined,
-          });
-        } catch (err) {
-          emit({ type: "rewind_files", uuid: cmd.uuid, dry_run, can_rewind: false, error: errorText(err) });
-        }
-      });
+    case "rewind_files": {
+      const dry_run = cmd.dry_run === true;
+      await answer({ type: "rewind_files", uuid: cmd.uuid, dry_run, can_rewind: false }, async (q) =>
+        rewindFilesEvent(cmd.uuid, dry_run, await q.rewindFiles(cmd.uuid, { dryRun: dry_run })),
+      );
       return;
+    }
     case "editor_response":
       editor.respond(cmd);
       return;
@@ -633,10 +472,10 @@ if (import.meta.main) {
     try {
       cmd = JSON.parse(line);
     } catch {
-      emit({ type: "notice", level: "error", text: `bad command: ${line.slice(0, 200)}` });
+      emitNotice("error", `bad command: ${line.slice(0, 200)}`);
       return;
     }
-    handle(cmd).catch((err) => emit({ type: "notice", level: "error", text: String(err?.message ?? err) }));
+    handle(cmd).catch((err) => emitNotice("error", errorText(err)));
   });
   rl.on("close", shutdown);
   process.on("SIGTERM", shutdown);
