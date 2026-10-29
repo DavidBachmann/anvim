@@ -103,6 +103,8 @@ let codex: CodexRunner | undefined;
 let codexDefaults: CodexSettings = {};
 // The project's todo list. A start without todos_path has none.
 let todos: TodoStore | undefined;
+// The directory of the session, where Claude Code saves it.
+let cwd = process.cwd();
 
 // The session to resume, after its history went out. Claude Code fails to
 // start on an id it cannot find, so a missing one starts a new session.
@@ -117,7 +119,9 @@ async function resumeTarget(cmd: Extract<Command, { type: "start" }>): Promise<s
     emit({ type: "notice", level: "warn", text: `No session ${id} in this directory, so this one is new.` });
     return undefined;
   }
-  if (cmd.history) emit({ type: "history", session_id: id, events: await sessions.history(id, cmd.cwd) });
+  if (cmd.history) {
+    emit({ type: "history", session_id: id, events: await sessions.history(id, cmd.cwd, cmd.resume_at) });
+  }
   return id;
 }
 
@@ -274,6 +278,7 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
   const sandbox = sandboxSetup(sandboxOn, cmd.cwd);
   const start = startMode(cmd.permission_mode, cmd.permission_mode_chosen === true, sandboxOn && !sandbox.problem);
   const mode = start.mode;
+  cwd = cmd.cwd;
   permissions.cwd = cmd.cwd;
   permissions.bypass = mode === "bypassPermissions";
   chromeSkipsChecks = mode === "bypassPermissions";
@@ -324,6 +329,9 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
     model: cmd.model,
     effort: cmd.effort,
     resume,
+    resumeSessionAt: resume ? cmd.resume_at : undefined,
+    // /rewind restores the files that Claude's edit tools changed.
+    enableFileCheckpointing: true,
     permissionMode: mode,
     allowDangerouslySkipPermissions: mode === "bypassPermissions",
     includePartialMessages: true,
@@ -568,6 +576,35 @@ export async function handle(cmd: Command): Promise<void> {
       return;
     case "preview_done":
       previews.done(cmd.req);
+      return;
+    case "rewind_points":
+      try {
+        const points = sessions.rewindPoints(await sessions.messages(cmd.session_id, cwd, cmd.at));
+        emit({ type: "rewind_points", session_id: cmd.session_id, points });
+      } catch (err) {
+        emit({ type: "rewind_points", session_id: cmd.session_id, error: errorText(err) });
+      }
+      return;
+    case "rewind_files":
+      await control(async (q) => {
+        const dry_run = cmd.dry_run === true;
+        try {
+          const r = await q.rewindFiles(cmd.uuid, { dryRun: dry_run });
+          emit({
+            type: "rewind_files",
+            uuid: cmd.uuid,
+            dry_run,
+            can_rewind: r.canRewind,
+            error: r.error,
+            files: r.filesChanged,
+            insertions: r.insertions,
+            deletions: r.deletions,
+            skipped: r.skippedLinks || undefined,
+          });
+        } catch (err) {
+          emit({ type: "rewind_files", uuid: cmd.uuid, dry_run, can_rewind: false, error: errorText(err) });
+        }
+      });
       return;
     case "editor_response":
       editor.respond(cmd);

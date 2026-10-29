@@ -36,6 +36,12 @@ const session = {
   setPermissionMode: async (mode: string) => {
     calls.push(["setPermissionMode", mode]);
   },
+  rewindFiles: async (uuid: string, opts?: { dryRun?: boolean }) => {
+    if (uuid !== "p1") return { canRewind: false, error: "No file checkpoint found for this message." };
+    return opts?.dryRun
+      ? { canRewind: true, filesChanged: ["/tmp/a.txt"], insertions: 1, deletions: 2 }
+      : { canRewind: true, skippedLinks: 0 };
+  },
   applyFlagSettings: async (settings: { effortLevel?: string | null }) => {
     calls.push(["effortLevel", settings.effortLevel]);
     applied.effort = settings.effortLevel ?? "medium";
@@ -88,7 +94,15 @@ async function emitted(fn: () => Promise<unknown>, until: (events: any[]) => boo
 
 const efforts = (events: any[]) => events.filter((e) => e.type === "effort").map((e) => e.level);
 
-const resume = { type: "start", cwd: "/tmp", model: "haiku", resume: "s1", history: true, sandbox: false } as const;
+const resume = {
+  type: "start",
+  cwd: "/tmp",
+  model: "haiku",
+  resume: "s1",
+  resume_at: "a1",
+  history: true,
+  sandbox: false,
+} as const;
 
 // Brings the session to where the first test leaves it: resumed, on Sonnet,
 // at low effort. A test that runs alone with -t starts the session here.
@@ -121,7 +135,8 @@ describe("the sidecar's session", () => {
       },
       (evs) => evs.some((e) => e.type === "models"),
     ).finally(() => (sandboxProblem = undefined));
-    expect(started.map((o) => [o.model, o.effort, o.resume])).toEqual([["haiku", undefined, "s1"]]);
+    expect(started.map((o) => [o.model, o.effort, o.resume, o.resumeSessionAt])).toEqual([["haiku", undefined, "s1", "a1"]]);
+    expect(started[0]!.enableFileCheckpointing).toBe(true);
     expect(started[0]!.sandbox).toEqual({ enabled: false });
     // anvim's todo list is the only one.
     expect(started[0]!.disallowedTools).toEqual(["TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"]);
@@ -200,6 +215,29 @@ describe("the sidecar's session", () => {
     expect(calls).toEqual([
       ["setPermissionMode", "default"],
       ["setPermissionMode", "acceptEdits"],
+    ]);
+  });
+
+  test("rewind_files answers with the result of the checkpoint", async () => {
+    await startSession();
+    const events = await emitted(
+      async () => {
+        await handle({ type: "rewind_files", uuid: "p1", dry_run: true });
+        await handle({ type: "rewind_files", uuid: "p1" });
+        await handle({ type: "rewind_files", uuid: "p0", dry_run: true });
+      },
+      (evs) => evs.filter((e) => e.type === "rewind_files").length === 3,
+    );
+    expect(events.filter((e) => e.type === "rewind_files")).toEqual([
+      { type: "rewind_files", uuid: "p1", dry_run: true, can_rewind: true, files: ["/tmp/a.txt"], insertions: 1, deletions: 2 },
+      { type: "rewind_files", uuid: "p1", dry_run: false, can_rewind: true },
+      {
+        type: "rewind_files",
+        uuid: "p0",
+        dry_run: true,
+        can_rewind: false,
+        error: "No file checkpoint found for this message.",
+      },
     ]);
   });
 

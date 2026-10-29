@@ -103,7 +103,7 @@ local resetting
 
 -- What belongs to one session. A new session starts with none of it.
 local function forget()
-  state.session_id, state.context, state.turns = nil, nil, 0
+  state.session_id, state.context, state.turns, state.resume_at = nil, nil, 0, nil
   resetting = nil
   require("anvim.follow").forget()
 end
@@ -192,6 +192,25 @@ function M.resume(id)
   redraw()
 end
 
+-- /rewind's conversation restore: Claude starts again in this session, at
+-- the chain entry `at`, or in a new session without one.
+---@param at? string
+function M.rewind(at)
+  local id = state.session_id
+  if id and at then
+    forget()
+    transcript.turn_end()
+    transcript.clear()
+    state.resume_at = at
+    sidecar.restart(M.start_command({ resume = id, resume_at = at, history = true }))
+  else
+    -- The view starts over, as after /clear.
+    sidecar.dispatch({ type = "reset" })
+    sidecar.restart(M.start_command())
+  end
+  redraw()
+end
+
 -- Starts the sidecar again, as after it exited or hung. A session that has
 -- saved a turn goes on where it was.
 ---@param what? string The notice, "Restarting Claude" by default.
@@ -207,7 +226,7 @@ function M.restart(what)
   transcript.turn_end()
   transcript.notice("info", (what or "Restarting Claude") .. (id and " in this session" or ""))
   state.process = "starting"
-  sidecar.restart(M.start_command({ resume = id }))
+  sidecar.restart(M.start_command({ resume = id, resume_at = id and state.resume_at or nil }))
   redraw()
 end
 
@@ -512,6 +531,9 @@ function M.command(text)
   elseif name == "/reset" then
     resetting = require("anvim.input").send("/clear", "/reset")
     return true
+  elseif name == "/rewind" then
+    require("anvim.rewind").open()
+    return true
   elseif name == "/undo-reset" then
     sidecar.send({ type = "todo_reset", undo = true })
     return true
@@ -578,6 +600,7 @@ local own_commands = {
   { name = "resume", description = "Resume a session of this directory" },
   { name = "reset", description = "Clear the conversation and delete the todo list" },
   { name = "undo-reset", description = "Bring back the todo list that /reset deleted" },
+  { name = "rewind", description = "Restore the code or the conversation to before an earlier prompt" },
   { name = "model", description = "Choose Claude's model", argument_hint = "[model]" },
   { name = "effort", description = "Set the effort level for this session", argument_hint = "[level]" },
   { name = "status", description = "Show the login, the model and the session" },
@@ -631,10 +654,12 @@ function M.attach()
       resetting = nil
     end
   end)
-  -- A /clear also ends a turn, but saves none.
+  -- A /clear also ends a turn, but saves none. A saved turn after a rewind
+  -- makes its branch the session's chain.
   sidecar.on("turn_end", function(ev)
     if (ev.num_turns or 0) > 0 then
       state.turns = (state.turns or 0) + 1
+      state.resume_at = nil
     end
   end)
   sidecar.on("context", function(ev)

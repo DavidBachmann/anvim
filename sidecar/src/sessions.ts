@@ -2,7 +2,7 @@
 // anvim never writes them. As a script, it prints the list for the picker:
 //   bun src/sessions.ts list <dir>
 import { getSessionInfo, getSessionMessages, listSessions, type SessionMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { Event } from "./protocol";
+import type { Event, RewindPoint } from "./protocol";
 import { type AnyRecord, commandOutput, readResult, resultText, truncate, truncateOutput } from "./translate";
 
 export type SessionItem = {
@@ -40,8 +40,20 @@ export async function exists(id: string, cwd: string): Promise<boolean> {
   return (await getSessionInfo(id, { dir: cwd })) !== undefined;
 }
 
-export async function history(id: string, cwd: string): Promise<HistoryEvent[]> {
-  return historyEvents(await getSessionMessages(id, { dir: cwd }));
+// The main chain, up to and including the entry `at` when it is given.
+// Until the next prompt, Claude Code still returns the chain past a rewound
+// start's resume point.
+export async function messages(id: string, cwd: string, at?: string): Promise<SessionMessage[]> {
+  return upTo(await getSessionMessages(id, { dir: cwd }), at);
+}
+
+export function upTo(messages: SessionMessage[], at?: string): SessionMessage[] {
+  const i = at ? messages.findIndex((m) => m.uuid === at) : -1;
+  return i < 0 ? messages : messages.slice(0, i + 1);
+}
+
+export async function history(id: string, cwd: string, at?: string): Promise<HistoryEvent[]> {
+  return historyEvents(await messages(id, cwd, at));
 }
 
 const STATUSES: Record<string, "completed" | "failed" | "stopped"> = {
@@ -163,6 +175,23 @@ export function historyEvents(messages: SessionMessage[]): HistoryEvent[] {
     }
   }
   return out;
+}
+
+// The prompts that the transcript draws, oldest first. A prompt after
+// nothing that the transcript draws, such as the /clear that started the
+// session, has no entry to resume at.
+export function rewindPoints(messages: SessionMessage[]): RewindPoint[] {
+  const points: RewindPoint[] = [];
+  let drawn = false;
+  messages.forEach((m, i) => {
+    const events = historyEvents([m]);
+    const ev = events.find((e) => e.type === "user");
+    if (ev?.type === "user") {
+      points.push({ uuid: m.uuid, text: ev.text, time: ev.time, ...(drawn ? { before: messages[i - 1]!.uuid } : {}) });
+    }
+    drawn ||= events.length > 0;
+  });
+  return points;
 }
 
 if (import.meta.main) {

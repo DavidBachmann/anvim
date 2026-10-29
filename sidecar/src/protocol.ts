@@ -71,6 +71,10 @@ export type TodoItem = {
   blocked_by?: number[];
 };
 
+// A typed prompt that /rewind can go back to. before is the uuid of the chain
+// entry before it, to resume at. The first prompt has none.
+export type RewindPoint = { uuid: string; text: string; time?: number; before?: string };
+
 export type Command =
   | {
       type: "start";
@@ -89,6 +93,9 @@ export type Command =
       continue?: boolean;
       // Send the resumed session's messages as a history event first.
       history?: boolean;
+      // Resume only up to and including the chain entry with this uuid, as
+      // /rewind does. The history ends there too.
+      resume_at?: string;
       append_system_prompt?: string;
       // anvim runs with --debug: the editor tools include screenshot and reload.
       debug?: boolean;
@@ -142,6 +149,12 @@ export type Command =
   | { type: "chrome_browsers" }
   | { type: "chrome_select"; device_id: string }
   | { type: "preview_done"; req: number }
+  // The typed prompts of a session, for /rewind. at cuts the chain after
+  // that entry, as a start with resume_at does. Answered with rewind_points.
+  | { type: "rewind_points"; session_id: string; at?: string }
+  // Restores the files that Claude's edit tools changed since the prompt with
+  // this uuid. A dry run changes nothing. Answered with rewind_files.
+  | { type: "rewind_files"; uuid: string; dry_run?: boolean }
   // /reset deletes the todo list, and keeps it as the previous list. With
   // undo, the list and the previous list swap. The answer is a todos event.
   | { type: "todo_reset"; undo?: boolean }
@@ -368,6 +381,22 @@ export type Event =
       type: "chrome_browsers";
       browsers?: { device_id: string; name: string; os?: string; current: boolean }[];
       error?: string;
+    }
+  // The answer to rewind_points, oldest first.
+  | { type: "rewind_points"; session_id: string; points?: RewindPoint[]; error?: string }
+  // The answer to rewind_files. A dry run lists the files that the restore
+  // changes. skipped counts the files that a restore left alone, because a
+  // link took their place. Without can_rewind, error says why.
+  | {
+      type: "rewind_files";
+      uuid: string;
+      dry_run: boolean;
+      can_rewind: boolean;
+      error?: string;
+      files?: string[];
+      insertions?: number;
+      deletions?: number;
+      skipped?: number;
     }
   // A resumed session's past, sent before it starts. Its events draw the
   // transcript as live ones do. A "user" event is a past prompt. An event

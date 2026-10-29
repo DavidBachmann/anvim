@@ -18,6 +18,18 @@ Choosing a session restarts Claude and reconstructs its transcript. If Claude Co
 
 `<leader>cR` or `:AnvimRestart` restarts Claude in the same session if it exits or hangs, keeping the chosen model and effort. With default effort, the restart uses the level a new session would use.
 
+## Rewind
+
+`/rewind` goes back to before one of your earlier prompts. Pick the prompt, newest first, then choose what to restore:
+
+- **Restore code and conversation** does both, the code first.
+- **Restore conversation** resumes the session up to the entry before that prompt. The transcript ends there, and Claude does not see the later turns. The prompt's text goes back into the prompt window, so you can change it and send it again. Images in the prompt come back as their placeholder text, without the images. For the first prompt, a new session starts.
+- **Restore code** puts the files back as they were before that prompt ran, and keeps the conversation. Open buffers reload from disk, and a file that the restore deletes leaves the code window.
+
+The code choices show what changes, such as `+12 -3 in 2 files`. They appear only when there is a change to restore. A code restore covers only files that Claude's Write, Edit and NotebookEdit tools changed, in anvim sessions with checkpoints. It does not cover Bash commands, Codex agents, or sessions from before anvim kept checkpoints. Claude Code keeps the rewound turns in its session file, and the next prompt starts a new branch.
+
+`/rewind` works only while Claude and its agents are idle, because a conversation restore restarts Claude and ends running agents. Stop Claude first if a turn is running.
+
 <a id="model-and-effort"></a>
 
 ## Model, effort and usage

@@ -83,7 +83,7 @@ describe("completion", function()
     local start, list = complete("/")
     local items = by_abbr(list)
     -- anvim runs /model, /resume, /effort, /status, /usage, /context, /mcp, /chrome, /account, /reset,
-    -- /undo-reset and the Codex commands itself, and adds them.
+    -- /undo-reset, /rewind and the Codex commands itself, and adds them.
     assert.are.same(0, start)
     assert.are.same({
       "/account",
@@ -98,6 +98,7 @@ describe("completion", function()
       "/reset",
       "/resume",
       "/review",
+      "/rewind",
       "/status",
       "/undo-reset",
       "/usage",
@@ -110,7 +111,7 @@ describe("completion", function()
     assert.is_true(items["/compact"].user_data.send)
     -- The typed name filters the list, fuzzily.
     assert.are.same(
-      { "/chrome", "/reset", "/resume", "/review", "/undo-reset" },
+      { "/chrome", "/reset", "/resume", "/review", "/rewind", "/undo-reset" },
       vim.fn.sort(vim.tbl_keys(by_abbr(select(2, complete("/re")))))
     )
     for _, case in ipairs({ { "say /re" }, { "/re", 2 } }) do
