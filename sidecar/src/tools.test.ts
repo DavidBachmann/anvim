@@ -118,6 +118,9 @@ describe("codex tool", () => {
   ];
   const task = { description: "Review", prompt: "Review a.ts" };
 
+  // Claude in Chrome is not connected.
+  const servers = { "claude-in-chrome": async () => "Claude in Chrome is not connected in this session." };
+
   function runner(bin: string, config = {}) {
     const events: Event[] = [];
     const notes: string[] = [];
@@ -129,13 +132,14 @@ describe("codex tool", () => {
       defaults: () => ({}),
       config: () => config,
       models,
+      servers,
     });
     return { codex, events, notes };
   }
 
   const textOf = (res: Awaited<ReturnType<Client["callTool"]>>) => (res.content as { text: string }[])[0]!.text;
 
-  test("lists the visible models to Claude, and refuses a model or an effort that Codex lacks", async () => {
+  test("lists the visible models to Claude, and refuses a model, an effort or a server that Codex lacks", async () => {
     const { codex, events } = runner("/nonexistent/codex");
     const client = await connect(bridge().b, { codex });
     const tool = (await client.listTools()).tools.find((t) => t.name === "codex")!;
@@ -150,6 +154,13 @@ describe("codex tool", () => {
     const effort = await client.callTool({ name: "codex", arguments: { ...task, model: "gpt-6-mini", effort: "xhigh" } });
     expect(effort.isError).toBe(true);
     expect(textOf(effort)).toContain("low, medium");
+    expect(props.mcp_servers!.description).toContain('Only "claude-in-chrome" is supported.');
+    const server = await client.callTool({ name: "codex", arguments: { ...task, mcp_servers: ["playwright"] } });
+    expect(server.isError).toBe(true);
+    expect(textOf(server)).toBe("anvim cannot hand playwright to Codex. It can hand over only claude-in-chrome.");
+    const chrome = await client.callTool({ name: "codex", arguments: { ...task, mcp_servers: ["claude-in-chrome"] } });
+    expect(chrome.isError).toBe(true);
+    expect(textOf(chrome)).toBe("Claude in Chrome is not connected in this session.");
     expect(events).toEqual([]);
   });
 

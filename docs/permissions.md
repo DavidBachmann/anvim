@@ -58,6 +58,10 @@ The following guards can prompt even in bypass mode. Their yellow explanation sa
 
 For Claude and each subagent, anvim sends the first guarded call back with a hint instead of immediately asking. The hint explains that you have not been asked, suggests an alternative and permits the agent to retry. Later guarded calls from that agent ask you. The transcript shows the send-back, and `~/.local/state/anvim/anvim.log` records send-backs and subsequent prompts with `send-back:`. `/clear` resets Claude's count. Write-capable Codex calls are the exception: they ask directly because there is no equivalent run inside Claude's sandbox. `--no-sandbox` disables these guards as well.
 
+### Browser actions
+
+Claude in Chrome acts in your real Chrome, with your sign-ins. Claude can use it, and Claude can give it to a Codex run (see [Codex agents](subagents.md#codex-agents)). Neither Claude Code's sandbox nor Codex's sandbox covers browser actions, and a read-only Codex run can still act in the browser. The extension's permission mode decides whether it asks in Chrome before it acts on a site. In bypass mode it skips those checks, and in every other mode it asks. Claude Code changes the mode of its own server when the session's mode changes. A Codex run gets the mode that applies when the run starts, and keeps it until the run ends.
+
 ### Without a sandbox
 
 On Linux, install `bwrap` and `socat` to run the sandbox. If its pre-check fails or Claude Code cannot start it, anvim warns and uses default mode unless you explicitly chose a mode. `--no-sandbox` or `ANVIM_SANDBOX=0` turns it off and uses the same fallback without a warning; a personal spec can also set `sandbox = false`.

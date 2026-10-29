@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import type { CodexServer } from "./codex";
 import type { ChromeState, Event } from "./protocol";
 
 export const CHROME_SERVER = "claude-in-chrome";
@@ -20,8 +21,48 @@ type ChromeCalls = {
   selectChromeBrowser(deviceId: string): Promise<{ name?: string }>;
 };
 
-export function chromeCalls(q: Query): ChromeCalls {
-  return q as unknown as ChromeCalls;
+export function chromeCalls(q: Query): Query & ChromeCalls {
+  return q as Query & ChromeCalls;
+}
+
+// Claude Code's own Claude in Chrome server, as a server of a Codex run. The
+// copy acts in the browser that Claude's session uses, with the extension's
+// permission mode that applies when the run starts.
+export async function chromeForCodex(
+  q: Pick<Query, "mcpServerStatus"> & Pick<ChromeCalls, "getChromeBrowsers">,
+  mode: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<CodexServer | string> {
+  // Trust comes from the source: a settings server can take the name too.
+  const server = (await q.mcpServerStatus()).find(
+    (s) => s.name === CHROME_SERVER && s.source === "dynamic" && s.status === "connected",
+  );
+  if (!server) {
+    return "Claude in Chrome is not connected in this session, so Codex cannot use it. The user can connect it with /chrome.";
+  }
+  const config = server.config;
+  if (!config || !("command" in config) || typeof config.command !== "string") {
+    return "anvim could not read how Claude Code runs Claude in Chrome, so Codex cannot use it.";
+  }
+  const { browsers } = await q.getChromeBrowsers();
+  if (browsers.length === 0) return "No browser is connected to Claude in Chrome, so Codex cannot use it.";
+  const browser = browsers.find((b) => b.current) ?? (browsers.length === 1 ? browsers[0] : undefined);
+  if (!browser) {
+    return "Several browsers are connected to Claude in Chrome, and none is selected for this session. Ask the user to select one with /chrome, then call codex again.";
+  }
+  return {
+    name: CHROME_SERVER,
+    command: config.command,
+    args: config.args ?? [],
+    env: {
+      // Without it, the server reads another login's state.
+      ...(env.CLAUDE_CONFIG_DIR ? { CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR } : {}),
+      CLAUDE_CHROME_PAIRED_DEVICE_ID: browser.device_id,
+      // As Claude Code sets it for its own server. In ask mode, the extension
+      // asks in Chrome before it acts on a site.
+      CLAUDE_CHROME_PERMISSION_MODE: mode === "bypassPermissions" ? "skip_all_permission_checks" : "ask",
+    },
+  };
 }
 
 // Claude Code's "Enabled by default" setting, in its global config. Its

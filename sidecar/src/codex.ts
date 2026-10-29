@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import type { Event } from "./protocol";
-import { truncate } from "./translate";
+import { resultText, truncate } from "./translate";
 
 // The agent type that the plugin names the agent by: Codex 1.
 export const CODEX_TYPE = "Codex";
@@ -104,6 +104,18 @@ export class CodexStream {
         const failed = item.status !== "completed";
         this.result(call, failed, failed ? `Could not change ${name}` : `${verb} ${name}`, out);
       });
+    } else if (item.type === "mcp_tool_call" && typeof item.server === "string" && typeof item.tool === "string") {
+      // The name that Claude's own call of the tool has.
+      const name = `mcp__${item.server}__${item.tool}`;
+      const input = typeof item.arguments === "object" && item.arguments !== null ? item.arguments : {};
+      this.use(id, name, input, `Calling ${item.server} ${item.tool}`, out);
+      if (!done) return;
+      const res: Item = typeof item.result === "object" && item.result !== null ? item.result : {};
+      const error = typeof item.error === "string" ? item.error : item.error?.message;
+      const failed = item.status !== "completed" || item.error != null || res.isError === true || res.is_error === true;
+      const image = Array.isArray(res.content) && res.content.some((part: Item) => part?.type === "image");
+      const text = (typeof error === "string" && error) || resultText(res.content) || (image ? "[Image]" : "");
+      this.result(id, failed, text, out);
     }
   }
 
@@ -225,7 +237,19 @@ async function tail(stream: ReadableStream<Uint8Array>): Promise<string> {
   return text;
 }
 
-export type CodexInput = { description: string; prompt: string; read_only?: boolean; model?: string; effort?: string };
+export type CodexInput = {
+  description: string;
+  prompt: string;
+  read_only?: boolean;
+  model?: string;
+  effort?: string;
+  mcp_servers?: string[];
+};
+
+// An MCP server of Claude's session that a run gets, as a stdio server of its
+// own. Codex passes such a server only a short list of env vars, so env holds
+// every var that the server needs from anvim's env.
+export type CodexServer = { name: string; command: string; args: string[]; env: Record<string, string> };
 
 // A model and a reasoning effort. Each one is unset when nobody chose it.
 export type CodexSettings = { model?: string; effort?: string };
@@ -258,7 +282,28 @@ export function codexSettings(input: CodexInput, defaults: CodexSettings): Codex
   return { ...(model ? { model } : {}), ...(effort ? { effort } : {}) };
 }
 
-export function codexArgs(bin: string, cwd: string, readOnly: boolean, settings: CodexSettings): string[] {
+// Codex parses each -c value as TOML. A JSON string is also a TOML string, and
+// a JSON array of strings is also a TOML array. "approve" lets Codex call the
+// server's tools without an approval prompt.
+export function serverArgs(servers: CodexServer[]): string[] {
+  return servers.flatMap(({ name, command, args, env }) => {
+    const table = Object.entries(env).map(([key, value]) => `${JSON.stringify(key)}=${JSON.stringify(value)}`);
+    return [
+      `command=${JSON.stringify(command)}`,
+      `args=${JSON.stringify(args)}`,
+      `env={${table.join(",")}}`,
+      'default_tools_approval_mode="approve"',
+    ].flatMap((setting) => ["-c", `mcp_servers.${name}.${setting}`]);
+  });
+}
+
+export function codexArgs(
+  bin: string,
+  cwd: string,
+  readOnly: boolean,
+  settings: CodexSettings,
+  servers: CodexServer[] = [],
+): string[] {
   const { model, effort } = settings;
   return [
     bin,
@@ -271,6 +316,7 @@ export function codexArgs(bin: string, cwd: string, readOnly: boolean, settings:
     ...(model ? ["-m", model] : []),
     // A TOML string, so that no level parses as another type.
     ...(effort ? ["-c", `model_reasoning_effort=${JSON.stringify(effort)}`] : []),
+    ...serverArgs(servers),
     "--skip-git-repo-check",
     "-",
   ];
@@ -481,6 +527,9 @@ export class CodexRunner {
       config?: () => CodexSettings;
       // Codex's model list, when anvim could read it.
       models?: CodexModel[];
+      // The MCP servers of Claude's session that a run can get, by name. Each
+      // one gives the server at call time, or the reason that it cannot.
+      servers?: Record<string, () => Promise<CodexServer | string>>;
     },
   ) {}
 
@@ -498,15 +547,38 @@ export class CodexRunner {
     return this.opts.models ? checkInput(input, this.opts.models, this.opts.defaults(), this.config()) : undefined;
   }
 
+  // The servers that the call names, or the first reason that one of them
+  // cannot go to Codex.
+  async handOver(names: string[] = []): Promise<CodexServer[] | string> {
+    const offered = this.opts.servers ?? {};
+    const unknown = names.filter((name) => !Object.hasOwn(offered, name));
+    if (unknown.length > 0) {
+      const known = Object.keys(offered);
+      const can = known.length > 0 ? `It can hand over only ${known.join(", ")}.` : "It can hand over no MCP server.";
+      return `anvim cannot hand ${unknown.join(", ")} to Codex. ${can}`;
+    }
+    const servers: CodexServer[] = [];
+    for (const name of new Set(names)) {
+      const server = await offered[name]!();
+      if (typeof server === "string") return server;
+      servers.push(server);
+    }
+    return servers;
+  }
+
   // Returns at once. The run goes on in the background.
-  start(input: CodexInput, toolUseId: string | undefined): { id: string; run: RunSettings } {
+  start(
+    input: CodexInput,
+    toolUseId: string | undefined,
+    servers: CodexServer[] = [],
+  ): { id: string; run: RunSettings } {
     const id = `codex-${this.stamp}-${this.next++}`;
     const { bin, cwd, emit } = this.opts;
     const stream = new CodexStream(id, toolUseId ?? id, cwd);
     const defaults = this.opts.defaults();
     const config = this.config();
     const settings = codexSettings(input, defaults);
-    const proc = Bun.spawn(codexArgs(bin, cwd, input.read_only === true, settings), {
+    const proc = Bun.spawn(codexArgs(bin, cwd, input.read_only === true, settings, servers), {
       cwd,
       // Inside cmux, `codex` is cmux's wrapper. Its hooks call the cmux app
       // on every tool call, which drops them, and a burst of them once

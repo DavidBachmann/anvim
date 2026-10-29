@@ -29,6 +29,8 @@ A Codex run appears as a background agent such as `Codex 1`, with the same foote
 
 Codex runs `codex exec` in the working directory under its own sandbox. It can write there unless the run is read-only. It does not ask for permissions during the run; anvim can ask before starting a write-capable run, as described in [permissions](permissions.md#the-gaps). `Esc` stops Claude, not Codex; `/clear` stops all Codex agents. Inside cmux, `codex` is cmux's wrapper. anvim sets `CMUX_CODEX_HOOKS_DISABLED=1` for its runs, so the wrapper adds no cmux hooks and no cmux computer-use server.
 
+Claude can give a run its Claude in Chrome tools when the task needs a browser. It passes `mcp_servers: ["claude-in-chrome"]`, and the run gets its own copy of Claude Code's Claude in Chrome server. Codex then drives the same Chrome as Claude, in a separate tab group. The copy uses the browser that is selected for the session in `/chrome`, or the only connected browser. The tool checks this at call time, so Chrome can connect after the session starts. The tool returns an error and starts nothing when Claude in Chrome is not connected or no browser is connected. With several browsers and none selected, the error asks Claude to have you select one with `/chrome`. Codex's browser calls appear in the tool pane as Claude's do, such as `Claude in Chrome[navigate](example.com)`, and a permission request for the run says `with claude-in-chrome`. See [permissions](permissions.md#browser-actions) for what the browser can do.
+
 The model and reasoning effort are chosen independently, using the first value set for each:
 
 1. The tool call, when Claude specifies a value you requested.

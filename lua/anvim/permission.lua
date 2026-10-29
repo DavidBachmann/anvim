@@ -287,7 +287,13 @@ local function add_header(b, r)
   elseif type(path) == "string" then
     b.add("    " .. paths.display(path))
   elseif tool == agents.codex_tool then
-    b.add(("    Codex(%s)%s"):format(tostring(inp.description or ""), inp.read_only == true and " · read-only" or ""))
+    local tags = inp.read_only == true and { "read-only" } or {}
+    -- A server such as claude-in-chrome acts outside Codex's sandbox.
+    for _, server in ipairs(type(inp.mcp_servers) == "table" and inp.mcp_servers or {}) do
+      tags[#tags + 1] = "with " .. tostring(server)
+    end
+    local suffix = #tags > 0 and " · " .. table.concat(tags, " · ") or ""
+    b.add(("    Codex(%s)%s"):format(tostring(inp.description or ""), suffix))
     local lines = vim.split(vim.trim(tostring(inp.prompt or "")), "\n", { plain = true })
     for i = 1, math.min(#lines, 8) do
       b.add("    " .. lines[i], "Comment")

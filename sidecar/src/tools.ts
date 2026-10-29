@@ -8,6 +8,7 @@ import { z } from "zod";
 import {
   type CodexInput,
   type CodexModel,
+  type CodexServer,
   describeRun,
   listed,
   modelEfforts,
@@ -125,7 +126,8 @@ type Extra = { _meta?: Record<string, unknown> };
 export type Codex = {
   models?: CodexModel[];
   check(input: CodexInput): string | undefined;
-  start(input: CodexInput, toolUseId: string | undefined): { id: string; run: RunSettings };
+  handOver(names: string[] | undefined): Promise<CodexServer[] | string>;
+  start(input: CodexInput, toolUseId: string | undefined, servers: CodexServer[]): { id: string; run: RunSettings };
 };
 
 // A model name or an effort level, and never a flag.
@@ -153,20 +155,28 @@ function codexTool(codex: Codex) {
   const describe = codexDescriptions(codex.models);
   return tool(
     "codex",
-    "Start an OpenAI Codex agent in the background, on a task in this project. Use it when the user asks for Codex, or for the opinion of another model. Codex runs in its own sandbox, and it can write files in the working directory unless read_only is true. It knows only what the prompt says. The call returns at once. Codex's result arrives later, in a message of its own, so do not wait or poll for it.",
+    "Start an OpenAI Codex agent in the background, on a task in this project. Use it when the user asks for Codex, or for the opinion of another model. Codex runs in its own sandbox, and it can write files in the working directory unless read_only is true. It knows only what the prompt says. With mcp_servers, Codex can also use your Claude in Chrome browser tools. The call returns at once. Codex's result arrives later, in a message of its own, so do not wait or poll for it.",
     {
       description: z.string().describe("A short (3-5 word) description of the task"),
       prompt: z.string().describe("The task for Codex, self-contained"),
       read_only: z.boolean().optional().describe("Codex reads and runs commands, but writes no files"),
       model: z.string().regex(SETTING).optional().describe(describe.model),
       effort: z.string().regex(SETTING).optional().describe(describe.effort),
+      mcp_servers: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'MCP servers of your session that Codex gets too. Only "claude-in-chrome" is supported. Pass it when the task needs the browser. Codex then uses the same Chrome as you, in its own tab group.',
+        ),
     },
     async (args, extra) => {
       const meta = (extra as Extra | undefined)?._meta?.["claudecode/toolUseId"];
       const problem = codex.check(args);
       if (problem) return text(problem, true);
       try {
-        const { id, run } = codex.start(args, typeof meta === "string" ? meta : undefined);
+        const servers = await codex.handOver(args.mcp_servers);
+        if (typeof servers === "string") return text(servers, true);
+        const { id, run } = codex.start(args, typeof meta === "string" ? meta : undefined, servers);
         return text(
           `Codex agent ${id} started in the background with ${describeRun(run)}. Its result arrives in a message of its own when it ends. Do not wait or poll for it: go on with other work, or end your turn.`,
         );

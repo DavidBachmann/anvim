@@ -14,6 +14,7 @@ import {
   chromeArgs,
   chromeCalls,
   chromeEvent,
+  chromeForCodex,
   type ChromeMessage,
   setEnabledByDefault,
 } from "./chrome";
@@ -311,6 +312,8 @@ async function run(cmd: Extract<Command, { type: "start" }>): Promise<void> {
         notify: (text) => inbox.push(text),
         defaults: () => codexDefaults,
         models: codexModels,
+        // Before the session's first message, the start's mode applies.
+        servers: { [CHROME_SERVER]: () => ready.then((q) => chromeForCodex(chromeCalls(q), permissions.mode ?? mode)) },
       })
     : undefined;
   todos = cmd.todos_path ? new TodoStore(cmd.todos_path, emit) : undefined;

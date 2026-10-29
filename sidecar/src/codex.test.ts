@@ -80,6 +80,69 @@ describe("CodexStream", () => {
     expect(end.notification).toContain("<status>failed</status>");
   });
 
+  test("turns a call of an MCP server's tool into a tool call of the agent", () => {
+    const stream = new CodexStream("codex-3", "toolu_3", "/work");
+    const call = (id: string, tool: string, done: boolean, end: Record<string, unknown> = {}) =>
+      JSON.stringify({
+        type: done ? "item.completed" : "item.started",
+        item: {
+          id,
+          type: "mcp_tool_call",
+          server: "claude-in-chrome",
+          tool,
+          arguments: { tabId: 7, url: "https://example.com" },
+          result: null,
+          error: null,
+          status: done ? "completed" : "in_progress",
+          ...end,
+        },
+      });
+    const text = (t: string) => ({ type: "text", text: t });
+    const lines = [
+      call("item_1", "navigate", false),
+      call("item_1", "navigate", true, { result: { content: [text("Navigated"), text("Tab 7")], structured_content: null } }),
+      call("item_2", "computer", true, { result: { content: [{ type: "image", data: "iVBO", mimeType: "image/png" }] } }),
+      call("item_3", "navigate", true, { status: "failed", error: { message: "The tab is gone" } }),
+      call("item_4", "find", true, { result: { content: [text("No match")], isError: true } }),
+    ];
+    const events = lines.flatMap((line) => stream.line(line));
+    const ids = ["item_1", "item_2", "item_3", "item_4"].map((id) => `codex-3:${id}`);
+    expect(events.filter((e) => e.type === "tool_use")).toEqual([
+      {
+        type: "tool_use",
+        id: ids[0]!,
+        name: "mcp__claude-in-chrome__navigate",
+        input: { tabId: 7, url: "https://example.com" },
+        agent_id: "codex-3",
+        parent_id: "toolu_3",
+      },
+      expect.objectContaining({ id: ids[1], name: "mcp__claude-in-chrome__computer" }),
+      expect.objectContaining({ id: ids[2], name: "mcp__claude-in-chrome__navigate" }),
+      expect.objectContaining({ id: ids[3], name: "mcp__claude-in-chrome__find" }),
+    ]);
+    const result = (id: string, is_error: boolean, text: string) => ({
+      type: "tool_result" as const,
+      id,
+      is_error,
+      text,
+      agent_id: "codex-3",
+      parent_id: "toolu_3",
+    });
+    expect(events.filter((e) => e.type === "tool_result")).toEqual([
+      result(ids[0]!, false, "Navigated\nTab 7"),
+      result(ids[1]!, false, "[Image]"),
+      result(ids[2]!, true, "The tab is gone"),
+      result(ids[3]!, true, "No match"),
+    ]);
+    const progress = events.filter((e) => e.type === "agent_progress");
+    expect(progress.map((e) => e.type === "agent_progress" && e.last_tool)).toEqual([
+      "mcp__claude-in-chrome__navigate",
+      "mcp__claude-in-chrome__computer",
+      "mcp__claude-in-chrome__navigate",
+      "mcp__claude-in-chrome__find",
+    ]);
+  });
+
   test("unwraps the shell that Codex runs each command in", () => {
     expect(unwrapShell("/bin/zsh -lc 'cat notes.txt'")).toBe("cat notes.txt");
     expect(unwrapShell(`/bin/bash -lc 'echo '"'"'hi'"'"''`)).toBe("echo 'hi'");
@@ -194,6 +257,31 @@ describe("codexArgs", () => {
       ...tail,
     ]);
     expect(args(task, {})).toEqual([...head, "-s", "workspace-write", ...tail]);
+  });
+
+  test("hands an MCP server to the run with -c values that parse as TOML", () => {
+    const server = {
+      name: "claude-in-chrome",
+      command: '/Users/a b/"x"\\claude',
+      args: ["--claude-in-chrome-mcp"],
+      env: { CLAUDE_CONFIG_DIR: "/Users/a/.claude-é", CLAUDE_CHROME_PERMISSION_MODE: "ask" },
+    };
+    const args = codexArgs("/bin/codex", "/work", true, {}, [server]);
+    expect(args.slice(-2)).toEqual(["--skip-git-repo-check", "-"]);
+    const config: Record<string, unknown> = {};
+    args.forEach((arg, i) => {
+      if (args[i - 1] !== "-c") return;
+      const at = arg.indexOf("=");
+      const key = arg.slice(0, at);
+      expect(key.startsWith("mcp_servers.claude-in-chrome.")).toBe(true);
+      config[key.split(".").at(-1)!] = (Bun.TOML.parse(`v = ${arg.slice(at + 1)}`) as { v: unknown }).v;
+    });
+    expect(config).toEqual({
+      command: server.command,
+      args: server.args,
+      env: server.env,
+      default_tools_approval_mode: "approve",
+    });
   });
 });
 
