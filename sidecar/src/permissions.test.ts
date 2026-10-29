@@ -201,6 +201,10 @@ describe("PermissionBridge", () => {
       updatedInput: { ...input, read_only: true },
     });
     expect(sent).toHaveLength(1);
+    // A run with the browser asks, and stays read-only.
+    const chrome = { ...input, mcp_servers: ["claude-in-chrome"] };
+    ask("mcp__anvim__codex", chrome, own);
+    expect(sent[1]).toMatchObject({ type: "permission_request", input: { ...chrome, read_only: true } });
   });
 
   test("puts AskUserQuestion answers into the input, as Claude Code expects them", async () => {

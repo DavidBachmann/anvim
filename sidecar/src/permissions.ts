@@ -69,9 +69,14 @@ export class PermissionBridge {
   canUseTool: CanUseTool = (tool, input, opts) => {
     // Editor tools need no prompt (tools.ts).
     if (isEditorTool(opts.mcpServer, tool)) return Promise.resolve({ behavior: "allow", updatedInput: input });
-    // A plan only reads, so a Codex agent of plan mode writes no files.
+    // A plan only reads, so a Codex agent of plan mode writes no files. A
+    // browser acts outside Codex's sandbox, so a run with one still asks.
     if (isCodexTool(opts.mcpServer, tool) && this.mode === "plan") {
-      return Promise.resolve({ behavior: "allow", updatedInput: { ...input, read_only: true } });
+      input = { ...input, read_only: true };
+      const servers = input.mcp_servers;
+      if (!Array.isArray(servers) || servers.length === 0) {
+        return Promise.resolve({ behavior: "allow", updatedInput: input });
+      }
     }
     // Claude Code passes the hook's reason as decisionReason, but a user's own
     // hook can ask too, so the guard tells anvim's asks apart. A saved rule
