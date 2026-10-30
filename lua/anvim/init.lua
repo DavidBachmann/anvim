@@ -288,14 +288,36 @@ function M.start()
   api.nvim_create_autocmd("VimLeavePre", { callback = sidecar.stop })
   -- Neovim quits when the terminal of its stdio UI closes. After :restart,
   -- the terminal attaches over a socket, and Neovim 0.12 would run on alone
-  -- with Claude. So anvim quits once no UI is left.
+  -- with Claude. So anvim quits once no UI is left. Before the first UI
+  -- attaches, none is left either.
+  local had_ui = false
+  local function alone()
+    local uis = #api.nvim_list_uis()
+    had_ui = had_ui or uis > 0
+    return had_ui and uis == 0 and vim.v.exiting == vim.NIL
+  end
+  local function quit()
+    if alone() then
+      vim.cmd("qall!")
+    end
+  end
+  api.nvim_create_autocmd("UIEnter", {
+    callback = function()
+      alone()
+    end,
+  })
   api.nvim_create_autocmd("UILeave", {
     callback = function()
-      vim.schedule(function()
-        if #api.nvim_list_uis() == 0 and vim.v.exiting == vim.NIL then
-          vim.cmd("qall!")
-        end
-      end)
+      vim.schedule(quit)
+    end,
+  })
+  -- A UI that leaves while another autocmd runs fires no UILeave, because
+  -- that autocmd is not nested.
+  api.nvim_create_autocmd("SafeState", {
+    callback = function()
+      if alone() then
+        vim.schedule(quit)
+      end
     end,
   })
 end
