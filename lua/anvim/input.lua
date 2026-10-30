@@ -4,6 +4,7 @@
 local config = require("anvim.config")
 local sidecar = require("anvim.sidecar")
 local state = require("anvim.state")
+local truncate = require("anvim.text").truncate
 local todos = require("anvim.todos")
 local transcript = require("anvim.transcript")
 
@@ -633,16 +634,7 @@ end
 -- In a narrow column, keep the start of a text, which says what to do.
 -- `spare` columns stay for the rest of the line.
 local function fit(text, spare)
-  local room = win_width(vim.g.statusline_winid) - spare
-  if api.nvim_strwidth(text) <= room then
-    return text
-  end
-  -- Wide characters take two columns.
-  local n = math.max(room - 3, 0)
-  while n > 0 and api.nvim_strwidth(vim.fn.strcharpart(text, 0, n)) > room - 3 do
-    n = n - 1
-  end
-  return vim.trim(vim.fn.strcharpart(text, 0, n)) .. "..."
+  return truncate(text, win_width(vim.g.statusline_winid) - spare)
 end
 
 -- The line between transcript and prompt: a rule, with the spinner while Claude works.
@@ -856,9 +848,8 @@ function M.render()
     end
     local room = width - 4 - api.nvim_strwidth(tag)
     local line = q.text:match("^[^\n]*")
-    if api.nvim_strwidth(line) > room or q.text:find("\n") then
-      line = vim.fn.strcharpart(line, 0, math.max(room - 1, 0)) .. "…"
-    end
+    -- The ellipsis also says that more lines follow.
+    line = truncate(q.text:find("\n") and line .. "…" or line, room)
     lines[#lines + 1] = { { "  ❯ " .. line, "AnvimResult" }, { tag, "AnvimChip" } }
   end
   lines[#lines + 1] = M.footer()

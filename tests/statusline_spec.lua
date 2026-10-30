@@ -91,6 +91,40 @@ describe("statusline", function()
     assert(ok, err)
   end)
 
+  it("shortens Claude's location at a long path to fit a narrow screen", function()
+    helpers.start()
+    api.nvim_set_current_win(layout.code_win())
+    local places = require("anvim.follow").places()
+    local saved = { places[""], vim.o.columns }
+    local ok, err = pcall(function()
+      local dir = "/var/folders/s_/623nzs0s0j31v1m9lm7mndvr0000gn/T/ActionArtifacts/default/DeviceInteractionSynthesize"
+      places[""] = { path = dir .. "/Compact Bz Fit-14_25_34_828-thumbnailScreenshot.png", line = 1, behind = 0 }
+      vim.o.columns = 160
+      local line = api.nvim_eval_statusline(
+        "%!v:lua.require'anvim.statusline'.render()",
+        { winid = 0, maxwidth = vim.o.columns }
+      ).str
+      -- Neovim marks a line that it had to cut with <.
+      assert(not line:find("<", 1, true) and line:find(" %d+:%d+  $"), line)
+      local tail = "/DeviceInteractionSynthesize/Compact Bz Fit-14_25_34_828-thumbnailScreenshot.png:1 "
+      assert(line:find("⏺ /v/f/s/6/T/", 1, true) and line:find(tail, 1, true), line)
+      -- A file path that shortens to less than a quarter of the screen gives
+      -- the rest to the other parts.
+      local file = helpers.tmp .. "/deep/nested/dir/structure/lua/anvim/statusline_long_name.lua"
+      vim.fn.mkdir(vim.fs.dirname(file), "p")
+      vim.fn.writefile({ "return 1" }, file)
+      vim.cmd.edit(vim.fn.fnameescape(file))
+      for columns = 100, 220 do
+        vim.o.columns = columns
+        line =
+          api.nvim_eval_statusline("%!v:lua.require'anvim.statusline'.render()", { winid = 0, maxwidth = columns }).str
+        assert(not line:find("<", 1, true), ("Neovim cut the line at %d columns: %s"):format(columns, line))
+      end
+    end)
+    places[""], vim.o.columns = saved[1], saved[2]
+    assert(ok, err)
+  end)
+
   it("leaves the busy label to the activity line, and shows a Write preview's real path with (writing)", function()
     helpers.start()
     input.set_busy(true)

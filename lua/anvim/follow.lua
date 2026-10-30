@@ -783,21 +783,26 @@ local edit_tools = { Edit = true, Write = true, NotebookEdit = true }
 -- takes Claude's name.
 ---@param short boolean? Without the words, for a narrow screen.
 ---@param for_mode anvim.Mode? The mode to say it for. Without it, the current window decides.
-function M.status(short, for_mode)
-  local place = M.place()
-  local where = place
-    and ("%s:%d%s"):format(
-      require("anvim.paths").display(place.path),
-      place.line,
-      place.behind > 0 and (" +%d"):format(place.behind) or ""
-    )
+---@param max integer? The cells that the text may take. The path shortens to fit.
+---@return string text, integer path The text and its path's cells.
+function M.status(short, for_mode, max)
   local agent = M.focused()
   local name = agent and agents.name(agent) or "Claude"
-  local claude = where and (short and where or name .. " at " .. where) or (agent and name)
   if for_mode == "follow" or (for_mode == nil and M.enabled()) then
-    return agent and (short and "◉ " .. name or "◉ following " .. agents.label(agent)) or "◉ following"
+    return agent and (short and "◉ " .. name or "◉ following " .. agents.label(agent)) or "◉ following", 0
   end
-  return claude and "⏺ " .. claude or ""
+  local place = M.place()
+  if not place then
+    return agent and "⏺ " .. name or "", 0
+  end
+  local head = short and "⏺ " or "⏺ " .. name .. " at "
+  local tail = (":%d%s"):format(place.line, place.behind > 0 and (" +%d"):format(place.behind) or "")
+  local paths = require("anvim.paths")
+  local path = paths.display(place.path)
+  if max then
+    path = paths.shorten(path, math.max(max - api.nvim_strwidth(head .. tail), 1))
+  end
+  return head .. path .. tail, api.nvim_strwidth(path)
 end
 
 -- A background agent works on after the turn.

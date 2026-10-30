@@ -4,6 +4,7 @@
 -- ended keeps ANVIM_PID in its environment, and forms a row of its own.
 local agents = require("anvim.agents")
 local keys = require("anvim.keys")
+local truncate = require("anvim.text").truncate
 
 local M = {}
 
@@ -520,15 +521,7 @@ end
 
 -- Cuts the text to the width in cells.
 local function fit(text, width)
-  text = text:gsub("%c", " ")
-  if api.nvim_strwidth(text) <= width then
-    return text
-  end
-  local n = math.min(vim.fn.strchars(text), math.max(width - 3, 0))
-  while n > 0 and api.nvim_strwidth(vim.fn.strcharpart(text, 0, n)) > width - 3 do
-    n = n - 1
-  end
-  return vim.fn.strcharpart(text, 0, n) .. "..."
+  return truncate((text:gsub("%c", " ")), width)
 end
 
 -- This anvim's processes: its own rows, the Bash calls and the escaped ones.

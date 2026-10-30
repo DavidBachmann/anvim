@@ -10,7 +10,7 @@ While focus is in the prompt, the code window follows Claude through files it re
 
 Move to another window to review independently. The statusline shows Claude's last location, for example `⏺ Claude at stream.lua:40 +2`; `<leader>j` jumps there. Return to the prompt to follow again. The compose window and pickers opened over the prompt keep follow mode active.
 
-The statusline calls this mode `FOLLOW`. It uses absolute line numbers with a stable gutter during a streamed edit; a number too wide for the gutter appears blank until you leave follow mode. In review mode the code window uses its configured number setting. On narrow screens the statusline progressively drops details to fit.
+The statusline calls this mode `FOLLOW`. It uses absolute line numbers with a stable gutter during a streamed edit; a number too wide for the gutter appears blank until you leave follow mode. In review mode the code window uses its configured number setting. On narrow screens the statusline progressively drops details to fit. A long path shortens each leading directory to its first letter, and keeps the last folder and the file name whole while they fit.
 
 <a id="the-explorer"></a>
 

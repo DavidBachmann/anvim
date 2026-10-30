@@ -166,9 +166,10 @@ function M.render(win)
     head[#head + 1] = ("%%#%s# %s %%*"):format(agents.group(focused.slot), esc(name))
     used = used + api.nvim_strwidth(name) + 2
   end
+  local left_text
   if left then
-    local text, width = draw(left, mark)
-    head[#head + 1] = text .. "%* "
+    local width
+    left_text, width = draw(left, mark)
     used = used + width + 1
   end
   local drawn = {}
@@ -196,6 +197,22 @@ function M.render(win)
       used = used - drawn[last].width
       last = last - 1
     end
+  end
+  -- The current tab never drops, so its name shortens in a window that is
+  -- still too narrow.
+  local over = width() - room
+  local tab = over > 0 and (left or tabs[cur])
+  if tab then
+    tab.name = paths.shorten(tab.name, math.max(api.nvim_strwidth(tab.name) - over, 1))
+    local text = draw(tab, mark)
+    if tab == left then
+      left_text = text
+    else
+      drawn[cur].text = text
+    end
+  end
+  if left_text then
+    head[#head + 1] = left_text .. "%* "
   end
   if first > 1 then
     head[#head + 1] = BEFORE:format(first - 1)

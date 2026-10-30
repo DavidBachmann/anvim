@@ -9,6 +9,8 @@ local M = {}
 
 local api = vim.api
 local icons = require("anvim.base").icons
+local paths = require("anvim.paths")
+local truncate = require("anvim.text").truncate
 
 ---@type string? The last error of render(), which draws an empty statusline instead.
 M.error = nil
@@ -107,18 +109,6 @@ local function width(text)
   return api.nvim_strwidth((text:gsub("%%%%", "x"):gsub("%%#[^#]*#", ""):gsub("%%[<=]", "")))
 end
 
--- The text, cut to `max` columns with an ellipsis.
-local function truncate(text, max)
-  if api.nvim_strwidth(text) <= max then
-    return text
-  end
-  local n = vim.fn.strchars(text)
-  while n > 0 and api.nvim_strwidth(vim.fn.strcharpart(text, 0, n)) > max - 1 do
-    n = n - 1
-  end
-  return max > 0 and vim.fn.strcharpart(text, 0, n) .. "…" or ""
-end
-
 -- The first group of the list that has a foreground.
 local function first(list)
   for _, group in ipairs(list) do
@@ -129,23 +119,10 @@ local function first(list)
   return list[#list]
 end
 
--- apple/orange/kiwi.lua -> a/o/kiwi.lua, until it fits, as lualine shortens.
-local function shorten(path, max)
-  local w = api.nvim_strwidth
-  local len = w(path)
-  if len <= max then
-    return path
-  end
-  local parts = vim.split(path, "/")
-  for i = 1, #parts - 1 do
-    if len <= max then
-      break
-    end
-    local short = vim.fn.strcharpart(parts[i], 0, vim.startswith(parts[i], ".") and 2 or 1)
-    len = len - (w(parts[i]) - w(short))
-    parts[i] = short
-  end
-  return table.concat(parts, "/")
+-- The columns that a path of `cells` may take before the parts that a
+-- narrow screen drops go.
+local function least(cells)
+  return math.min(cells, math.floor(vim.o.columns / 4))
 end
 
 local function file_icon(buf, name)
@@ -161,12 +138,12 @@ local function file_icon(buf, name)
 end
 
 -- The file's part, as a function of the columns to spare. With none, the
--- path is as short as shorten() makes it.
+-- path takes a quarter of the screen at most.
 ---@return fun(spare: integer): string
 local function file(buf)
   local name = api.nvim_buf_get_name(buf)
   local preview = vim.b[buf].anvim_preview
-  local path = preview and require("anvim.paths").display(preview) or vim.fn.fnamemodify(name, ":~:.")
+  local path = preview and paths.display(preview) or vim.fn.fnamemodify(name, ":~:.")
   if path == "" then
     path = "[No Name]"
   end
@@ -176,9 +153,10 @@ local function file(buf)
     head = (group and on_c(group) or "") .. " " .. icon .. " %#AnvimStatusC#"
   end
   local tail = vim.bo[buf].modified and " [+] " or " "
-  local least = api.nvim_strwidth(shorten(path, 0))
+  -- shorten() moves in steps, so its result can be narrower than its max.
+  local min = api.nvim_strwidth(paths.shorten(path, least(api.nvim_strwidth(path))))
   return function(spare)
-    return head .. " " .. esc(shorten(path, least + spare)) .. tail
+    return head .. " " .. esc(paths.shorten(path, min + spare)) .. tail
   end
 end
 
@@ -227,6 +205,10 @@ end
 ---@field effort string
 ---@field status string Where Claude is.
 ---@field short string The status without its words.
+---@field path integer The columns of the status's path.
+---@field least integer The short status's columns once its path takes a quarter of the screen at most, but keeps its file name.
+---@field tight integer The short status's columns once its path takes a quarter of the screen at most.
+---@field fit fun(short: boolean, max: integer): string The status in `max` columns.
 ---@field group string The focused agent's color.
 ---@field jump string
 
@@ -245,6 +227,14 @@ local function session()
     local meter = ("▰"):rep(filled) .. on_c("Comment") .. ("▱"):rep(10 - filled)
     context = ("%s%%#AnvimStatusC# %d%%%%"):format(meter, percent)
   end
+  local status, path = follow.status(false, follow.mode())
+  local short_text = follow.status(true, follow.mode())
+  local place = follow.place()
+  -- The path's columns as an ellipsis and its file name. Only below them
+  -- does paths.shorten() cut the name.
+  local name = place and math.min(path, api.nvim_strwidth("\226\128\166/" .. vim.fs.basename(place.path))) or 0
+  -- build() asks again for the same width after each part that drops.
+  local fits = {}
   local limits = {}
   for _, l in ipairs({ { "S", "session" }, { "W", "week" } }) do
     local n = state.limits and state.limits[l[2]]
@@ -258,18 +248,43 @@ local function session()
     context = context,
     model = input.model_label(state.model or require("anvim.config").options.model),
     effort = state.effort and (" · " .. state.effort) or "",
-    status = follow.status(false, follow.mode()),
-    short = follow.status(true, follow.mode()),
+    status = status,
+    short = short_text,
+    path = path,
+    least = api.nvim_strwidth(short_text) - path + math.max(least(path), name),
+    tight = api.nvim_strwidth(short_text) - path + least(path),
+    fit = function(short, max)
+      local key = (short and "short:" or "long:") .. max
+      fits[key] = fits[key] or (follow.status(short, follow.mode(), max))
+      return fits[key]
+    end,
     group = follow.group(),
     jump = follow.place() and follow.mode() ~= "follow" and " (<leader>j)" or "",
   }
 end
 
--- What a narrow screen drops first, in order. The file goes before the
--- branch, because the code window's tab bar names it too. The branch is cut
--- to the columns that are left, and only then do the cursor's place and
--- anvim's name go.
-local drops = { "email", "limits", "jump", "effort", "model", "context", "short", "file", "branch", "place", "brand" }
+-- What a narrow screen drops first, in order. A path of Claude's location
+-- that takes more than a quarter of the screen loses its words and shortens
+-- before the model and the context meter go, and it takes back the columns
+-- that are left. The file goes before the location's file name loses its
+-- middle and before the branch, because the code window's tab bar names it
+-- too. The branch is cut to the columns that are left, and only then do the
+-- cursor's place and anvim's name go.
+local drops = {
+  "email",
+  "limits",
+  "jump",
+  "where",
+  "effort",
+  "model",
+  "context",
+  "short",
+  "file",
+  "name",
+  "branch",
+  "place",
+  "brand",
+}
 
 -- With no row for the command line, the macro recording shows here.
 local function recording()
@@ -321,8 +336,9 @@ local function render()
   end
 
   -- What a narrow screen gives up: the parts that drop, the columns that the
-  -- file's path may take beyond its shortest form, and the branch's text.
-  ---@type { cut: table<string, true>, spare: integer, branch: string? }
+  -- file's path may take beyond its shortest form, the columns of Claude's
+  -- location, and the branch's text.
+  ---@type { cut: table<string, true>, spare: integer, where: integer?, branch: string? }
   local fit = { cut = {}, spare = 0, branch = branch }
   local function build()
     local cut = fit.cut
@@ -370,6 +386,9 @@ local function render()
         r[#r + 1] = " " .. esc(model) .. " "
       end
       local status = cut.short and s.short or s.status
+      if fit.where then
+        status = s.fit(cut.short == true, fit.where)
+      end
       if status ~= "" then
         local jump = not cut.jump and s.jump ~= "" and on_c("Comment") .. s.jump or ""
         r[#r + 1] = on_c(s.group) .. " " .. esc(status) .. jump .. " "
@@ -388,9 +407,21 @@ local function render()
       break
     elseif part == "branch" then
       fit.branch = branch and truncate(branch, api.nvim_strwidth(branch) + spare)
+    elseif part == "where" then
+      if s and s.path > least(s.path) then
+        fit.cut.short, fit.where = true, s.least
+      end
+    elseif part == "name" then
+      fit.where = fit.where and s.tight
     else
       fit.cut[part] = true
     end
+    spare = vim.o.columns - width(build())
+  end
+  if fit.where and spare > 0 then
+    local short = fit.cut.short == true
+    local used = api.nvim_strwidth(s.fit(short, fit.where))
+    fit.where = math.min(used + spare, api.nvim_strwidth(short and s.short or s.status))
     spare = vim.o.columns - width(build())
   end
   fit.spare = math.max(spare, 0)

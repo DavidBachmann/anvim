@@ -7,6 +7,7 @@ local agents = require("anvim.agents")
 local follow = require("anvim.follow")
 local keys = require("anvim.keys")
 local state = require("anvim.state")
+local truncate = require("anvim.text").truncate
 local transcript = require("anvim.transcript")
 
 local M = {}
@@ -215,6 +216,13 @@ function M.title(id)
   return table.concat(parts, " · ")
 end
 
+-- Neovim cuts a long title from the left, which would lose the agent's
+-- name. snacks pads the title with up to three spaces.
+local function preview_title(id, win)
+  local title = M.title(id)
+  return win and api.nvim_win_is_valid(win) and truncate(title, api.nvim_win_get_width(win) - 3) or title
+end
+
 local function view_key(id)
   return id or ""
 end
@@ -227,7 +235,7 @@ end
 function M.preview(ctx)
   local id = ctx.item.agent_id
   local buf = id and agentlog.buf(id) or not id and transcript.buf()
-  ctx.preview:set_title(M.title(id))
+  ctx.preview:set_title(preview_title(id, ctx.win))
   if not buf then
     ctx.preview:reset()
     ctx.preview:set_lines({ "anvim keeps no log of this agent." })
@@ -460,7 +468,7 @@ local function refresh()
     p.list:update({ force = true })
   end
   if current then
-    p.preview:set_title(M.title(current.agent_id))
+    p.preview:set_title(preview_title(current.agent_id, p.preview.win.win))
     p:update_titles()
   end
 end
