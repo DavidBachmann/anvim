@@ -17,6 +17,7 @@ import {
 } from "./codex";
 import type { Command, Event } from "./protocol";
 import { parseDump, png, svg, type Pos } from "./screen";
+import { errorText } from "./text";
 import { listText, TodoError, type TodoStore } from "./todos";
 
 export const SERVER = "anvim";
@@ -181,7 +182,7 @@ function codexTool(codex: Codex) {
           `Codex agent ${id} started in the background with ${describeRun(run)}. Its result arrives in a message of its own when it ends. Do not wait or poll for it: go on with other work, or end your turn.`,
         );
       } catch (err) {
-        return text(`Could not start Codex: ${(err as Error)?.message ?? err}`, true);
+        return text(`Could not start Codex: ${errorText(err)}`, true);
       }
     },
   );
@@ -211,7 +212,7 @@ async function todoResult(fn: () => Promise<string>): Promise<Result> {
     return text(await fn());
   } catch (err) {
     if (err instanceof TodoError) return text(err.message, true);
-    return text(`Could not change the todo list: ${(err as Error)?.message ?? err}`, true);
+    return text(`Could not change the todo list: ${errorText(err)}`, true);
   }
 }
 
@@ -358,7 +359,7 @@ export function editorServer(
 // anvim's own in-process server. Trust comes from the server's source, not
 // the tool name: the tools of a settings server named "anvim_", "anvim." or
 // "anvim__evil" also start with mcp__anvim__.
-export function isOwnServer(mcpServer: { name: string; source: string } | undefined): boolean {
+export function isOwnServer(mcpServer: { name: string; source?: string } | undefined): boolean {
   return mcpServer?.source === "sdk" && mcpServer.name === SERVER;
 }
 

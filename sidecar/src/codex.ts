@@ -6,12 +6,11 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import type { Event } from "./protocol";
-import { resultText, truncate } from "./translate";
+import { MAX_AGENT_TEXT, resultText, truncate } from "./text";
 
 // The agent type that the plugin names the agent by: Codex 1.
 export const CODEX_TYPE = "Codex";
-// A tool result or a reply can be long.
-const MAX_AGENT_TEXT = 8000;
+// The result that goes to Claude can be long.
 const MAX_RESULT = 50_000;
 const STDERR_TAIL = 2000;
 

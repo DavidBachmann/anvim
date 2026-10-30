@@ -1,6 +1,7 @@
 // Images that the user pasted into a prompt, as content blocks for Claude.
 import { readFileSync, statSync } from "node:fs";
 import { basename, extname } from "node:path";
+import { errorText } from "./text";
 
 type MediaType = "image/png" | "image/jpeg" | "image/gif" | "image/webp";
 export type ImageBlock = { type: "image"; source: { type: "base64"; media_type: MediaType; data: string } };
@@ -33,7 +34,7 @@ export function imageBlocks(paths: string[], notice: (text: string) => void): Im
       }
       blocks.push({ type: "image", source: { type: "base64", media_type, data: readFileSync(path).toString("base64") } });
     } catch (err) {
-      notice(`Claude did not get ${name}: ${err instanceof Error ? err.message : String(err)}`);
+      notice(`Claude did not get ${name}: ${errorText(err)}`);
     }
   }
   return blocks;

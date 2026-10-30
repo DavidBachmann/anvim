@@ -21,28 +21,19 @@ import {
   setChromeDefault,
 } from "./chrome";
 import { CodexRunner, type CodexSettings, codexConfig, codexState, codexWarning } from "./codex";
+import { contextEvent, mcpEvent, modelsEvent, rewindFilesEvent, sessionInfoEvent, usageEvent } from "./dialogs";
 import { Effort, getSettings } from "./effort";
 import { type ImageBlock, imageBlocks } from "./images";
-import { Limits } from "./limits";
+import { Limits, limitsEvent } from "./limits";
 import { PermissionBridge } from "./permissions";
 import { PreviewBridge } from "./preview";
 import type { Command, Event } from "./protocol";
 import { preToolUse, SandboxGuard, SandboxNotice, sandboxSetup, startMode } from "./sandbox";
 import * as sessions from "./sessions";
 import { TodoStore } from "./todos";
+import { errorText } from "./text";
 import { EditorBridge, editorServer, SERVER } from "./tools";
-import {
-  commandsEvent,
-  contextEvent,
-  errorText,
-  limitsEvent,
-  mcpEvent,
-  modelsEvent,
-  rewindFilesEvent,
-  sessionInfoEvent,
-  Translator,
-  usageEvent,
-} from "./translate";
+import { commandsEvent, Translator } from "./translate";
 
 type Start = Extract<Command, { type: "start" }>;
 // The answers to the plugin's requests, which carry an error when their call fails.

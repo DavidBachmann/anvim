@@ -3,7 +3,7 @@
 //   bun src/sessions.ts list <dir>
 import { getSessionInfo, getSessionMessages, listSessions, type SessionMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Event, RewindPoint } from "./protocol";
-import { type AnyRecord, commandOutput, readResult, resultText, truncate, truncateOutput } from "./translate";
+import { type AnyRecord, commandOutput, readResult, resultText, truncate, truncateOutput } from "./text";
 
 export type SessionItem = {
   id: string;

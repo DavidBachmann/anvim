@@ -7,7 +7,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { CodexServer } from "./codex";
 import type { ChromeState, Event } from "./protocol";
-import { errorText } from "./translate";
+import { errorText } from "./text";
 
 export const CHROME_SERVER = "claude-in-chrome";
 
