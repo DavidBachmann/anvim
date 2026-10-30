@@ -192,6 +192,11 @@ function M.running()
   return proc ~= nil
 end
 
+---@return integer?
+function M.pid()
+  return proc and proc.pid
+end
+
 -- Closing stdin lets the sidecar close its Claude Code process before it exits.
 function M.stop()
   next_start, queued = nil, {}

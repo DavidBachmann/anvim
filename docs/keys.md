@@ -138,3 +138,14 @@ These keys work in the prompt, in normal mode, while Claude waits for your answe
 | `<leader>cs`, `:AnvimSessions` | Resume a session of this directory |
 | `<leader>cm`, `:AnvimModel` | Choose Claude's model |
 | `<leader>cR`, `:AnvimRestart` | Start Claude again, in the same session |
+| `<leader>cp`, `:AnvimProcesses` | Show which processes use the CPU |
+
+In the Processes window:
+
+| Key | Action |
+| --- | --- |
+| `Enter` | Show or hide the processes of the group |
+| `x` | Stop the process or group with SIGTERM, after a confirm |
+| `X` | Kill the process or group with SIGKILL, after a confirm |
+| `s` | Sort by CPU or by memory |
+| `q`, `Esc` | Close the window |

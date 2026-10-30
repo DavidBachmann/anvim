@@ -20,7 +20,7 @@ local M = {}
 ---@class anvim.KeyPlace
 ---@field id string
 ---@field name string
----@field ctx "global"|"file"|"prompt"|"transcript"|"compose"|"explorer"|"files"|"overview"|"agentlog"|"view"|"settings"|"login"|"other" Where its maps live.
+---@field ctx "global"|"file"|"prompt"|"transcript"|"compose"|"explorer"|"files"|"overview"|"agentlog"|"view"|"settings"|"processes"|"login"|"other" Where its maps live.
 ---@field keys anvim.Key[]
 
 ---@type anvim.KeyPlace[]
@@ -290,6 +290,7 @@ M.places = {
       { "<leader>cs", "Resume a session" },
       { "<leader>cm", "Choose the model" },
       { "<leader>cR", "Restart Claude" },
+      { "<leader>cp", "Show the running processes" },
     },
   },
   -- The list of a snacks picker, which keeps snacks' own keys.
@@ -348,6 +349,18 @@ M.places = {
       { "<CR>", "Show or hide the MCP server's tools, or run the Chrome option" },
       { "r", "Reconnect the MCP server" },
       { "t", "Turn the MCP server on or off" },
+      { { "q", "<Esc>" }, "Close the window" },
+    },
+  },
+  {
+    id = "processes",
+    name = "Processes",
+    ctx = "processes",
+    keys = {
+      { "<CR>", "Show or hide the group's processes" },
+      { "x", "Stop the process or group (SIGTERM)" },
+      { "X", "Kill the process or group (SIGKILL)" },
+      { "s", "Sort by CPU or by memory" },
       { { "q", "<Esc>" }, "Close the window" },
     },
   },

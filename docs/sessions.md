@@ -62,6 +62,14 @@ An account is a Claude Code configuration directory. `default` uses the normal `
 - **MCP** lists servers and status. `Enter` shows a server's command and tools; `r` reconnects and `t` toggles it. anvim's own server always runs. Sign in to servers requiring authentication with Claude Code's `/mcp` in a terminal. `/mcp` forms with arguments still run in Claude Code.
 - **Chrome** controls the integration described below.
 
+## Processes
+
+`<leader>cp` or `:AnvimProcesses` shows the processes that use the CPU, as htop does. Each row is a group: an app with its helpers, such as Firefox, or the processes with the same name. This anvim's own processes form the `anvim` row. Each Bash call that runs has a row of its own, named after the agent that runs it. A ◆ in the agent's color marks these rows. The rows refresh every 2 seconds while the window is open.
+
+CPU is the share of one core, so 100% is one full core and a group can show more. Memory is RSS, the resident memory. It is not the memory figure of Activity Monitor.
+
+`x` and `X` send SIGTERM and SIGKILL after a confirm, whose first choice is Cancel. On a group, the signal goes to the processes whose parent is not in the group, such as the main Firefox process. anvim refuses to signal itself: use `:AnvimRestart` or `:q`. It also refuses to signal the processes above its terminal UI, such as the shell and the terminal app, because their end would end anvim too.
+
 ## Claude in Chrome
 
 Claude in Chrome lets Claude use Chrome through the Claude extension. It requires a claude.ai login. Start with `--chrome` or `--no-chrome` to override Claude Code's “Enabled by default” setting. `/chrome` opens the Chrome tab, where `Enter` runs the selected action: install or manage the extension, choose a browser, reconnect, or change the default for future sessions. Reconnecting can restart Claude in the same session with Chrome enabled.
