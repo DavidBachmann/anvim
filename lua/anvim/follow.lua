@@ -52,7 +52,7 @@ local batched = {}
 
 ---@type string? The agent_id of the agent that follow mode follows. nil is the main agent.
 M.focus = nil
--- The focused agent's name, for the notice after its slot is gone.
+-- The focused agent's name and task, for the notice after its slot is gone.
 local focus_name
 
 -- The compose window is the prompt too.
@@ -494,7 +494,7 @@ function M.set_focus(id)
   if id and not (agent and agent.status == "running") then
     return
   end
-  M.focus, focus_name = id, agent and agents.name(agent)
+  M.focus, focus_name = id, agent and agents.label(agent, true)
   local place = M.place()
   if place and M.following() then
     catch_up()
@@ -543,7 +543,7 @@ function M.follow(id)
     local agent = id and agents.get(id)
     local running = agent and agent.status == "running"
     if agent and not running and not focused then
-      local text = ("%s %s · following Claude"):format(agents.name(agent), ended[agent.status] or "ended")
+      local text = ("%s %s · following Claude"):format(agents.label(agent, true), ended[agent.status] or "ended")
       vim.notify(text, vim.log.levels.INFO, { title = "anvim" })
     end
     M.set_focus(running and id or nil)
@@ -562,7 +562,7 @@ local function on_agents(ev)
   end
   local agent = M.focus and agents.get(M.focus)
   if not M.focus or (agent and agent.status == "running") then
-    focus_name = agent and agents.name(agent)
+    focus_name = agent and agents.label(agent, true)
     return
   end
   M.focus = nil
@@ -795,7 +795,7 @@ function M.status(short, for_mode)
   local name = agent and agents.name(agent) or "Claude"
   local claude = where and (short and where or name .. " at " .. where) or (agent and name)
   if for_mode == "follow" or (for_mode == nil and M.enabled()) then
-    return agent and (short and "◉ " or "◉ following ") .. name or "◉ following"
+    return agent and (short and "◉ " .. name or "◉ following " .. agents.label(agent)) or "◉ following"
   end
   return claude and "⏺ " .. claude or ""
 end

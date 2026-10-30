@@ -2,6 +2,8 @@
 
 Claude can delegate work to several subagents at once. anvim has four numbered, colored display slots for running agents, for example `Explore 2`. If more than four agents run at once, an agent without a slot receives one when a slot becomes free.
 
+Each Agent call gives a short task, such as `Verify statusline slice`. anvim shows it after the agent's name in the Agent Overview, the statusline, the footer's follow hint and the notice when the agent ends.
+
 <a id="where-they-are"></a>
 <a id="following-one"></a>
 

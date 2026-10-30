@@ -729,8 +729,17 @@ function M.footer()
     for _, chunk in ipairs(chunks) do
       width = width + api.nvim_strwidth(chunk[1])
     end
-    local f = next_agent() and "f to follow" or "f to follow Claude"
-    for _, hint in ipairs({ "  enter to open the Agent Overview · " .. f, "  " .. f }) do
+    -- The longest hint that fits.
+    local upcoming = next_agent()
+    local f = { "f to follow Claude" }
+    if upcoming then
+      f = { "f to follow " .. agents.label(upcoming), "f to follow " .. agents.name(upcoming), "f to follow" }
+    end
+    local hints = { "  enter to open the Agent Overview · " .. f[1] }
+    for _, text in ipairs(f) do
+      hints[#hints + 1] = "  " .. text
+    end
+    for _, hint in ipairs(hints) do
       if width + api.nvim_strwidth(hint) <= win_width(prompt_win()) then
         chunks[#chunks + 1] = { hint, "Comment" }
         break

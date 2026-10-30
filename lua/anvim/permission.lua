@@ -240,7 +240,7 @@ local function add_title(b, title, ev)
     b.add("  " .. title .. (ev.agent_id and " (subagent)" or ""), "AnvimAsk", 2)
     return
   end
-  local who = agents.name(agent) .. (agent.description ~= "" and (" (%s)"):format(agent.description) or "")
+  local who = agents.label(agent, true)
   local line = ("  %s · %s"):format(title, who)
   b.add(line)
   b.marks[#b.marks + 1] = { #b.lines - 1, 2, 2 + #title, "AnvimAsk" }

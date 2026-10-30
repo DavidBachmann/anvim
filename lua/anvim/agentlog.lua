@@ -342,10 +342,7 @@ function M.start(ev)
   local parent = agent.parent and agents.get(agent.parent)
   local after
   if parent then
-    local header = "Started by " .. agents.name(parent)
-    if parent.description ~= "" then
-      header = ("%s (%s)"):format(header, parent.description)
-    end
+    local header = "Started by " .. agents.label(parent, true)
     after = put(log, { header }, { { 0, 0, #header, "AnvimResult" }, { 0, anchor = true } })[2]
   end
   log.await = { tool = agent.tool_use_id, after = after }

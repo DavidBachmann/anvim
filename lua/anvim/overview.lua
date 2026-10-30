@@ -132,6 +132,7 @@ local function describe(id)
     parts[#parts + 1] = not agent.slot and "no slot" or nil
     parts[#parts + 1] = agent.background and "bg" or nil
     parts[#parts + 1] = agents.settings(agent)
+    parts[#parts + 1] = agent.description ~= "" and agent.description or nil
     parts[#parts + 1] = agent.activity or "working"
     return agents.name(agent), group, group, table.concat(parts, " · ")
   end

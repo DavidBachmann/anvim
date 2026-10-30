@@ -134,6 +134,19 @@ function M.name(agent)
   return agent.slot and ("%s %d"):format(name, agent.slot) or name
 end
 
+-- Its name and the task of the Agent call that started it: Explore 2 · Map
+-- the handshake. Inside a sentence, the task goes in parentheses.
+---@param agent anvim.Agent
+---@param inline? boolean
+---@return string
+function M.label(agent, inline)
+  local name = M.name(agent)
+  if agent.description == "" then
+    return name
+  end
+  return (inline and "%s (%s)" or "%s · %s"):format(name, agent.description)
+end
+
 -- What the agent runs with, such as "gpt-5.1-codex · low", or nil.
 ---@param agent anvim.Agent
 ---@return string?

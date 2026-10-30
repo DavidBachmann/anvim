@@ -99,7 +99,7 @@ describe("focus", function()
     follow.set_focus(agents.in_slot(1).id)
     assert.are.same({ a, 2 }, { code_file(), code_line() }, "focus catches up")
     assert.are.same("f1", follow.focus)
-    assert.are.same("◉ following Agent 1", follow.status())
+    assert.are.same("◉ following Agent 1 · Task f1", follow.status())
     assert.are.same("◉ Agent 1", follow.status(true))
     assert.are.same("AnvimAgent1", follow.group())
 
