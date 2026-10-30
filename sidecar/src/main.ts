@@ -238,7 +238,7 @@ async function run(cmd: Start): Promise<void> {
     type: "codex",
     state: codexOn,
     ...(codexOn === "on" ? { config: codexConfig() } : {}),
-    ...(codexModels ? { models: codexModels } : {}),
+    models: codexModels,
   });
   const codexProblem = codexWarning(codexOn, codexModels);
   if (codexProblem) warn(codexProblem);

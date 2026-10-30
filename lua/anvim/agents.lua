@@ -116,7 +116,7 @@ function M.in_slot(slot)
 end
 
 -- The tool calls that start an agent: Claude Code's Agent tool, and anvim's
--- codex tool (sidecar/src/codex.ts).
+-- codex tool (sidecar/src/tools.ts).
 M.codex_tool = "mcp__anvim__codex"
 local spawn_tools = { Agent = true, Task = true, [M.codex_tool] = true }
 

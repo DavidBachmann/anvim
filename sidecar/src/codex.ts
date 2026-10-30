@@ -1,218 +1,18 @@
 // Codex agents: the codex editor tool (tools.ts) starts OpenAI's Codex CLI in
 // the background. Its JSONL stream becomes the protocol events of a
-// subagent, so the plugin shows it as one. When it exits, its result goes to
-// Claude as a task notification, as a background agent's end does.
+// subagent (codexstream.ts), so the plugin shows it as one. When it exits,
+// its result goes to Claude as a task notification, as a background agent's
+// end does.
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { join } from "node:path";
+import { CodexStream } from "./codexstream";
 import type { Event } from "./protocol";
-import { MAX_AGENT_TEXT, resultText, truncate } from "./text";
+import type { AnyRecord } from "./text";
 
 // The agent type that the plugin names the agent by: Codex 1.
-export const CODEX_TYPE = "Codex";
-// The result that goes to Claude can be long.
-const MAX_RESULT = 50_000;
+const CODEX_TYPE = "Codex";
 const STDERR_TAIL = 2000;
-
-type Item = Record<string, any>;
-type Change = { path: string; kind: string };
-
-// Codex runs each command through the user's shell: /bin/zsh -lc 'cat a.txt'.
-// The plugin reads the files that a command reads, so it needs the command.
-export function unwrapShell(command: string): string {
-  const m = command.match(/^\S*\/(?:ba|z|da)?sh -l?c ([\s\S]+)$/);
-  if (!m) return command;
-  const arg = m[1]!;
-  if (/^'[\s\S]*'$/.test(arg)) return arg.slice(1, -1).replace(/'(?:\\'|"'")'/g, "'");
-  if (/^"[\s\S]*"$/.test(arg)) return arg.slice(1, -1).replace(/\\(["\\$`])/g, "$1");
-  return arg;
-}
-
-// Turns one Codex run's stream into the events of agent `agentId`. Its tool
-// calls have the codex tool call as parent, as a subagent's calls have the
-// Agent tool call.
-export class CodexStream {
-  private started = new Set<string>();
-  private toolUses = 0;
-  private tokens?: number;
-  private lastText = "";
-  private lastError = "";
-
-  constructor(
-    readonly agentId: string,
-    readonly toolUseId: string,
-    private cwd: string,
-  ) {}
-
-  line(raw: string): Event[] {
-    let m: Item;
-    try {
-      m = JSON.parse(raw);
-    } catch {
-      return [];
-    }
-    const out: Event[] = [];
-    if (m.type === "item.started" || m.type === "item.completed") {
-      this.item(m.item ?? {}, m.type === "item.completed", out);
-    } else if (m.type === "turn.completed" && m.usage) {
-      // OpenAI counts the cached input in input_tokens.
-      const tokens = (m.usage.input_tokens ?? 0) + (m.usage.output_tokens ?? 0);
-      this.tokens = tokens;
-      out.push({ type: "agent_context", agent_id: this.agentId, tokens });
-    } else if (m.type === "turn.failed") {
-      this.lastError = String(m.error?.message ?? "the turn failed");
-    } else if (m.type === "error") {
-      this.lastError = String(m.message ?? "");
-    }
-    return out;
-  }
-
-  private item(item: Item, done: boolean, out: Event[]): void {
-    const id = `${this.agentId}:${item.id}`;
-    if (item.type === "agent_message" && done && typeof item.text === "string" && item.text.trim()) {
-      this.lastText = item.text.trim();
-      out.push({
-        type: "agent_text",
-        agent_id: this.agentId,
-        parent_id: this.toolUseId,
-        text: truncate(item.text, MAX_AGENT_TEXT),
-      });
-    } else if (item.type === "error" && typeof item.message === "string") {
-      this.lastError = item.message;
-    } else if (item.type === "command_execution" && typeof item.command === "string") {
-      const command = unwrapShell(item.command);
-      this.use(id, "Bash", { command }, `Running ${truncate(command.split("\n")[0]!, 60)}`, out);
-      if (!done) return;
-      const code = item.exit_code;
-      const failed = item.status !== "completed" || (typeof code === "number" && code !== 0);
-      const output = String(item.aggregated_output ?? "");
-      const text = failed && typeof code === "number" ? `Exit code ${code}\n${output}` : output;
-      this.result(id, failed, text, out);
-    } else if (item.type === "file_change" && Array.isArray(item.changes)) {
-      item.changes.forEach((change: Change, i: number) => {
-        const path = isAbsolute(change.path) ? change.path : resolve(this.cwd, change.path);
-        const name = this.display(path);
-        const call = `${id}:${i}`;
-        // A change carries no text. The buffer reloads from disk after the
-        // result, so an Edit without old and new text shows the file.
-        if (change.kind === "add") this.use(call, "Write", { file_path: path }, `Creating ${name}`, out);
-        else if (change.kind === "delete") this.use(call, "Bash", { command: `rm ${name}` }, `Deleting ${name}`, out);
-        else this.use(call, "Edit", { file_path: path }, `Editing ${name}`, out);
-        if (!done) return;
-        const verb = change.kind === "add" ? "Created" : change.kind === "delete" ? "Deleted" : "Updated";
-        const failed = item.status !== "completed";
-        this.result(call, failed, failed ? `Could not change ${name}` : `${verb} ${name}`, out);
-      });
-    } else if (item.type === "mcp_tool_call" && typeof item.server === "string" && typeof item.tool === "string") {
-      // The name that Claude's own call of the tool has.
-      const name = `mcp__${item.server}__${item.tool}`;
-      const input = typeof item.arguments === "object" && item.arguments !== null ? item.arguments : {};
-      this.use(id, name, input, `Calling ${item.server} ${item.tool}`, out);
-      if (!done) return;
-      const res: Item = typeof item.result === "object" && item.result !== null ? item.result : {};
-      const error = typeof item.error === "string" ? item.error : item.error?.message;
-      const failed = item.status !== "completed" || item.error != null || res.isError === true || res.is_error === true;
-      const image = Array.isArray(res.content) && res.content.some((part: Item) => part?.type === "image");
-      const text = (typeof error === "string" && error) || resultText(res.content) || (image ? "[Image]" : "");
-      this.result(id, failed, text, out);
-    }
-  }
-
-  // An item can arrive completed without having started.
-  private use(id: string, name: string, input: Record<string, unknown>, description: string, out: Event[]): void {
-    if (this.started.has(id)) return;
-    this.started.add(id);
-    this.toolUses++;
-    out.push({
-      type: "agent_progress",
-      agent_id: this.agentId,
-      description,
-      tool_uses: this.toolUses,
-      ...(this.tokens !== undefined ? { tokens: this.tokens } : {}),
-      last_tool: name,
-    });
-    out.push({ type: "tool_use", id, name, input, parent_id: this.toolUseId, agent_id: this.agentId });
-  }
-
-  private result(id: string, isError: boolean, text: string, out: Event[]): void {
-    out.push({
-      type: "tool_result",
-      id,
-      is_error: isError,
-      text: truncate(text),
-      parent_id: this.toolUseId,
-      agent_id: this.agentId,
-    });
-  }
-
-  private display(path: string): string {
-    const rel = relative(this.cwd, path);
-    return rel && !rel.startsWith("..") && !isAbsolute(rel) ? rel : path;
-  }
-
-  // The agent's end, and the notification that tells Claude its result.
-  end(run: { description: string; code: number; stderr: string; durationMs: number }): {
-    event: Event;
-    notification: string;
-  } {
-    const ok = run.code === 0;
-    const failure = ok
-      ? ""
-      : [`Codex exited with code ${run.code}.`, this.lastError, run.stderr.trim().slice(-STDERR_TAIL)]
-          .filter(Boolean)
-          .join("\n");
-    const result = [this.lastText, failure].filter(Boolean).join("\n\n") || "Codex ended without a reply.";
-    const usage = { tool_uses: this.toolUses, tokens: this.tokens, duration_ms: run.durationMs };
-    return {
-      event: {
-        type: "agent_end",
-        agent_id: this.agentId,
-        tool_use_id: this.toolUseId,
-        status: ok ? "completed" : "failed",
-        summary: truncate(ok ? result : failure),
-        ...usage,
-      },
-      notification: notification({
-        id: this.agentId,
-        toolUseId: this.toolUseId,
-        status: ok ? "completed" : "failed",
-        description: run.description,
-        result: result.slice(0, MAX_RESULT),
-        ...usage,
-      }),
-    };
-  }
-}
-
-// As Claude Code words a background agent's end, so that a resumed session
-// draws it as one (sessions.ts).
-export function notification(n: {
-  id: string;
-  toolUseId: string;
-  status: "completed" | "failed";
-  description: string;
-  result: string;
-  tool_uses: number;
-  tokens?: number;
-  duration_ms: number;
-}): string {
-  const usage = [
-    n.tokens !== undefined ? `<total_tokens>${n.tokens}</total_tokens>` : "",
-    `<tool_uses>${n.tool_uses}</tool_uses>`,
-    `<duration_ms>${n.duration_ms}</duration_ms>`,
-  ].join("");
-  return [
-    "<task-notification>",
-    `<task-id>${n.id}</task-id>`,
-    `<tool-use-id>${n.toolUseId}</tool-use-id>`,
-    `<status>${n.status}</status>`,
-    `<summary>Agent "${n.description}" ${n.status === "completed" ? "finished" : "failed"}</summary>`,
-    "<note>This is the Codex agent that the codex tool started. It cannot be continued: start a new one for more work.</note>",
-    `<result>${n.result}</result>`,
-    `<usage>${usage}</usage>`,
-    "</task-notification>",
-  ].join("\n");
-}
 
 async function* lines(stream: ReadableStream<Uint8Array>): AsyncGenerator<string> {
   const decoder = new TextDecoder();
@@ -258,33 +58,23 @@ function setting(value: unknown): string | undefined {
 }
 
 // The top-level keys of Codex's config.toml, which a run without flags uses.
-// Only to show them: Codex itself reads its config.
-export function codexConfig(env: Record<string, string | undefined> = process.env): CodexSettings {
-  const home = env.CODEX_HOME || join(homedir(), ".codex");
+// anvim passes no flag for them: Codex reads its own config.
+export function codexConfig(): CodexSettings {
+  const home = process.env.CODEX_HOME || join(homedir(), ".codex");
   try {
     const toml = Bun.TOML.parse(readFileSync(join(home, "config.toml"), "utf8")) as Record<string, unknown>;
     // A profile's keys win inside Codex, so the top-level ones would mislead.
     if (toml.profile !== undefined) return {};
-    const model = setting(toml.model);
-    const effort = setting(toml.model_reasoning_effort);
-    return { ...(model ? { model } : {}), ...(effort ? { effort } : {}) };
+    return { model: setting(toml.model), effort: setting(toml.model_reasoning_effort) };
   } catch {
     return {};
   }
 }
 
-// The call's input wins over anvim's defaults, field by field. What neither
-// sets, Codex's own config decides, so it gets no flag.
-export function codexSettings(input: CodexInput, defaults: CodexSettings): CodexSettings {
-  const model = setting(input.model) ?? setting(defaults.model);
-  const effort = setting(input.effort) ?? setting(defaults.effort);
-  return { ...(model ? { model } : {}), ...(effort ? { effort } : {}) };
-}
-
 // Codex parses each -c value as TOML. A JSON string is also a TOML string, and
 // a JSON array of strings is also a TOML array. "approve" lets Codex call the
 // server's tools without an approval prompt.
-export function serverArgs(servers: CodexServer[]): string[] {
+function serverArgs(servers: CodexServer[]): string[] {
   return servers.flatMap(({ name, command, args, env }) => {
     const table = Object.entries(env).map(([key, value]) => `${JSON.stringify(key)}=${JSON.stringify(value)}`);
     return [
@@ -323,16 +113,25 @@ export function codexArgs(
 
 // Where a run's model or effort comes from: the tool call, anvim's default,
 // Codex's config, or Codex's own default, which anvim does not know.
-export type Source = "call" | "anvim" | "config" | "codex";
+type Source = "call" | "anvim" | "config" | "codex";
 export type RunSettings = { model?: string; modelFrom: Source; effort?: string; effortFrom: Source };
 
+function pick(call: unknown, anvim: unknown, config: unknown): [string | undefined, Source] {
+  const values: [unknown, Source][] = [
+    [call, "call"],
+    [anvim, "anvim"],
+    [config, "config"],
+  ];
+  for (const [value, from] of values) {
+    const set = setting(value);
+    if (set) return [set, from];
+  }
+  return [undefined, "codex"];
+}
+
+// The call's input wins over anvim's defaults, field by field, and anvim's
+// defaults win over Codex's config.
 export function runSettings(input: CodexInput, defaults: CodexSettings, config: CodexSettings): RunSettings {
-  const pick = (call: unknown, mine: unknown, theirs: unknown): [string | undefined, Source] => {
-    if (setting(call)) return [setting(call), "call"];
-    if (setting(mine)) return [setting(mine), "anvim"];
-    if (setting(theirs)) return [setting(theirs), "config"];
-    return [undefined, "codex"];
-  };
   const [model, modelFrom] = pick(input.model, defaults.model, config.model);
   const [effort, effortFrom] = pick(input.effort, defaults.effort, config.effort);
   return { model, modelFrom, effort, effortFrom };
@@ -368,22 +167,15 @@ export function modelEfforts(models: CodexModel[]): string[] {
   return [...new Set(visibleModels(models).flatMap((m) => m.efforts))];
 }
 
-// Why the codex tool must not start this call, or undefined. Only the call's
+// Why the codex tool must not start this run, or undefined. Only the call's
 // own model and effort are checked: Claude can fix those.
-export function checkInput(
-  input: CodexInput,
-  models: CodexModel[],
-  defaults: CodexSettings,
-  config: CodexSettings,
-): string | undefined {
-  const model = setting(input.model);
-  if (model && !models.some((m) => m.slug === model)) {
+function checkRun(run: RunSettings, models: CodexModel[]): string | undefined {
+  if (run.modelFrom === "call" && !models.some((m) => m.slug === run.model)) {
     const slugs = visibleModels(models).map(listed).join(", ");
-    return `Codex has no model ${model}. Pass one of these slugs as model: ${slugs}.`;
+    return `Codex has no model ${run.model}. Pass one of these slugs as model: ${slugs}.`;
   }
-  const effort = setting(input.effort);
-  const runModel = model ?? setting(defaults.model) ?? setting(config.model);
-  const known = models.find((m) => m.slug === runModel);
+  const effort = run.effortFrom === "call" ? run.effort : undefined;
+  const known = models.find((m) => m.slug === run.model);
   if (effort && known && known.efforts.length > 0 && !known.efforts.includes(effort)) {
     return `Codex model ${known.slug} has no effort ${effort}. Pass one of: ${known.efforts.join(", ")}.`;
   }
@@ -392,18 +184,18 @@ export function checkInput(
 
 function toModel(item: unknown): CodexModel | undefined {
   if (typeof item !== "object" || item === null) return undefined;
-  const m = item as Item;
+  const m = item as AnyRecord;
   const slug = setting(m.model) ?? setting(m.id);
   if (!slug) return undefined;
-  const efforts = Array.isArray(m.supportedReasoningEfforts)
-    ? m.supportedReasoningEfforts
-        .map((e: unknown) => setting(typeof e === "object" && e !== null ? (e as Item).reasoningEffort : e))
-        .filter((e: string | undefined): e is string => e !== undefined)
+  const efforts: string[] = Array.isArray(m.supportedReasoningEfforts)
+    ? m.supportedReasoningEfforts.flatMap(
+        (e: unknown) => setting(typeof e === "object" && e !== null ? (e as AnyRecord).reasoningEffort : e) ?? [],
+      )
     : [];
   return { slug, name: setting(m.displayName) ?? slug, hidden: m.hidden === true, efforts };
 }
 
-export type CodexState = "on" | "off" | "missing" | "logged_out";
+type CodexState = "on" | "off" | "missing" | "logged_out";
 
 const LOGIN_TIMEOUT_MS = 3000;
 const MAX_MODEL_PAGES = 5;
@@ -422,36 +214,41 @@ export async function codexModels(bin: string, timeoutMs = LOGIN_TIMEOUT_MS): Pr
     proc.stdin.write(`${JSON.stringify(msg)}\n`);
     proc.stdin.flush();
   };
-  const talk = async (): Promise<CodexModel[] | undefined> => {
-    const models: CodexModel[] = [];
-    let id = 0;
-    send({ method: "initialize", id, params: { clientInfo: { name: "anvim", title: "anvim", version: "0" } } });
-    for await (const raw of lines(proc.stdout)) {
-      let m: Item;
+  const replies = lines(proc.stdout);
+  let next = 0;
+  // A request's result, or undefined for an error or a closed stream.
+  const request = async (method: string, params: object): Promise<AnyRecord | undefined> => {
+    const id = next++;
+    send({ method, id, params });
+    for (let r = await replies.next(); !r.done; r = await replies.next()) {
+      let m: AnyRecord;
       try {
-        m = JSON.parse(raw);
+        m = JSON.parse(r.value);
       } catch {
         continue;
       }
       // Notifications and server requests can come in between.
       if (m?.id !== id || m.method !== undefined) continue;
-      if (typeof m.result !== "object" || m.result === null) return undefined;
-      let cursor: string | undefined;
-      if (id === 0) {
-        send({ method: "initialized" });
-      } else {
-        if (!Array.isArray(m.result.data)) return undefined;
-        for (const item of m.result.data) {
-          const model = toModel(item);
-          if (model) models.push(model);
-        }
-        cursor = setting(m.result.nextCursor);
-        if (!cursor || id >= MAX_MODEL_PAGES) return models.length > 0 ? models : undefined;
-      }
-      id++;
-      send({ method: "model/list", id, params: { includeHidden: true, ...(cursor ? { cursor } : {}) } });
+      return typeof m.result === "object" && m.result !== null ? m.result : undefined;
     }
     return undefined;
+  };
+  const talk = async (): Promise<CodexModel[] | undefined> => {
+    if (!(await request("initialize", { clientInfo: { name: "anvim", title: "anvim", version: "0" } }))) return undefined;
+    send({ method: "initialized" });
+    const models: CodexModel[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < MAX_MODEL_PAGES; page++) {
+      const result = await request("model/list", { includeHidden: true, cursor });
+      if (!result || !Array.isArray(result.data)) return undefined;
+      for (const item of result.data) {
+        const model = toModel(item);
+        if (model) models.push(model);
+      }
+      cursor = setting(result.nextCursor);
+      if (!cursor) break;
+    }
+    return models.length > 0 ? models : undefined;
   };
   let timer: Timer | undefined;
   const timeout = new Promise<undefined>((resolve) => {
@@ -469,11 +266,13 @@ export async function codexModels(bin: string, timeoutMs = LOGIN_TIMEOUT_MS): Pr
 // counts as no login.
 async function loggedIn(bin: string): Promise<boolean> {
   try {
-    const proc = Bun.spawn([bin, "login", "status"], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
-    const timer = setTimeout(() => proc.kill(), LOGIN_TIMEOUT_MS);
-    const code = await proc.exited;
-    clearTimeout(timer);
-    return code === 0;
+    const proc = Bun.spawn([bin, "login", "status"], {
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+      timeout: LOGIN_TIMEOUT_MS,
+    });
+    return (await proc.exited) === 0;
   } catch {
     return false;
   }
@@ -493,7 +292,7 @@ export async function codexState(
   if (!bin) return { state: "missing" };
   const [ok, models] = await Promise.all([login(bin), list(bin)]);
   if (!ok) return { state: "logged_out" };
-  return { state: "on", bin, ...(models ? { models } : {}) };
+  return { state: "on", bin, models };
 }
 
 // The user asked for Codex, so a Codex that is not ready gets a warning.
@@ -543,7 +342,8 @@ export class CodexRunner {
   // Why the call must not start a run, or undefined. Without a model list,
   // anvim checks nothing.
   check(input: CodexInput): string | undefined {
-    return this.opts.models ? checkInput(input, this.opts.models, this.opts.defaults(), this.config()) : undefined;
+    const { models } = this.opts;
+    return models ? checkRun(runSettings(input, this.opts.defaults(), this.config()), models) : undefined;
   }
 
   // The servers that the call names, or the first reason that one of them
@@ -575,9 +375,10 @@ export class CodexRunner {
     const { bin, cwd, emit } = this.opts;
     const stream = new CodexStream(id, toolUseId ?? id, cwd);
     const defaults = this.opts.defaults();
-    const config = this.config();
-    const settings = codexSettings(input, defaults);
-    const proc = Bun.spawn(codexArgs(bin, cwd, input.read_only === true, settings, servers), {
+    const settings = runSettings(input, defaults, this.config());
+    // Codex reads its own config, so the flags leave it out.
+    const flags = runSettings(input, defaults, {});
+    const proc = Bun.spawn(codexArgs(bin, cwd, input.read_only === true, flags, servers), {
       cwd,
       // Inside cmux, `codex` is cmux's wrapper. Its hooks call the cmux app
       // on every tool call, which drops them, and a burst of them once
@@ -597,12 +398,13 @@ export class CodexRunner {
       subagent_type: CODEX_TYPE,
       depth: 1,
       background: true,
-      // What the run uses, for the Overview: anvim's flags, else Codex's config.
-      ...config,
-      ...settings,
+      // What the run uses, for the Overview.
+      model: settings.model,
+      effort: settings.effort,
     });
     const started = Date.now();
     const stderr = tail(proc.stderr);
+    const { description } = input;
     void (async () => {
       for await (const line of lines(proc.stdout)) {
         if (run.killed) break;
@@ -612,16 +414,11 @@ export class CodexRunner {
       this.runs.delete(id);
       // A reset or an exit stopped it. Nobody waits for its result.
       if (run.killed) return;
-      const end = stream.end({
-        description: input.description,
-        code,
-        stderr: await stderr,
-        durationMs: Date.now() - started,
-      });
+      const end = stream.end({ description, code, stderr: await stderr, durationMs: Date.now() - started });
       emit(end.event);
       this.opts.notify(end.notification);
     })().catch((err) => process.stderr.write(`codex run ${id} failed: ${err}\n`));
-    return { id, run: runSettings(input, defaults, config) };
+    return { id, run: settings };
   }
 
   stopAll(): void {
@@ -630,9 +427,5 @@ export class CodexRunner {
       run.proc.kill();
     }
     this.runs.clear();
-  }
-
-  get running(): number {
-    return this.runs.size;
   }
 }
