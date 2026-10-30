@@ -9,7 +9,7 @@ import type {
   SDKControlGetUsageResponse,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ContextMark, Event, McpServer, UsageSection } from "./protocol";
-import { tildePath } from "./sandbox";
+import { tildePath } from "./paths";
 import { isOwnServer } from "./tools";
 
 export function modelsEvent(models: ModelInfo[]): Event {

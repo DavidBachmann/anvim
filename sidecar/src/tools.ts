@@ -23,7 +23,7 @@ import { listText, TodoError, type TodoStore } from "./todos";
 export const SERVER = "anvim";
 // It starts an agent that can write files, so it follows the permission mode.
 export const CODEX_TOOL = `mcp__${SERVER}__codex`;
-// Only the main agent keeps the todo list (sandbox.ts refuses subagents).
+// Only the main agent keeps the todo list (hooks.ts refuses subagents).
 export const TODO_TOOLS = ["todo_add", "todo_update", "todo_list"].map((name) => `mcp__${SERVER}__${name}`);
 const TIMEOUT_MS = 10_000;
 

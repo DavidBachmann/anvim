@@ -10,8 +10,9 @@ import type {
   Query,
 } from "@anthropic-ai/claude-agent-sdk";
 import { homedir } from "node:os";
-import { join, resolve, sep } from "node:path";
-import { gitRoot, realPath } from "./sandbox";
+import { join, resolve } from "node:path";
+import { inside, realPath } from "./paths";
+import { gitRoot } from "./sandbox";
 
 export const NEXT_TURN =
   "anvim reloaded the agents. Claude Code gives each turn the agents that it started with, so the Agent tool can run this file's agent from the next turn on, not in this turn. If the work needs this agent, end the turn and tell the user that it is ready.";
@@ -34,7 +35,7 @@ export function postToolUse(
     const { file_path } = ((input as PostToolUseHookInput).tool_input ?? {}) as Record<string, unknown>;
     if (typeof file_path !== "string" || !file_path.endsWith(".md")) return {};
     const path = realPath(resolve(cwd, file_path));
-    if (!folders.some((dir) => path.startsWith(dir + sep))) return {};
+    if (!folders.some((dir) => inside(path, dir))) return {};
     let held: boolean;
     try {
       held = (await session()?.reloadPlugins({ holdOnCacheImpact: true }))?.held === true;

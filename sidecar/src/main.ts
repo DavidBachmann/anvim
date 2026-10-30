@@ -23,12 +23,13 @@ import {
 import { CodexRunner, type CodexSettings, codexConfig, codexState, codexWarning } from "./codex";
 import { contextEvent, mcpEvent, modelsEvent, rewindFilesEvent, sessionInfoEvent, usageEvent } from "./dialogs";
 import { Effort, getSettings } from "./effort";
+import { preToolUse } from "./hooks";
 import { type ImageBlock, imageBlocks } from "./images";
 import { Limits, limitsEvent } from "./limits";
 import { PermissionBridge } from "./permissions";
 import { PreviewBridge } from "./preview";
 import type { Command, Event } from "./protocol";
-import { preToolUse, SandboxGuard, SandboxNotice, sandboxSetup, startMode } from "./sandbox";
+import { SandboxGuard, SandboxNotice, sandboxSetup, startMode } from "./sandbox";
 import * as sessions from "./sessions";
 import { TodoStore } from "./todos";
 import { errorText } from "./text";

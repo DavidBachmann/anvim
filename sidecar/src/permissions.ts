@@ -10,7 +10,7 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 import { isAbsolute, relative } from "node:path";
 import type { Command, Event } from "./protocol";
-import { tildePath } from "./sandbox";
+import { tildePath } from "./paths";
 import { SendBack } from "./sendback";
 import { isCodexTool, isEditorTool } from "./tools";
 
