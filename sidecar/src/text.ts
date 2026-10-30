@@ -30,9 +30,16 @@ export function resultText(content: unknown): string {
 
 // The first `end` characters, without a lone half of a UTF-16 surrogate pair.
 // JSON would send it as an escape that Neovim's decoder refuses.
-function head(s: string, end: number): string {
+export function head(s: string, end: number): string {
   const code = s.charCodeAt(end - 1);
   return s.slice(0, code >= 0xd800 && code <= 0xdbff ? end - 1 : end);
+}
+
+// The last `n` characters, without a lone half of a surrogate pair, as head().
+export function tail(s: string, n: number): string {
+  if (s.length <= n) return s;
+  const code = s.charCodeAt(s.length - n);
+  return s.slice(code >= 0xdc00 && code <= 0xdfff ? s.length - n + 1 : s.length - n);
 }
 
 export function truncate(s: string, max = MAX_TEXT): string {

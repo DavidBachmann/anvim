@@ -32,7 +32,7 @@ import type { Command, Event } from "./protocol";
 import { SandboxGuard, SandboxNotice, sandboxSetup, startMode } from "./sandbox";
 import * as sessions from "./sessions";
 import { TodoStore } from "./todos";
-import { errorText } from "./text";
+import { errorText, head } from "./text";
 import { EditorBridge, editorServer, SERVER } from "./tools";
 import { commandsEvent, Translator } from "./translate";
 
@@ -464,7 +464,7 @@ if (import.meta.main) {
     try {
       cmd = JSON.parse(line);
     } catch {
-      emitNotice("error", `bad command: ${line.slice(0, 200)}`);
+      emitNotice("error", `bad command: ${head(line, 200)}`);
       return;
     }
     handle(cmd).catch((err) => emitNotice("error", errorText(err)));

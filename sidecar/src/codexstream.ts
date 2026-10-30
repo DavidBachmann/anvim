@@ -2,7 +2,7 @@
 // a subagent, and its end becomes a task notification for Claude.
 import { isAbsolute, relative, resolve } from "node:path";
 import type { Event } from "./protocol";
-import { type AnyRecord, MAX_AGENT_TEXT, resultText, truncate } from "./text";
+import { type AnyRecord, head, MAX_AGENT_TEXT, resultText, truncate } from "./text";
 
 // The result that goes to Claude can be long.
 const MAX_RESULT = 50_000;
@@ -46,6 +46,17 @@ export class CodexStream {
       return [];
     }
     const out: Event[] = [];
+    try {
+      this.message(m, out);
+    } catch (err) {
+      // A line that anvim cannot read must not end the run. The events before
+      // the error still go out, because their calls count as started.
+      process.stderr.write(`could not read a Codex line: ${(err as Error)?.stack ?? err}\n`);
+    }
+    return out;
+  }
+
+  private message(m: Item, out: Event[]): void {
     if (m.type === "item.started" || m.type === "item.completed") {
       this.item(m.item ?? {}, m.type === "item.completed", out);
     } else if (m.type === "turn.completed" && m.usage) {
@@ -58,7 +69,6 @@ export class CodexStream {
     } else if (m.type === "error") {
       this.lastError = String(m.message ?? "");
     }
-    return out;
   }
 
   private item(item: Item, done: boolean, out: Event[]): void {
@@ -187,7 +197,7 @@ export class CodexStream {
       tokens: this.tokens,
       duration_ms: run.durationMs,
     };
-    return { event, notification: notification(event, run.description, result.slice(0, MAX_RESULT)) };
+    return { event, notification: notification(event, run.description, head(result, MAX_RESULT)) };
   }
 }
 

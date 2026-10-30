@@ -8,7 +8,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { CodexStream } from "./codexstream";
 import type { Event } from "./protocol";
-import type { AnyRecord } from "./text";
+import { type AnyRecord, tail } from "./text";
 
 // The agent type that the plugin names the agent by: Codex 1.
 const CODEX_TYPE = "Codex";
@@ -29,10 +29,10 @@ async function* lines(stream: ReadableStream<Uint8Array>): AsyncGenerator<string
   if (buf.trim()) yield buf;
 }
 
-async function tail(stream: ReadableStream<Uint8Array>): Promise<string> {
+async function readTail(stream: ReadableStream<Uint8Array>): Promise<string> {
   const decoder = new TextDecoder();
   let text = "";
-  for await (const chunk of stream) text = (text + decoder.decode(chunk, { stream: true })).slice(-STDERR_TAIL);
+  for await (const chunk of stream) text = tail(text + decoder.decode(chunk, { stream: true }), STDERR_TAIL);
   return text;
 }
 
@@ -403,7 +403,7 @@ export class CodexRunner {
       effort: settings.effort,
     });
     const started = Date.now();
-    const stderr = tail(proc.stderr);
+    const stderr = readTail(proc.stderr);
     const { description } = input;
     void (async () => {
       for await (const line of lines(proc.stdout)) {

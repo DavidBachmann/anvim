@@ -11,6 +11,7 @@ import {
   codexWarning,
   runSettings,
 } from "./codex";
+import type { Event } from "./protocol";
 
 describe("codexState", () => {
   test("offers the codex tool only when it is wanted, installed and logged in", async () => {
@@ -147,23 +148,54 @@ describe("codexArgs", () => {
 });
 
 describe("CodexRunner", () => {
-  test("turns off cmux's Codex hooks for the run", async () => {
+  // Runs a codex stub in a dir of its own, until Claude gets the run's end.
+  async function run(script: string): Promise<{ dir: string; end?: Event; notes: string[] }> {
     const dir = mkdtempSync(join(tmpdir(), "anvim-codex-"));
     const bin = join(dir, "codex");
-    writeFileSync(bin, `#!/bin/sh\nprintf %s "$CMUX_CODEX_HOOKS_DISABLED" > "${dir}/env"\ncat >/dev/null\n`);
+    writeFileSync(bin, `#!/bin/sh\ncat >/dev/null\n${script}\n`);
     chmodSync(bin, 0o755);
+    const events: Event[] = [];
     const notes: string[] = [];
     const codex = new CodexRunner({
       bin,
       cwd: dir,
-      emit: () => {},
+      emit: (ev) => events.push(ev),
       notify: (text) => notes.push(text),
       defaults: () => ({}),
       config: () => ({}),
     });
     codex.start({ description: "Review", prompt: "Review a.ts" }, undefined);
-    while (notes.length === 0) await Bun.sleep(5);
+    for (let i = 0; i < 400 && notes.length === 0; i++) await Bun.sleep(5);
+    return { dir, end: events.find((ev) => ev.type === "agent_end"), notes };
+  }
+
+  test("turns off cmux's Codex hooks for the run", async () => {
+    const { dir } = await run('printf %s "$CMUX_CODEX_HOOKS_DISABLED" > env');
     expect(readFileSync(join(dir, "env"), "utf8")).toBe("1");
+    rmSync(dir, { recursive: true });
+  });
+
+  // Neovim's JSON decoder refuses the escape of a lone half of the pair.
+  test("the tail of stderr does not start in the middle of an emoji", async () => {
+    const { dir, end, notes } = await run(
+      "printf '\\360\\237\\230\\200' >&2\nhead -c 1999 /dev/zero | tr '\\0' x >&2\nexit 1",
+    );
+    expect(end).toMatchObject({ status: "failed" });
+    expect((end as { summary: string }).summary.isWellFormed()).toBe(true);
+    expect(notes[0]!.isWellFormed()).toBe(true);
+    rmSync(dir, { recursive: true });
+  });
+
+  test("a line that the stream cannot read leaves the rest of the run, and its end", async () => {
+    const item = (item: object) => `echo '${JSON.stringify({ type: "item.completed", item })}'`;
+    const { dir, end, notes } = await run(
+      [
+        item({ id: "item_1", type: "file_change", changes: [{ kind: "add" }], status: "completed" }),
+        item({ id: "item_2", type: "agent_message", text: "done" }),
+      ].join("\n"),
+    );
+    expect(end).toMatchObject({ status: "completed", summary: "done" });
+    expect(notes).toHaveLength(1);
     rmSync(dir, { recursive: true });
   });
 });
