@@ -1,6 +1,7 @@
 -- The Processes window: the processes that use the CPU, grouped by app or by
 -- name, as in htop. This anvim's own processes form one row, and each Bash
--- call that runs forms a row named after its agent.
+-- call that runs forms a row named after its agent. A process whose parent
+-- ended keeps ANVIM_PID in its environment, and forms a row of its own.
 local agents = require("anvim.agents")
 local keys = require("anvim.keys")
 
@@ -11,6 +12,8 @@ local ns = api.nvim_create_namespace("anvim.processes")
 -- ps prints comm last, so a path with spaces stays whole. top would cost
 -- far more CPU than it measures.
 local LIST = { "ps", "-axo", "pid=,ppid=,pcpu=,rss=,time=,comm=" }
+-- The environments of the user's processes: about 2 MB and 70 ms of work.
+local ENV = { "ps", "-axEww", "-o", "pid=,command=" }
 local MARK = "◆"
 
 -- Runs ps with these arguments. With a callback, it runs in the background
@@ -46,12 +49,76 @@ function M.clock()
   return vim.uv.hrtime() / 1e9
 end
 M.interval = 2000
+-- Seconds between two scans of the environments.
+M.scan_interval = 10
+
+---@class anvim.Rusage
+---@field footprint integer KB, the memory figure of Activity Monitor.
+---@field ended number The CPU time of the ended processes that it waited for, in seconds.
+
+-- proc_pid_rusage() of macOS, or false where it is missing.
+---@type (fun(pid: integer): anvim.Rusage?)|false|nil
+local reader
+
+local function load_rusage()
+  if jit.os ~= "OSX" then
+    return false
+  end
+  local ffi = require("ffi")
+  pcall(
+    ffi.cdef,
+    [[
+    typedef struct {
+      uint8_t ri_uuid[16];
+      uint64_t ri_user_time, ri_system_time, ri_pkg_idle_wkups, ri_interrupt_wkups, ri_pageins, ri_wired_size,
+        ri_resident_size, ri_phys_footprint, ri_proc_start_abstime, ri_proc_exit_abstime, ri_child_user_time,
+        ri_child_system_time, ri_child_pkg_idle_wkups, ri_child_interrupt_wkups, ri_child_pageins,
+        ri_child_elapsed_abstime, ri_diskio_bytesread, ri_diskio_byteswritten;
+    } anvim_rusage_info_v2;
+    typedef struct { uint32_t numer; uint32_t denom; } anvim_timebase_info;
+  ]]
+  )
+  -- Each in its own call, as another plugin may declare one of them already.
+  pcall(ffi.cdef, "int proc_pid_rusage(int pid, int flavor, void *buffer);")
+  pcall(ffi.cdef, "int mach_timebase_info(void *info);")
+  local info, base = ffi.new("anvim_rusage_info_v2"), ffi.new("anvim_timebase_info")
+  local ok, err = pcall(ffi.C.mach_timebase_info, base)
+  if not ok or err ~= 0 or base.denom == 0 then
+    return false
+  end
+  -- The times are in Mach absolute time units.
+  local unit = base.numer / base.denom / 1e9
+  local function read(pid)
+    if ffi.C.proc_pid_rusage(pid, 2, info) ~= 0 then
+      return nil
+    end
+    return {
+      footprint = math.floor(tonumber(info.ri_phys_footprint) / 1024),
+      ended = tonumber(info.ri_child_user_time + info.ri_child_system_time) * unit,
+    }
+  end
+  return pcall(read, vim.fn.getpid()) and read
+end
+
+-- The memory footprint and the ended CPU time of a process. It is nil for
+-- the processes of other users, and where macOS's call is missing.
+---@param pid integer
+---@return anvim.Rusage?
+function M.rusage(pid)
+  if reader == nil then
+    local ok, found = pcall(load_rusage)
+    reader = ok and found or false
+  end
+  return reader and reader(pid) or nil
+end
 
 ---@class anvim.Process
 ---@field pid integer
 ---@field ppid integer
 ---@field pcpu number
 ---@field rss integer KB
+---@field mem integer? KB: the footprint, or the RSS where the footprint is unknown.
+---@field ended number?
 ---@field time number The CPU time that it used, in seconds.
 ---@field comm string
 ---@field cpu number Percent of one core.
@@ -59,11 +126,11 @@ M.interval = 2000
 ---@class anvim.ProcessGroup
 ---@field key string
 ---@field name string
----@field kind "anvim"|"bash"|"app"|"name"
+---@field kind "anvim"|"bash"|"escaped"|"app"|"name"
 ---@field hl string? The color of anvim's mark.
 ---@field members integer[]
 ---@field cpu number
----@field rss integer
+---@field mem integer
 
 -- The Bash calls that may still run, by tool id. A call in the background
 -- runs on after its result.
@@ -76,7 +143,7 @@ local timer ---@type uv.uv_timer_t?
 local busy = false
 -- The confirm of a signal has the focus, so leaving the window keeps it.
 local asking = false
-local sort = "cpu" ---@type "cpu"|"rss"
+local sort = "cpu" ---@type "cpu"|"mem"
 local expanded = {} ---@type table<string, true>
 -- The last sample, which the next one measures the CPU time against.
 local prev ---@type { at: number, procs: table<integer, anvim.Process> }?
@@ -87,6 +154,9 @@ local by_key = {} ---@type table<string, anvim.ProcessGroup>
 local owner = {} ---@type table<integer, string>
 -- This anvim's TUI, server, sidecar and Claude Code engines.
 local core = {} ---@type table<integer, true>
+-- The processes with this anvim's ANVIM_PID, and the time of that scan.
+local marked = {} ---@type table<integer, true>
+local scanned ---@type number?
 -- The group key or the pid of each line, 1-based, and the group of each line.
 local row_keys = {} ---@type table<integer, string|integer>
 local row_groups = {} ---@type table<integer, string>
@@ -256,12 +326,54 @@ local function below(children, pid, fn)
   end
 end
 
+-- The pids whose environment has ANVIM_PID=<pid> as a whole word.
+---@param out string
+---@param pid integer
+---@return table<integer, true>
+function M.marked(out, pid)
+  local needle, found = "ANVIM_PID=" .. pid, {}
+  for line in out:gmatch("[^\n]+") do
+    local from = 1
+    while true do
+      local i, j = line:find(needle, from, true)
+      if not i then
+        break
+      elseif line:sub(i - 1, i - 1) == " " and line:sub(j + 1, j + 1):match("^%s?$") then
+        local at = tonumber(line:match("^%s*(%d+)"))
+        if at then
+          found[at] = true
+        end
+        break
+      end
+      from = j + 1
+    end
+  end
+  return found
+end
+
+-- The server's TUI. A restarted server's parent is launchd, and its TUI
+-- attaches over a socket, so the UI's client info gives its pid.
+local function tuis(list, server)
+  local parent = list[server] and list[list[server].ppid]
+  if parent and basename(parent.comm) == "nvim" then
+    return { parent.pid }
+  end
+  local found = {}
+  for _, ui in ipairs(api.nvim_list_uis()) do
+    local ok, info = pcall(api.nvim_get_chan_info, ui.chan or 0)
+    local pid = ok and vim.tbl_get(info, "client", "attributes", "pid")
+    if tonumber(pid) and list[tonumber(pid)] then
+      found[#found + 1] = tonumber(pid)
+    end
+  end
+  return found
+end
+
 -- The server's TUI, sidecar and engines, which anvim needs to run.
 local function find_core(list, children, server)
   local found = { [server] = true }
-  local tui = list[server] and list[list[server].ppid]
-  if tui and basename(tui.comm) == "nvim" then
-    found[tui.pid] = true
+  for _, pid in ipairs(tuis(list, server)) do
+    found[pid] = true
   end
   local sidecar = require("anvim.sidecar").pid()
   if sidecar then
@@ -287,7 +399,7 @@ local function wanted(list)
     seen[pid] = true
   end)
   for pid, p in pairs(list) do
-    if seen[pid] or expanded[(key_of(p))] or (expanded.anvim and core[pid]) then
+    if seen[pid] or expanded[owner[pid] or (key_of(p))] or (expanded.anvim and core[pid]) then
       pids[#pids + 1] = pid
     end
   end
@@ -296,8 +408,9 @@ end
 
 ---@param list table<integer, anvim.Process>
 ---@param cmdlines table<integer, string>
+---@param marks? table<integer, true> The processes with this anvim's ANVIM_PID.
 ---@return anvim.ProcessGroup[], table<integer, string> owner, table<integer, true> core
-function M.group(list, cmdlines)
+function M.group(list, cmdlines, marks)
   local server = vim.fn.getpid()
   local children = children_of(list)
   local found_core, engines = find_core(list, children, server)
@@ -305,12 +418,12 @@ function M.group(list, cmdlines)
   local function add(pid, key, name, kind, hl)
     local g = found[key]
     if not g then
-      g = { key = key, name = name, kind = kind, hl = hl, members = {}, cpu = 0, rss = 0 }
+      g = { key = key, name = name, kind = kind, hl = hl, members = {}, cpu = 0, mem = 0 }
       found[key] = g
     end
     local p = list[pid]
     g.members[#g.members + 1] = pid
-    g.cpu, g.rss = g.cpu + (p.cpu or p.pcpu), g.rss + p.rss
+    g.cpu, g.mem = g.cpu + (p.cpu or p.pcpu), g.mem + (p.mem or p.rss)
     owners[pid] = key
   end
   -- The sandbox may put a wrapper between the engine and the shell.
@@ -340,6 +453,27 @@ function M.group(list, cmdlines)
   below(children, server, function(pid)
     own(pid)
   end)
+  -- A process whose parent ends moves to launchd. Its topmost marked
+  -- ancestor outside the tree is the root of its row.
+  for pid in pairs(marks or {}) do
+    local root = list[pid] and not owners[pid]
+    local up = root and list[pid].ppid
+    while root and up > 1 and list[up] do
+      root = not (marks[up] and not owners[up])
+      up = list[up].ppid
+    end
+    if root then
+      local key, _, name = "escaped:" .. pid, key_of(list[pid])
+      local hl = agents.group(0)
+      add(pid, key, name, "escaped", hl)
+      below(children, pid, function(child)
+        if owners[child] then
+          return true
+        end
+        add(child, key, name, "escaped", hl)
+      end)
+    end
+  end
   for pid, p in pairs(list) do
     if not owners[pid] then
       add(pid, key_of(p))
@@ -360,7 +494,7 @@ local function cpu_text(cpu)
   return ("%d%%"):format(math.floor(cpu + 0.5))
 end
 
-local function rss_text(kb)
+local function mem_text(kb)
   if kb < 1000 then
     return ("%dK"):format(kb)
   elseif kb < 102400 then
@@ -386,6 +520,35 @@ local function fit(text, width)
   return vim.fn.strcharpart(text, 0, n) .. "..."
 end
 
+-- This anvim's processes: its own rows, the Bash calls and the escaped ones.
+local function summary()
+  local count, cpu, mem, outside, ended = 0, 0, 0, 0, nil
+  for _, g in ipairs(groups) do
+    if g.kind == "anvim" or g.kind == "bash" or g.kind == "escaped" then
+      count, cpu, mem = count + #g.members, cpu + g.cpu, mem + g.mem
+      outside = outside + (g.kind == "escaped" and #g.members or 0)
+      for _, pid in ipairs(g.members) do
+        local p = procs[pid]
+        if p.ended then
+          ended = (ended or 0) + p.ended
+        end
+      end
+    end
+  end
+  local parts = {
+    ("This anvim: %d %s"):format(count, count == 1 and "process" or "processes"),
+    cpu_text(cpu) .. " CPU",
+    mem_text(mem),
+  }
+  if outside > 0 then
+    parts[#parts + 1] = ("%d outside its tree"):format(outside)
+  end
+  if ended then
+    parts[#parts + 1] = "ended processes used " .. require("anvim.transcript").duration(ended * 1000)
+  end
+  return " " .. table.concat(parts, " · ")
+end
+
 local function render(width)
   local lines, marks, rows, in_group = {}, {}, {}, {}
   local function add(line, key, hls, group)
@@ -395,11 +558,11 @@ local function render(width)
       marks[#marks + 1] = { #lines - 1, h[1], h[2], h[3] }
     end
   end
-  -- A mark of two cells, then CPU and RSS of five, for 1200% and 10.0G.
-  local function row(mark, cpu, rss, name, key, group, name_hl)
+  -- A mark of two cells, then CPU and MEM of five, for 1200% and 10.0G.
+  local function row(mark, cpu, mem, name, key, group, name_hl)
     local head = (mark and " " .. MARK or "  ")
     local cpu_col = #head
-    local line = ("%s%5s  %5s  "):format(head, cpu_text(cpu), rss_text(rss))
+    local line = ("%s%5s  %5s  "):format(head, cpu_text(cpu), mem_text(mem))
     local hls = { { #line, #line + #name, name_hl } }
     if mark then
       hls[#hls + 1] = { 1, 1 + #MARK, mark }
@@ -410,14 +573,20 @@ local function render(width)
     end
     add(line .. name, key, hls, group)
   end
-  local head = "    CPU    RSS  NAME"
+  local total = summary()
+  local label = 1 + #"This anvim"
+  add(total, nil, { { 1, label, agents.group(0) }, { label, #total, "AnvimResult" } })
+  local head = "    CPU    MEM  NAME"
   local active = sort == "cpu" and { 4, 7 } or { 11, 14 }
   add(head, nil, { { 0, #head, "AnvimResult" }, { active[1], active[2], "Title" } })
   table.sort(groups, by_sort)
   local name_width = width - 16
   for _, g in ipairs(groups) do
     local name = #g.members > 1 and ("%s (%d)"):format(g.name, #g.members) or g.name
-    row(g.hl, g.cpu, g.rss, fit(name, name_width), g.key, g.key)
+    if g.kind == "escaped" then
+      name = name .. " · started by this anvim"
+    end
+    row(g.hl, g.cpu, g.mem, fit(name, name_width), g.key, g.key)
     if expanded[g.key] then
       local members = {}
       for _, pid in ipairs(g.members) do
@@ -426,7 +595,7 @@ local function render(width)
       table.sort(members, by_sort)
       for _, p in ipairs(members) do
         local text = fit(("  %-6d %s"):format(p.pid, args[p.pid] or p.comm), name_width)
-        row(g.hl, p.cpu, p.rss, text, p.pid, g.key, "AnvimResult")
+        row(g.hl, p.cpu, p.mem or p.rss, text, p.pid, g.key, "AnvimResult")
       end
     end
   end
@@ -473,7 +642,8 @@ local function draw()
       group_row = i
     end
   end
-  row = math.min(row or group_row or math.max(cursor, 2), #lines)
+  -- The first two lines are the summary and the column header.
+  row = math.min(row or group_row or math.max(cursor, 3), #lines)
   local topline = math.min(math.max(view.topline, row - api.nvim_win_get_height(win.win) + 1), row)
   api.nvim_win_call(win.win, function()
     vim.fn.winrestview({ lnum = row, col = 0, topline = math.max(topline, 1) })
@@ -491,6 +661,8 @@ end
 
 local function update(list, cmdlines, at)
   for pid, p in pairs(list) do
+    local usage = M.rusage(pid)
+    p.mem, p.ended = usage and usage.footprint or p.rss, usage and usage.ended
     local old = prev and prev.procs[pid]
     local dt = prev and at - prev.at or 0
     if old and old.comm == p.comm and p.time >= old.time and dt > 0 then
@@ -501,12 +673,16 @@ local function update(list, cmdlines, at)
   end
   prev = { at = at, procs = list }
   procs, args = list, cmdlines
-  groups, owner, core = M.group(list, cmdlines)
+  groups, owner, core = M.group(list, cmdlines, marked)
+  -- The walk starts at each core process, as a restarted server's TUI is
+  -- not its parent.
   above = {}
-  local p = list[vim.fn.getpid()]
-  while p and p.ppid > 1 do
-    above[p.ppid] = not core[p.ppid] or nil
-    p = list[p.ppid]
+  for pid in pairs(core) do
+    local p = list[pid]
+    while p and p.ppid > 1 do
+      above[p.ppid] = not core[p.ppid] or nil
+      p = list[p.ppid]
+    end
   end
   by_key = {}
   for _, g in ipairs(groups) do
@@ -525,25 +701,54 @@ local function sample(sync)
     return
   end
   busy = true
-  run(LIST, sync, function(out)
-    local at = M.clock()
-    local list = M.parse(out or "")
-    -- A failed ps keeps the rows that the window shows.
-    if next(list) == nil then
+  -- A background step after the window closed does no more work. The first
+  -- sample runs in the foreground, before the window opens.
+  local function closed()
+    if not sync and not valid() then
       busy = false
+      return true
+    end
+  end
+  local function list()
+    run(LIST, sync, function(out)
+      if closed() then
+        return
+      end
+      local at = M.clock()
+      local found = M.parse(out or "")
+      -- A failed ps keeps the rows that the window shows.
+      if next(found) == nil then
+        busy = false
+        return
+      end
+      local pids = wanted(found)
+      local function done(text)
+        if closed() then
+          return
+        end
+        busy = false
+        update(found, parse_args(text or ""), at)
+        draw()
+      end
+      if #pids == 0 then
+        done()
+      else
+        run(args_cmd(pids), sync, done)
+      end
+    end)
+  end
+  if scanned and M.clock() - scanned < M.scan_interval then
+    list()
+    return
+  end
+  run(ENV, sync, function(out)
+    if closed() then
       return
     end
-    local pids = wanted(list)
-    local function done(text)
-      busy = false
-      update(list, parse_args(text or ""), at)
-      draw()
-    end
-    if #pids == 0 then
-      done()
-    else
-      run(args_cmd(pids), sync, done)
-    end
+    scanned = M.clock()
+    -- A failed scan keeps the marks of the last one.
+    marked = out and M.marked(out, vim.fn.getpid()) or marked
+    list()
   end)
 end
 
@@ -592,7 +797,7 @@ function M.toggle()
 end
 
 function M.toggle_sort()
-  sort = sort == "cpu" and "rss" or "cpu"
+  sort = sort == "cpu" and "mem" or "cpu"
   draw()
 end
 
@@ -689,6 +894,7 @@ function M.open()
   end
   prev, expanded, row_keys, row_groups, busy, asking = nil, {}, {}, {}, false, false
   procs, groups, placed, chosen, chosen_group = {}, {}, nil, nil, nil
+  marked, scanned, owner = {}, nil, {}
   -- The first sample comes before the window, so no frame shows it empty.
   sample(true)
   if next(procs) == nil then
@@ -747,6 +953,9 @@ function M.open()
 end
 
 function M.attach(sidecar)
+  -- Each child inherits the mark, even after its parent ends. A restarted
+  -- server copies the old server's environment, so it sets its own.
+  vim.env.ANVIM_PID = tostring(vim.fn.getpid())
   sidecar.on("tool_use", function(ev)
     local input = type(ev.input) == "table" and ev.input or {}
     if ev.name == "Bash" and type(input.command) == "string" then

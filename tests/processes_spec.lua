@@ -6,7 +6,7 @@ local sidecar = require("anvim.sidecar")
 
 describe("processes", function()
   local saved = {}
-  for _, name in ipairs({ "ps", "kill", "clock", "interval" }) do
+  for _, name in ipairs({ "ps", "kill", "clock", "interval", "rusage" }) do
     saved[name] = processes[name]
   end
   local notify, select = vim.notify, vim.ui.select
@@ -125,5 +125,58 @@ describe("processes", function()
     assert.are.same({ "Send SIGTERM to Firefox (pid 2000)?" }, asked)
     assert.are.same("Cancel", first, "x and then <CR> sends nothing")
     assert.are.same({ { 2000, "sigterm" } }, killed)
+  end)
+
+  it("finds the processes that left this anvim's tree, and sums what this anvim used", function()
+    helpers.fresh()
+    local server = vim.fn.getpid()
+    local list = table.concat({
+      ("%d 1 0.0 90000 0:02.00 nvim"):format(server),
+      ("901 %d 0.0 50000 0:01.00 bun"):format(server),
+      "3000 1 15.0 900000 1:00.00 /sdk/emulator/qemu-system",
+      "3001 3000 0.0 1000 0:00.10 /sdk/emulator/crashpad",
+      "3002 1 0.0 1000 0:00.10 other",
+    }, "\n")
+    -- 3002's mark is another anvim's, whose pid starts with this one's.
+    local env = table.concat({
+      ("901 bun main.ts ANVIM_PID=%d HOME=/x"):format(server),
+      ("3000 /sdk/emulator/qemu-system -avd x ANVIM_PID=%d"):format(server),
+      ("3002 other ANVIM_PID=%d7"):format(server),
+    }, "\n")
+    processes.interval = 1e9
+    processes.ps = function(args, cb)
+      local out = args[2] == "-axo" and list or args[2]:find("E") and env or ""
+      if cb then
+        cb(out)
+      end
+      return out
+    end
+    processes.rusage = function(pid)
+      return ({ [server] = { footprint = 100000, ended = 28 }, [3000] = { footprint = 8000000, ended = 72 } })[pid]
+    end
+    local killed = {}
+    processes.kill = function(pid, signal)
+      killed[#killed + 1] = { pid, signal }
+      return 0
+    end
+    vim.ui.select = function(items, _, cb)
+      cb(items[#items])
+    end
+
+    processes.open()
+    local lines = helpers.buf_lines(processes.get().buf)
+    assert(
+      lines[1]:find("^ This anvim: 4 processes · 15%% CPU · .* · 2 outside its tree · ended processes used 1m 40s$"),
+      lines[1]
+    )
+    assert(helpers.contains(lines, "^ ◆ .* qemu%-system %(2%) · started by this anvim$"), vim.inspect(lines))
+    assert(helpers.contains(lines, "  other$"))
+    for i, line in ipairs(lines) do
+      if line:find("qemu%-system") then
+        vim.api.nvim_win_set_cursor(0, { i, 0 })
+      end
+    end
+    vim.api.nvim_feedkeys("x", "mx", false)
+    assert.are.same({ { 3000, "sigterm" } }, killed)
   end)
 end)

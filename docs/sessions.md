@@ -66,9 +66,13 @@ An account is a Claude Code configuration directory. `default` uses the normal `
 
 `<leader>cp` or `:AnvimProcesses` shows the processes that use the CPU, as htop does. Each row is a group: an app with its helpers, such as Firefox, or the processes with the same name. This anvim's own processes form the `anvim` row. Each Bash call that runs has a row of its own, named after the agent that runs it. A ◆ in the agent's color marks these rows. The rows refresh every 2 seconds while the window is open.
 
-CPU is the share of one core, so 100% is one full core and a group can show more. Memory is RSS, the resident memory. It is not the memory figure of Activity Monitor.
+A process whose parent ends moves to launchd, so it leaves anvim's tree. An Android emulator that a Bash command started can run on like this for hours. anvim sets `ANVIM_PID` in its environment, and every process that it starts inherits it. The window looks for that mark when it opens and then every 10 seconds. Each process that has the mark but left the tree gets a ◆ row of its own, such as `qemu-system (3) · started by this anvim`. macOS hides the environment of its own programs, such as `/bin/sleep` and `/bin/zsh`, so such a process stays in the row of its name. A restart sets a new mark, so the processes from before a restart stay in the rows of their names too.
 
-`x` and `X` send SIGTERM and SIGKILL after a confirm, whose first choice is Cancel. On a group, the signal goes to the processes whose parent is not in the group, such as the main Firefox process. anvim refuses to signal itself: use `:AnvimRestart` or `:q`. It also refuses to signal the processes above its terminal UI, such as the shell and the terminal app, because their end would end anvim too.
+The line above the columns sums up this anvim: its processes, their CPU and memory, the processes outside its tree, and the CPU time of the processes that ended. A process that ends counts in the parent that waited for it. A process that launchd waited for is not counted. The window's own `ps` calls count too, at a small cost while it is open.
+
+CPU is the share of one core, so 100% is one full core and a group can show more. MEM is the memory footprint, the figure of Activity Monitor. macOS gives it only for your own processes, so the processes of other users, such as root, show their RSS, the resident memory. The footprint can be much larger than the RSS, for example 8 GB against 0.9 GB for an emulator.
+
+`x` and `X` send SIGTERM and SIGKILL after a confirm, whose first choice is Cancel. On a group, the signal goes to the processes whose parent is not in the group, such as the main Firefox process. anvim refuses to signal itself: use `:AnvimRestart` or `:q`. It also refuses to signal the processes above its terminal UI, such as the shell and the terminal app, because their end would end anvim too. The rows of the processes outside the tree accept signals.
 
 ## Claude in Chrome
 
