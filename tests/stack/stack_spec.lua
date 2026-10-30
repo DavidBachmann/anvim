@@ -82,11 +82,14 @@ end
 -- Starts a child with its dirs under `dir`, and connects `chan` to it.
 -- With `personal`, its config dir holds a personal spec with those lines, as
 -- in ~/.config/anvim/lua/plugins.
+-- With `listen`, the child has no stdio channel, and a TUI in a pty attaches
+-- to that socket, as after :restart.
 ---@param dir string
 ---@param personal string[]?
 ---@param errors string[] Collects the child's stderr.
----@return integer job
-local function spawn(dir, personal, errors)
+---@param listen string?
+---@return integer job, integer? tui
+local function spawn(dir, personal, errors, listen)
   local env = vim.fn.environ()
   for key in pairs(env) do
     -- Without the cmux variables, the child posts no notifications. A shell
@@ -129,21 +132,22 @@ local function spawn(dir, personal, errors)
   -- snacks.image places images as in Ghostty. Without a UI, the escapes go nowhere.
   env.SNACKS_GHOSTTY = "1"
   -- RPC over stdio, not a socket, which Claude's sandbox does not allow.
-  local id = vim.fn.jobstart({
-    vim.v.progpath,
-    "--headless",
-    "--embed",
+  local cmd = { vim.v.progpath, "--headless" }
+  vim.list_extend(cmd, listen and { "--listen", listen } or { "--embed" })
+  vim.list_extend(cmd, {
     "--cmd",
     "set columns=200 lines=48",
     "--cmd",
     "luafile " .. helpers.root .. "/tests/stack/record_keys.lua",
     "-u",
     helpers.root .. "/init.lua",
-  }, {
+  })
+  local id = vim.fn.jobstart(cmd, {
     cwd = helpers.tmp,
     env = env,
     clear_env = true,
-    rpc = true,
+    rpc = not listen,
+    stdin = listen and "null" or nil,
     on_stderr = function(_, data)
       for _, line in ipairs(data) do
         if line ~= "" then
@@ -153,13 +157,32 @@ local function spawn(dir, personal, errors)
     end,
   })
   assert(id > 0, "child did not start")
-  chan = id
-  -- A headless Neovim has no UI, so lazy.nvim waits for UIEnter before VeryLazy.
-  lua([[vim.api.nvim_exec_autocmds("UIEnter", {})]])
+  local tui
+  if listen then
+    vim.wait(5000, function()
+      return vim.uv.fs_stat(listen) ~= nil
+    end, 20)
+    local ok
+    ok, chan = pcall(vim.fn.sockconnect, "pipe", listen, { rpc = true })
+    if not ok then
+      vim.fn.jobstop(id)
+      chan = nil
+      require("mini.test").skip("the child cannot listen on a socket, as in Claude's sandbox")
+    end
+    tui = vim.fn.jobstart({ vim.v.progpath, "--clean", "--remote-ui", "--server", listen }, {
+      pty = true,
+      width = 200,
+      height = 48,
+    })
+  else
+    chan = id
+    -- A headless Neovim has no UI, so lazy.nvim waits for UIEnter before VeryLazy.
+    lua([[vim.api.nvim_exec_autocmds("UIEnter", {})]])
+  end
   wait(5000, "return vim.g.did_very_lazy == true", "VeryLazy did not run")
   wait(5000, [[return require("anvim.state").process == "ready"]], "sidecar not ready")
   wait(2000, [[return vim.api.nvim_get_current_win() == require("anvim.layout").wins.input]], "input not focused")
-  return id
+  return id, tui
 end
 
 -- The child that most cases share. It has no personal spec.
@@ -1360,5 +1383,23 @@ describe("stack", function()
     for _, dir in ipairs({ "lazy", "mason", "site/parser", "site/queries" }) do
       assert(not vim.uv.fs_stat(xdg .. "/data/anvim/" .. dir), "anvim installed into the data dir: " .. dir)
     end
+  end)
+
+  it("quits with its sidecar when the terminal of a socket UI closes, as after :restart", function()
+    local server, tui = spawn(helpers.tmp .. "/xdg-hangup", nil, {}, vim.fn.tempname() .. ".sock")
+    local sidecar = lua([[return require("anvim.sidecar").pid()]])
+    assert(tui and sidecar, "no TUI or no sidecar")
+    vim.fn.jobstop(tui)
+    chan = nil
+    local code = vim.fn.jobwait({ server }, 5000)
+    if code[1] == -1 then
+      vim.fn.jobstop(server)
+    end
+    assert.are.same({ 0 }, code, "anvim ran on after its terminal closed")
+    -- Signal 0 only asks whether the pid exists.
+    local gone = vim.wait(3000, function()
+      return vim.uv.kill(sidecar, 0) ~= 0
+    end, 50)
+    assert(gone, "the sidecar ran on")
   end)
 end)

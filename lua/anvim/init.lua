@@ -285,6 +285,18 @@ function M.start()
     end
   end)
   api.nvim_create_autocmd("VimLeavePre", { callback = sidecar.stop })
+  -- Neovim quits when the terminal of its stdio UI closes. After :restart,
+  -- the terminal attaches over a socket, and Neovim 0.12 would run on alone
+  -- with Claude. So anvim quits once no UI is left.
+  api.nvim_create_autocmd("UILeave", {
+    callback = function()
+      vim.schedule(function()
+        if #api.nvim_list_uis() == 0 and vim.v.exiting == vim.NIL then
+          vim.cmd("qall!")
+        end
+      end)
+    end,
+  })
 end
 
 return M

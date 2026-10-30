@@ -70,6 +70,6 @@ For real terminal key behavior, the project also uses a cmux split (`cmux new-sp
 `anvim --debug` or `ANVIM_DEBUG=1` exposes two additional editor tools to Claude for developing anvim itself:
 
 - `mcp__anvim__screenshot` returns the real terminal screen as text and a PNG. PNG capture needs Chrome; `CHROME` can name another binary. Images drawn by the terminal itself are absent from the capture.
-- `mcp__anvim__reload` waits until Claude and its agents are idle, restarts anvim from the code on disk and resumes the session with the model, effort, mode and draft. Stop Claude to cancel a pending restart. Reload skips installation, so start normally after changing `lazy-lock.json`.
+- `mcp__anvim__reload` waits until Claude and its agents are idle, restarts anvim from the code on disk and resumes the session with the model, effort, mode and draft. Stop Claude to cancel a pending restart. Reload skips installation, so start normally after changing `lazy-lock.json`. After a restart, the terminal attaches to the new Neovim over a socket, and Neovim 0.12 does not quit when such a terminal closes. So anvim quits, with its sidecar, once its last UI leaves.
 
 The restarted process runs the changed code with your full user rights, outside Claude's sandbox, without another approval prompt. Use debug mode only with code you intend to run.
