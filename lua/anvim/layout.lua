@@ -867,6 +867,8 @@ function M.setup()
       end
       size_todo_win()
       sync_inline()
+      -- Neovim redraws right after this handler, before SafeState.
+      transcript.fit_tables()
     end,
   })
   -- As the prompt does, before the redraw.

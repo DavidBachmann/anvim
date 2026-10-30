@@ -1,6 +1,7 @@
 -- The conversation view, drawn like Claude Code: user prompts, streamed
 -- assistant text, and one line per tool call with its result below it.
 local agents = require("anvim.agents")
+local mdtable = require("anvim.mdtable")
 local paths = require("anvim.paths")
 local state = require("anvim.state")
 local todos = require("anvim.todos")
@@ -9,8 +10,9 @@ local M = {}
 
 local api = vim.api
 local ns = api.nvim_create_namespace("anvim.transcript")
--- Where Claude's text blocks start and end.
+-- Where Claude's text blocks and tables start and end.
 local ns_text = api.nvim_create_namespace("anvim.transcript.text")
+local ns_table = api.nvim_create_namespace("anvim.transcript.table")
 local ns_focus = api.nvim_create_namespace("anvim.transcript.focus")
 local ns_time = api.nvim_create_namespace("anvim.time")
 
@@ -95,6 +97,20 @@ local reply_done = true
 -- Claude's text blocks, as pairs of extmarks in ns_text.
 ---@type { first: integer, last: integer }[]
 local texts = {}
+---@class anvim.TextTable A markdown table in Claude's text, drawn as a box.
+---@field mark integer In ns_text, at the start of its first row.
+---@field col integer Where the box starts on the first row, after the bullet or the indent.
+---@field rows string[] The table's markdown rows, which a new width draws again.
+---@field count integer The rows that the table takes in the buffer.
+---@field width integer? The width it was drawn for.
+---@field box boolean? Whether it shows as a box. Columns that do not fit leave the markdown rows.
+
+---@type anvim.TextTable[]
+local tables = {}
+-- What Claude's open text block has so far: the line that streams in, the
+-- open fence, a row that can be a table's header, and the open table.
+---@type { line: string, fence: string?, header: string?, table: anvim.TextTable? }?
+local scan
 local regions_pending = false
 -- Set while M.batch() draws many items at once.
 local batch = false
@@ -127,7 +143,7 @@ function M.buf()
     pcall(api.nvim_buf_delete, bufnr, { force = true })
   end
   bufnr = api.nvim_create_buf(false, true)
-  texts = {}
+  texts, tables, scan = {}, {}, nil
   vim.b[bufnr].anvim_transcript = true
   require("anvim.windows").stop_at_end(bufnr)
   api.nvim_buf_set_name(bufnr, "anvim://transcript")
@@ -230,12 +246,37 @@ local function set_regions()
   if not (ok and parser) then
     return
   end
+  -- The rows of each box, which markdown must not draw over.
+  local boxes = {}
+  for _, t in ipairs(tables) do
+    local row = t.box and api.nvim_buf_get_extmark_by_id(buf, ns_text, t.mark, {})[1]
+    if row then
+      boxes[#boxes + 1] = { row, row + t.count }
+    end
+  end
+  table.sort(boxes, function(a, b)
+    return a[1] < b[1]
+  end)
   local regions = {}
   for _, t in ipairs(texts) do
     local first = api.nvim_buf_get_extmark_by_id(buf, ns_text, t.first, {})
     local last = api.nvim_buf_get_extmark_by_id(buf, ns_text, t.last, {})
     if first[1] and last[1] then
-      regions[#regions + 1] = { { first[1], first[2], last[1], last[2] } }
+      local row, col = first[1], first[2]
+      for _, box in ipairs(boxes) do
+        if box[1] > last[1] then
+          break
+        end
+        if box[1] >= row then
+          if box[1] > row then
+            regions[#regions + 1] = { { row, col, box[1], 0 } }
+          end
+          row, col = box[2], 0
+        end
+      end
+      if row < last[1] or (row == last[1] and col < last[2]) then
+        regions[#regions + 1] = { { row, col, last[1], last[2] } }
+      end
     end
   end
   for id, block in pairs(blocks) do
@@ -846,8 +887,131 @@ function M.user(text)
   end
 end
 
+-- The width that a table in Claude's text may take: the transcript's, after
+-- the indent.
+local function table_width()
+  local win = require("anvim.layout").wins.transcript
+  local width = win and api.nvim_win_is_valid(win) and api.nvim_win_get_width(win) or 80
+  return width - 2
+end
+
+-- Draws a table again in place, for its rows so far, and returns its last row.
+-- The bullet or the indent of its first row stays, as do that row's marks.
+---@param t anvim.TextTable
+---@return integer? row
+local function draw_table(buf, t)
+  t.width = table_width()
+  local start = api.nvim_buf_get_extmark_by_id(buf, ns_text, t.mark, {})[1]
+  if not start then
+    return nil
+  end
+  local lines, marks = mdtable.render(t.rows, t.width)
+  t.box = lines ~= nil
+  lines = lines or t.rows
+  local last = start + t.count - 1
+  local end_col = #(api.nvim_buf_get_lines(buf, last, last + 1, false)[1] or "")
+  api.nvim_buf_clear_namespace(buf, ns_table, start, last + 1)
+  local text = {}
+  for i, line in ipairs(lines) do
+    text[i] = (i == 1 and "" or "  ") .. line
+  end
+  api.nvim_buf_set_text(buf, start, t.col, last, end_col, text)
+  t.count = #lines
+  for _, m in ipairs(marks) do
+    local col = m[1] == 0 and t.col or 2
+    api.nvim_buf_set_extmark(buf, ns_table, start + m[1], col + m[2], {
+      end_col = col + m[3],
+      hl_group = m[4],
+      priority = 200,
+    })
+  end
+  return start + #lines - 1
+end
+
+-- Takes a line of Claude's text once its newline arrives. A header row and a
+-- delimiter row start a table, and each row after them draws it again.
+---@param row integer The line's row.
+---@return integer row The line's row after the table took it.
+local function scan_line(buf, row, line)
+  local s = assert(scan)
+  if s.fence then
+    local indent, close = line:match("^( *)([`~]+)%s*$")
+    if close and #indent < 4 and close:sub(1, 1) == s.fence:sub(1, 1) and #close >= #s.fence then
+      s.fence = nil
+    end
+    return row
+  end
+  if s.table then
+    if mdtable.is_row(line) then
+      s.table.rows[#s.table.rows + 1] = line
+      s.table.count = s.table.count + 1
+      return draw_table(buf, s.table) or row
+    end
+    s.table = nil
+  end
+  local header = s.header
+  s.header = nil
+  local aligns = header and mdtable.delimiter(line)
+  if header and aligns and #aligns == #mdtable.cells(header) then
+    -- Not the row that the header had when it came: rows above can grow
+    -- since, as a background agent's do.
+    local first = api.nvim_buf_get_lines(buf, row - 1, row, false)[1] or ""
+    s.table = {
+      mark = api.nvim_buf_set_extmark(buf, ns_text, row - 1, 0, {}),
+      col = vim.startswith(first, "⏺ ") and #"⏺ " or 2,
+      rows = { header, line },
+      count = 2,
+    }
+    tables[#tables + 1] = s.table
+    return draw_table(buf, s.table) or row
+  end
+  local fence = line:match("^ ? ? ?(```+)") or line:match("^ ? ? ?(~~~+)")
+  if fence then
+    s.fence = fence
+  elseif mdtable.is_row(line) then
+    s.header = line
+  end
+  return row
+end
+
+-- Ends Claude's open text block. The last row of a table has no newline
+-- after it, and an interrupt ends the block without text_stop.
+local function close_text()
+  local t = texts[#texts]
+  local open = t and scan and scan.table and mdtable.is_row(scan.line)
+  local row = open and api.nvim_buf_get_extmark_by_id(M.buf(), ns_text, t.last, {})[1]
+  if row then
+    with_modifiable(function(buf)
+      scan_line(buf, row, scan.line)
+    end)
+  end
+  scan = nil
+end
+
+-- Draws every table again whose width is not the transcript's.
+function M.fit_tables()
+  local buf, win = bufnr, require("anvim.layout").wins.transcript
+  -- Without its window, the transcript has no width to fit.
+  if not (buf and api.nvim_buf_is_loaded(buf) and win and api.nvim_win_is_valid(win)) or #tables == 0 then
+    return
+  end
+  local width = table_width()
+  local stale = vim.tbl_filter(function(t)
+    return t.width ~= width
+  end, tables)
+  if #stale > 0 then
+    with_modifiable(function()
+      for _, t in ipairs(stale) do
+        draw_table(buf, t)
+      end
+    end)
+  end
+end
+
 function M.text_start()
+  close_text()
   text_open, run = true, nil
+  scan = { line = "" }
   if reply_done then
     reply, reply_done = {}, false
   end
@@ -868,19 +1032,28 @@ function M.text_delta(text)
     M.text_start()
   end
   reply[#reply] = reply[#reply] .. text
-  local parts = vim.split(text, "\n", { plain = true })
-  for i = 2, #parts do
-    parts[i] = "  " .. parts[i]
+  -- A transcript buffer that was made again has no scan.
+  scan = scan or { line = "" }
+  local lines = vim.split(text, "\n", { plain = true })
+  local parts = { lines[1] }
+  for i = 2, #lines do
+    parts[i] = "  " .. lines[i]
   end
   with_modifiable(function(buf)
     local last = end_row(buf) - 1
     local col = #api.nvim_buf_get_lines(buf, last, last + 1, false)[1]
     api.nvim_buf_set_text(buf, last, col, last, col, parts)
+    for i = 1, #lines - 1 do
+      last = scan_line(buf, last, scan.line .. lines[i]) + 1
+      scan.line = ""
+    end
+    scan.line = scan.line .. lines[#lines]
   end)
 end
 
 function M.text_stop()
   text_open = false
+  close_text()
 end
 
 ---@return string
@@ -890,6 +1063,7 @@ end
 
 function M.tool_start(id, name)
   text_open, reply_done = false, true
+  close_text()
   if todos.tools[name] then
     tools[id] = { id = id, name = name, todo = true }
     return
@@ -1423,6 +1597,7 @@ end
 -- agent's end, which no prompt comes before.
 function M.turn_end()
   text_open, reply_done = false, true
+  close_text()
   for _, tool in pairs(tools) do
     if not (tool.done or tool.todo or tool.held) then
       finish_tool(tool, true, "Interrupted", "AnvimToolError")
@@ -1490,10 +1665,11 @@ function M.clear()
     end
   end
   tools, held, drawn, todo, reply, reply_done, text_open, texts = {}, {}, {}, nil, {}, true, false, {}
-  sent_back, run = {}, nil
+  sent_back, run, tables, scan = {}, nil, {}, nil
   for _, b in ipairs({ buf, log_loaded() }) do
     api.nvim_buf_clear_namespace(b, ns, 0, -1)
     api.nvim_buf_clear_namespace(b, ns_text, 0, -1)
+    api.nvim_buf_clear_namespace(b, ns_table, 0, -1)
     api.nvim_buf_clear_namespace(b, ns_focus, 0, -1)
     M.unstamp(b, 0, -1)
     with_modifiable(function()
@@ -1530,10 +1706,17 @@ function M.attach(sidecar)
       sent_back[ev.tool_use_id] = ev.reason
     end
   end)
-  api.nvim_create_autocmd("User", {
-    group = api.nvim_create_augroup("anvim.transcript", {}),
-    pattern = "AnvimAgents",
-    callback = paint_agents,
+  local group = api.nvim_create_augroup("anvim.transcript", {})
+  api.nvim_create_autocmd("User", { group = group, pattern = "AnvimAgents", callback = paint_agents })
+  -- Tables fit the transcript's width before the redraw: on WinResized, as
+  -- the prompt does, and at SafeState for a window that opens. Insert mode
+  -- skips SafeState while the completion menu shows. A terminal resize
+  -- redraws right after VimResized, whose handler in layout calls this.
+  api.nvim_create_autocmd({ "WinResized", "SafeState" }, {
+    group = group,
+    callback = function()
+      M.fit_tables()
+    end,
   })
   sidecar.on("exit", function(ev)
     sent_back = {}

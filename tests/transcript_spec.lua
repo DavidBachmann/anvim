@@ -74,6 +74,47 @@ describe("transcript", function()
     transcript.remove_block(question)
   end)
 
+  it("draws a table in Claude's text as a box that fits the window", function()
+    helpers.fresh()
+    local width = vim.api.nvim_win_get_width(layout.wins.transcript)
+    local long = "de headline north means hardly increases, not unlikely to increase, so the fix keeps the pattern"
+    transcript.text_start()
+    transcript.text_delta("| Finding | My call |\n|---|---|\n| " .. long .. " | Take")
+    local lines = helpers.buf_lines(transcript.buf())
+    assert(vim.startswith(lines[1], "⏺ ┌"), "the header does not show as a box while the table streams")
+    transcript.text_delta(" it. |\n| `short` | **Your call.** |")
+    transcript.text_stop()
+    lines = helpers.buf_lines(transcript.buf())
+    local first, last
+    for i, line in ipairs(lines) do
+      assert(vim.api.nvim_strwidth(line) <= width, ("line %d is wider than the window: %s"):format(i, line))
+      assert(not line:find("^%s*|"), "a markdown row stays: " .. line)
+      first = first or (line:find("│ de headline", 1, true) and i)
+      last = line:find("pattern", 1, true) and i or last
+    end
+    assert(first and last and last > first, "the long cell does not wrap:\n" .. table.concat(lines, "\n"))
+    helpers.contains(lines, "^  │ short +│ Your")
+    assert(transcript.last_reply():find("|---|", 1, true), "the reply to copy lost its markdown")
+  end)
+
+  it("draws a table in its own rows after rows above it grow", function()
+    helpers.fresh()
+    local buf = transcript.buf()
+    transcript.text_start()
+    transcript.text_delta("Intro\n| a | b |\n")
+    -- A background agent's rows grow above the text while it streams.
+    vim.bo[buf].modifiable = true
+    vim.api.nvim_buf_set_lines(buf, 0, 0, false, { "agent row" })
+    vim.bo[buf].modifiable = false
+    transcript.text_delta("|---|---|\n| 1 | 2 |\n")
+    transcript.text_stop()
+    local lines = helpers.buf_lines(buf)
+    helpers.contains(lines, "Intro")
+    for _, line in ipairs(lines) do
+      assert(not line:find("^%s*|"), "a markdown row stays:\n" .. table.concat(lines, "\n"))
+    end
+  end)
+
   it("keeps an underscore inside a word as text, also next to a digit", function()
     helpers.start()
     local buf = vim.api.nvim_create_buf(false, true)

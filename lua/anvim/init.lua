@@ -24,6 +24,7 @@ local highlights = {
   AnvimToolError = { link = "DiagnosticError" },
   AnvimResult = { link = "Comment" },
   AnvimTime = { link = "Comment" },
+  AnvimTableBorder = { link = "Comment" },
   AnvimModeManual = { link = "DiagnosticOk" },
   AnvimModeEdits = { link = "DiagnosticHint" },
   AnvimModePlan = { link = "DiagnosticInfo" },

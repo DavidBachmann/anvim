@@ -4,7 +4,7 @@
 
 The transcript is the conversation above the prompt: your messages, Claude's replies, activity and notices. Prompts, replies, tool calls and notices carry a dim timestamp when there is room, including in agent logs and resumed sessions.
 
-Claude's replies render Markdown, including syntax-highlighted code blocks. Prompts and tool input remain literal, so shell syntax is not mistaken for Markdown. Paths under the working directory are shortened for display.
+Claude's replies render Markdown, including syntax-highlighted code blocks. Tables show as boxes that fit the transcript's width, with text wrapped inside each cell, and they redraw when the width changes. Prompts and tool input remain literal, so shell syntax is not mistaken for Markdown. Paths under the working directory are shortened for display.
 
 <a id="tool-calls"></a>
 <a id="the-todo-list"></a>
