@@ -490,6 +490,17 @@ local function by_sort(a, b)
   return (a.name or a.pid) < (b.name or b.pid)
 end
 
+-- This anvim's rows come first, so an idle one shows without a scroll.
+local RANK = { anvim = 1, bash = 2, escaped = 3 }
+
+local function by_rank(a, b)
+  local x, y = RANK[a.kind] or 4, RANK[b.kind] or 4
+  if x ~= y then
+    return x < y
+  end
+  return by_sort(a, b)
+end
+
 local function cpu_text(cpu)
   return ("%d%%"):format(math.floor(cpu + 0.5))
 end
@@ -579,7 +590,7 @@ local function render(width)
   local head = "    CPU    MEM  NAME"
   local active = sort == "cpu" and { 4, 7 } or { 11, 14 }
   add(head, nil, { { 0, #head, "AnvimResult" }, { active[1], active[2], "Title" } })
-  table.sort(groups, by_sort)
+  table.sort(groups, by_rank)
   local name_width = width - 16
   for _, g in ipairs(groups) do
     local name = #g.members > 1 and ("%s (%d)"):format(g.name, #g.members) or g.name

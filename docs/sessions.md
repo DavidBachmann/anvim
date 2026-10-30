@@ -64,7 +64,7 @@ An account is a Claude Code configuration directory. `default` uses the normal `
 
 ## Processes
 
-`<leader>cp` or `:AnvimProcesses` shows the processes that use the CPU, as htop does. Each row is a group: an app with its helpers, such as Firefox, or the processes with the same name. This anvim's own processes form the `anvim` row. Each Bash call that runs has a row of its own, named after the agent that runs it. A ◆ in the agent's color marks these rows. The rows refresh every 2 seconds while the window is open.
+`<leader>cp` or `:AnvimProcesses` shows the processes that use the CPU, as htop does. Each row is a group: an app with its helpers, such as Firefox, or the processes with the same name. This anvim's own processes form the `anvim` row. Each Bash call that runs has a row of its own, named after the agent that runs it. A ◆ in the agent's color marks these rows. This anvim's rows come first, and the other rows follow by CPU or by memory. The rows refresh every 2 seconds while the window is open.
 
 A process whose parent ends moves to launchd, so it leaves anvim's tree. An Android emulator that a Bash command started can run on like this for hours. anvim sets `ANVIM_PID` in its environment, and every process that it starts inherits it. The window looks for that mark when it opens and then every 10 seconds. Each process that has the mark but left the tree gets a ◆ row of its own, such as `qemu-system (3) · started by this anvim`. macOS hides the environment of its own programs, such as `/bin/sleep` and `/bin/zsh`, so such a process stays in the row of its name. A restart sets a new mark, so the processes from before a restart stay in the rows of their names too.
 

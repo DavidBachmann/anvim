@@ -104,6 +104,16 @@ describe("processes", function()
     assert(helpers.contains(lines, "^ +100%% .* Firefox %(3%)$"), vim.inspect(lines))
     assert(helpers.contains(lines, " anvim %(5%)$"))
     assert(helpers.contains(lines, (" Bash · %s · make test %%(2%%)$"):format(vim.pesc(label))))
+    local function row_of(pattern)
+      for i, line in ipairs(lines) do
+        if line:find(pattern) then
+          return i
+        end
+      end
+    end
+    -- This anvim's idle rows come before the busy Firefox.
+    local own, bash, busy = row_of(" anvim %(5%)$"), row_of(" Bash · "), row_of("Firefox %(3%)$")
+    assert(own < bash and bash < busy, vim.inspect(lines))
 
     local function go(pattern)
       for i, line in ipairs(helpers.buf_lines(buf)) do
