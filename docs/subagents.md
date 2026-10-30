@@ -7,7 +7,7 @@ Claude can delegate work to several subagents at once. anvim has four numbered, 
 
 ## Find and follow an agent
 
-The prompt footer shows colored dots and the number of running agents. In prompt normal mode, press `j` or `Down` on the last line to select the count. `Enter` opens the Agent Overview; `f` cycles through agents and back to Claude. `k`, `Up` or `Esc` clears the selection.
+The prompt footer shows colored dots and the number of running agents. In prompt normal mode, press `j` or `Down` on the last line to select the count. `Enter` opens the Agent Overview; `f` cycles through agents and back to Claude. `k`, `Up` or `Esc` clears the selection. `Ctrl-F` does what `f` does, in normal mode in any window, without the selection. With no agent running, `Ctrl-F` keeps its usual job.
 
 Alternatively, `<leader>ca` opens the Overview, `<leader>c1` through `<leader>c4` focus an agent directly, and `<leader>c0` returns to Claude. The Overview lists each agent's task, tool use, location and estimated context use, with a preview of its location. Its list expands to fit, up to half the window.
 

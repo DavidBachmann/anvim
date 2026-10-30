@@ -133,7 +133,15 @@ function M.buf()
       M.move(lhs == "j" or lhs == "<Down>")
     end)
   end
-  scroll("n", { "<C-u>", "<C-d>", "<C-b>", "<C-f>" })
+  scroll("n", { "<C-u>", "<C-d>", "<C-b>" })
+  -- As in every window, <C-f> follows the next agent while agents run.
+  map("n", "<C-f>", function()
+    if #require("anvim.agents").running() > 0 then
+      M.follow_next()
+    else
+      require("anvim.windows").scroll("<C-f>")
+    end
+  end)
   scroll({ "n", "i" }, { "<PageUp>", "<PageDown>" })
   keys.set("transcript", { "n", "i" }, "<LeftDrag>", function()
     return require("anvim.windows").drag_keys()

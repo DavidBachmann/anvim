@@ -74,7 +74,8 @@ The tables below are a quick reference; Vim's normal motions still work. The rea
 | `Up` on the first line, `Ctrl-P` | Take the queued prompts back into the prompt, to change them, while prompts are queued |
 | `Up` on the first line, `Down` on the last | Move through prompt history, in insert mode |
 | `Ctrl-P`, `Ctrl-N` | Move through prompt history, in normal mode |
-| `Ctrl-U`, `Ctrl-D`, `Ctrl-B`, `Ctrl-F` | Scroll the transcript, in normal mode |
+| `Ctrl-U`, `Ctrl-D`, `Ctrl-B` | Scroll the transcript, in normal mode |
+| `Ctrl-F` | Follow the next agent while agents run, or scroll the transcript, in normal mode |
 | `PageUp`, `PageDown` | Scroll the transcript |
 | `@`, `/` | Complete a file, or a slash command at the start, in insert mode |
 | `?` | Open the key view, in normal mode or in an empty prompt |
@@ -128,6 +129,7 @@ These keys work in the prompt, in normal mode, while Claude waits for your answe
 | `<leader>j`, `<leader>cj` | Jump to where Claude, or the focused subagent, is |
 | `<leader>c1` to `<leader>c4` | Focus the subagent with that number, so follow mode follows it |
 | `<leader>c0` | Focus Claude, the main agent, again |
+| `Ctrl-F` | While agents run, focus the next agent, and Claude after the last. Otherwise Neovim's own |
 | `<leader>ca` | Open the Agent Overview: pick an agent to focus, with its place in the preview |
 | `<leader>ct`, `:AnvimTrail` | Pick a place from Claude's trail |
 | `<leader>cf` | Pick one of the last 25 files of Claude or the followed subagent |

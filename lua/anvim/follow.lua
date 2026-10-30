@@ -951,6 +951,11 @@ function M.attach(sidecar)
       M.follow_slot(slot)
     end)
   end
+  -- f on the agent count, from any window. With no agent running, it is
+  -- Neovim's own.
+  keys.set("claude", "n", "<C-f>", function()
+    return #agents.running() > 0 and "<Cmd>lua require('anvim.input').follow_next()<CR>" or "<C-f>"
+  end, { expr = true })
 end
 
 return M
