@@ -1,6 +1,6 @@
 # anvim documentation
 
-New to anvim? Start with [installation](install.md), then take a tour of [the screen](screen.md) and [the prompt](prompt.md). The prompt guide shows how to point Claude at code and what happens when you send a message during a turn.
+New to anvim? Start with [installation](install.md), then take a tour of [the screen](screen.md) and [the prompt](prompt.md). The prompt guide shows how to point Claude at code and what happens when you send a message during a turn. The [screenshots](screenshots/) follow one short session from the first prompt to five background agents.
 
 When you need a particular answer:
 

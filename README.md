@@ -1,16 +1,18 @@
 # *anvim*
 
-*anvim* is a Neovim workspace for Claude Code.
+*anvim* is an agentic Neovim workspace for Claude Code.
 
 A Claude Code harness built around the code.
 
 Follow Claude through your project, watch edits take shape, and use familiar Vim motions, search, LSP and Git tools to explore the code.
 
-![The Ctrl-G prompt editor in anvim](docs/readme01.png)
+![An edit streams into follow.lua, with the old lines struck through](docs/screenshots/03-edit-streams.png)
 
-![The Agent Overview with two background agents](docs/readme02.png)
+![Five background agents, with their dots in the footer](docs/screenshots/06-five-agents.png)
 
-![A subagent's edit streams into sessions.ts](docs/readme03.png)
+![The Agent Overview with four Claude agents and a Codex agent](docs/screenshots/08-agent-overview.png)
+
+See more screenshots [here](docs/screenshots/).
 
 ## See the work. Stay in it.
 
