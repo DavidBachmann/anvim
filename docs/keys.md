@@ -4,7 +4,7 @@
 
 `<leader>` is Space. Use `<leader>?` for the live key view, grouped by context. In prompt normal mode, `?` also opens it; in insert mode it does so only in an empty prompt with no request waiting. Otherwise `?` is text. Scroll with `j`/`k`, and close with `q`, `Esc` or `:q`; the previous cursor and mode return. Mode tags identify mappings that need insert or visual mode.
 
-The tables below are a quick reference; Vim's normal motions still work. The reading keys follow LazyVim conventions. File-changing mappings such as rename and code actions are unavailable in the read-only viewer; split actions open files in the code window. In the explorer, file operations and `Ctrl-C` (change directory) are disabled. Git pickers can stage with `Tab` but cannot restore files or check out commits. Neovim's text-changing `gc`, `gcc`, `[<Space>`, `]<Space>` and `&` are also disabled; operator-pending `gc` remains a comment text object, so `cgc` can reference a comment for Claude.
+The tables below are a quick reference; Vim's normal motions still work. The reading keys follow LazyVim conventions. File-changing mappings such as rename and code actions are unavailable in the code window; split actions open files there instead. In the explorer, file operations and `Ctrl-C` (change directory) are disabled. Git pickers can stage with `Tab` but cannot restore files or check out commits. Neovim's text-changing `gc`, `gcc`, `[<Space>`, `]<Space>` and `&` are also disabled; operator-pending `gc` remains a comment text object, so `cgc` can reference a comment for Claude.
 
 <a id="everywhere"></a>
 

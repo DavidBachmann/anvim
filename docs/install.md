@@ -14,9 +14,11 @@ On Linux, the Bash sandbox also needs `bwrap` and `socat`. If it cannot start, a
 
 ## Install
 
-From the repository root:
+Clone the repository and install from its root:
 
 ```sh
+git clone https://github.com/DavidBachmann/anvim.git
+cd anvim
 scripts/install
 mkdir -p ~/.local/bin
 ln -s "$PWD/bin/anvim" ~/.local/bin/anvim

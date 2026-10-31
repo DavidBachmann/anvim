@@ -52,7 +52,7 @@ You'll still need Claude Code's terminal for MCP sign-in, paid cloud reviews and
 - safe-Esc, because Vim users tend to spam `Esc` just to be sure. Stopping Claude or answering no takes two presses with a pause, so a quick burst won't accidentally cancel anything.
 - If Claude asks for permission while you're typing a prompt, you can finish your thought without accidentally approving or rejecting anything. Press `Esc` to leave insert mode, then choose an answer.
 - Moving focus won't start insert mode. Use `i`, `a`, `c` or another insert command when you're ready to type.
-- Your prompt is what you wrote. *anvim* adds no hidden context.
+- Claude doesn't automatically receive the file or selection you're viewing. Add a reference when you want to point something out.
 - Keys follow LazyVim, so they should feel familiar. Keys that change files sit this one out.
 - The transcript and tool pane stay out of your cursor's way. Scroll with the mouse wheel; drag to copy text.
 - Notifications only pipe up when *anvim* is out of sight.
@@ -83,7 +83,7 @@ The code window follows Claude while your cursor stays in the prompt. Wander off
 
 Select lines and press `c` to put a reference such as `@src/app.lua#L12-30` in the prompt. Claude Code reads those lines with your prompt. Think of `c` as "change this, Claude".
 
-Claude starts in bypass mode with the sandbox on. It edits files and runs commands without asking, and the sandbox keeps its commands from writing outside the project. `anvim --mode default` asks first.
+By default, Claude starts in bypass mode with the Bash sandbox on. It can edit files and run sandboxed commands without ordinary permission prompts. The sandbox permits writes in the project and some other locations; see [permissions and the sandbox](docs/permissions.md) for details. `anvim --mode default` asks before operations that need approval.
 
 ```sh
 anvim --model haiku ~/dev/project      # pick a model
