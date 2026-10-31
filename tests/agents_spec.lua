@@ -4,6 +4,7 @@ local agents = require("anvim.agents")
 local helpers = require("helpers")
 local input = require("anvim.input")
 local sidecar = require("anvim.sidecar")
+local spinner = require("anvim.spinner")
 local transcript = require("anvim.transcript")
 
 local api = vim.api
@@ -35,14 +36,14 @@ local function bullet(pattern)
   error("no line matches " .. pattern)
 end
 
--- The groups of the footer's dots, and the footer's text, as drawn under the prompt.
+-- The groups of the footer's spinners, and the footer's text, as drawn under the prompt.
 local function footer()
   local ns = api.nvim_get_namespaces()["anvim.input"]
   local mark = api.nvim_buf_get_extmarks(input.buf(), ns, 0, -1, { details = true })[1]
   local chunks = mark[4].virt_lines[#mark[4].virt_lines]
   local dots, text = {}, {}
   for _, chunk in ipairs(chunks) do
-    if chunk[1] == "⏺" then
+    if vim.list_contains(spinner.frames, chunk[1]) or vim.list_contains(spinner.focus_frames, chunk[1]) then
       dots[#dots + 1] = chunk[2]
     end
     text[#text + 1] = chunk[1]
@@ -75,8 +76,18 @@ describe("agents", function()
   -- State that a case changes, to restore even when it fails.
   local restore ---@type fun()?
 
+  local clock = spinner.clock
+  local now = 0
+  before_each(function()
+    now = 0
+    spinner.clock = function()
+      return now
+    end
+  end)
+
   -- Running agents would show in other specs' footers.
   after_each(function()
+    spinner.clock = clock
     agents.clear()
     local fn = restore
     restore = nil
@@ -193,7 +204,7 @@ describe("agents", function()
     assert.are.same("AnvimAgent3", bullet("^⏺ Agent%(Edit gamma%.js header%)"))
     local dots, text = footer()
     assert.are.same({ "AnvimAgent1", "AnvimAgent2", "AnvimAgent3" }, dots)
-    assert.are.same("  ⏺⏺⏺ 3 agents ↓", text)
+    assert.are.same("  ⠋ ⠋ ⠋ 3 agents ↓", text)
 
     sidecar.dispatch(events[i])
     assert.are.same({ { beta, 2 }, { gamma, 3 } }, slots(), "beta and gamma keep their slots")
@@ -213,6 +224,46 @@ describe("agents", function()
     dots, text = footer()
     assert.are.same({}, dots)
     assert(not text:find("agent", 1, true), text)
+  end)
+
+  it("turns the footer's spinner while an agent runs, and a half circle while it has focus", function()
+    helpers.fresh()
+    local follow = require("anvim.follow")
+    local function text()
+      return select(2, footer())
+    end
+    sidecar.dispatch({
+      type = "agent_start",
+      agent_id = "s1",
+      tool_use_id = "toolu_S1",
+      description = "Spin",
+      depth = 1,
+      background = false,
+    })
+    assert.are.same("  ⠋ 1 agent ↓", text())
+    -- Only the timer may draw the next frame. Other renders, such as the git
+    -- branch's, would draw it too.
+    local render = input.render
+    restore = function()
+      follow.set_focus(nil)
+      input.render = render
+      input.render()
+    end
+    input.render = function() end
+    now = 80
+    assert(
+      vim.wait(1000, function()
+        return text() == "  ⠙ 1 agent ↓"
+      end),
+      "the timer draws the next frame: " .. text()
+    )
+    follow.set_focus("s1")
+    assert(
+      vim.wait(1000, function()
+        return text() == "  ◐ 1 agent ↓"
+      end),
+      "the focused agent's spinner is a half circle: " .. text()
+    )
   end)
 
   it("selects the agent count with j on the last prompt line, and enter opens the Agent Overview", function()

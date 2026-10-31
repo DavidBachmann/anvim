@@ -11,9 +11,9 @@ Each Agent call gives a short task, such as `Verify statusline slice`. anvim sho
 
 While agents are running, press `Ctrl-F` in normal mode to cycle through them and back to Claude. The code window and tool pane follow the selected agent. With no agent running, `Ctrl-F` keeps its usual job.
 
-The prompt footer shows colored dots and the number of running agents. In prompt normal mode, press `j` or `Down` on the last line to select the count. `Enter` opens the Agent Overview; `f` also cycles through agents and back to Claude. `k`, `Up` or `Esc` clears the selection.
+The prompt footer shows a spinner in each running agent's color, and the number of running agents. The focused agent's spinner is a turning half circle. In prompt normal mode, press `j` or `Down` on the last line to select the count. `Enter` opens the Agent Overview; `f` also cycles through agents and back to Claude. `k`, `Up` or `Esc` clears the selection.
 
-Alternatively, `<leader>ca` opens the Overview, `<leader>c1` through `<leader>c4` focus an agent directly, and `<leader>c0` returns to Claude. The Overview lists each agent's task, tool use, location and estimated context use, with a preview of its location. Its list expands to fit, up to half the window.
+Alternatively, `<leader>ca` opens the Overview, `<leader>c1` through `<leader>c4` focus an agent directly, and `<leader>c0` returns to Claude. The Overview lists each agent's task, tool use, location and estimated context use, with a preview of its location. Running agents, and Claude while it works, have the same spinners there. Its list expands to fit, up to half the window.
 
 When an agent is focused, the code window follows its reads and edits, the tool pane shows its calls, and the statusline and footer identify it. Other agents cannot move the view away. Its dots in the explorer mark its current file with `⏺` and other files it wrote with `-`; collapsed folders summarize activity below them. Dots disappear when an agent ends. Claude's own markers last until its turn ends.
 

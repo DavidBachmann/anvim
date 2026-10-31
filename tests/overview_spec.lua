@@ -48,14 +48,20 @@ end
 describe("the Agent Overview", function()
   local notify = vim.notify
   local said = {}
+  local spinner = require("anvim.spinner")
+  local clock = spinner.clock
   before_each(function()
     said = {}
     vim.notify = function(msg, level)
       said[#said + 1] = { msg, level }
     end
+    spinner.clock = function()
+      return 0
+    end
   end)
   after_each(function()
     vim.notify = notify
+    spinner.clock = clock
     overview.close()
     vim.wait(50)
     sidecar.dispatch({ type = "reset" })
@@ -69,8 +75,8 @@ describe("the Agent Overview", function()
     sidecar.dispatch({ type = "agent_context", agent_id = "a1", tokens = 230000, max = 1000000, percent = 23 })
     assert.are.same({
       "◉ Claude        6%  idle",
-      "⏺ Agent 1      23%  Task a1 · working",
-      "⏺ Agent 2           Task a2 · working",
+      "⠋ Agent 1      23%  Task a1 · working",
+      "⠋ Agent 2           Task a2 · working",
     }, vim.tbl_map(texts, overview.items()))
   end)
 
@@ -123,11 +129,11 @@ describe("the Agent Overview", function()
     follow.set_focus("a2")
     assert.are.same({
       "⏺ Claude      idle",
-      "⏺ Explore 1   Find x · Reading a.lua",
-      "◉ Agent 2     bg · Task a2 · working",
-      "⏺ Agent 3     Task a3 · working",
-      "⏺ Agent 4     Task a4 · working",
-      "⏺ Explore     no slot · Task a5 · working",
+      "⠋ Explore 1   Find x · Reading a.lua",
+      "◐ Agent 2     bg · Task a2 · working",
+      "⠋ Agent 3     Task a3 · working",
+      "⠋ Agent 4     Task a4 · working",
+      "⠋ Explore     no slot · Task a5 · working",
       "⏺ Agent       done · Task x2",
       "⏺ Agent       failed · Task x1",
     }, vim.tbl_map(texts, items))

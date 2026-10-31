@@ -6,6 +6,7 @@ local agentlog = require("anvim.agentlog")
 local agents = require("anvim.agents")
 local follow = require("anvim.follow")
 local keys = require("anvim.keys")
+local spinner = require("anvim.spinner")
 local state = require("anvim.state")
 local truncate = require("anvim.text").truncate
 local transcript = require("anvim.transcript")
@@ -177,13 +178,21 @@ local function name_width()
   return width + 2
 end
 
+-- Whether agent `id` works now, or Claude for nil.
+---@param id string?
+local function works(id)
+  local agent = id and agents.get(id)
+  return agent and agent.status == "running" or not id and claude_status() == "working"
+end
+
 ---@param item anvim.OverviewItem
 function M.format(item)
   local name, group, bullet, status = describe(item.agent_id)
   local pad = math.max(2, name_width() - api.nvim_strwidth(name))
   local pct = percent(item.agent_id)
+  local focused = item.agent_id == follow.focus
   return {
-    { (item.agent_id == follow.focus and "◉" or "⏺") .. " ", bullet },
+    { (works(item.agent_id) and spinner.frame(focused) or focused and "◉" or "⏺") .. " ", bullet },
     { name, group },
     { (" "):rep(pad) },
     { pct and ("%3d%%  "):format(pct) or (" "):rep(percent_width()), "Comment" },
@@ -422,6 +431,16 @@ local function fit(p, grow)
   p:update_titles()
 end
 
+-- Each frame redraws the rows, but not while a find runs or waits.
+local spin = spinner.animate(function()
+  return M.get() ~= nil and (works(nil) or #agents.running() > 0)
+end, function()
+  local p = M.get()
+  if p and p.list and not scheduled and not p:is_active() and ids(M.items()) == order then
+    p.list:update({ force = true })
+  end
+end)
+
 -- Tabs that came or went run a find, which would put the cursor on the
 -- first row, so the list keeps the selected agent's row as its target.
 -- Other changes redraw the rows and the preview's title.
@@ -471,6 +490,7 @@ local function refresh()
     p.preview:set_title(preview_title(current.agent_id, p.preview.win.win))
     p:update_titles()
   end
+  spin()
 end
 
 local function schedule()
@@ -522,6 +542,7 @@ function M.open()
       end
     end,
   })
+  spin()
 end
 
 function M.attach(sidecar)

@@ -3,6 +3,7 @@
 -- that wait for Claude, and the footer that shows the running agents.
 local config = require("anvim.config")
 local sidecar = require("anvim.sidecar")
+local spinner = require("anvim.spinner")
 local state = require("anvim.state")
 local truncate = require("anvim.text").truncate
 local todos = require("anvim.todos")
@@ -699,8 +700,8 @@ function M.follow_next()
   require("anvim.follow").set_focus(agent and agent.id)
 end
 
--- A dot in each running agent's color, with their count, under the prompt
--- text. The focused agent's dot is ◉. The arrow says that j reaches the count.
+-- A spinner in each running agent's color, with their count, under the
+-- prompt text. The arrow says that j reaches the count.
 ---@return [string, string?][]
 function M.footer()
   local follow, agents = require("anvim.follow"), require("anvim.agents")
@@ -708,7 +709,11 @@ function M.footer()
   local chunks = { { "  " } } ---@type [string, string?][]
   for _, agent in ipairs(running) do
     if agent.slot then
-      chunks[#chunks + 1] = { agent.id == follow.focus and "◉" or "⏺", agents.group(agent.slot) }
+      -- Fonts can draw the half circle wider than its cell.
+      if #chunks > 1 then
+        chunks[#chunks + 1] = { " " }
+      end
+      chunks[#chunks + 1] = { spinner.frame(agent.id == follow.focus), agents.group(agent.slot) }
     end
   end
   if #chunks == 1 then
@@ -829,15 +834,15 @@ function M.show_footer()
   end
 end
 
--- Places the footer under the last line, and fits the window to the prompt:
--- its lines plus the footer, within the configured height.
-function M.render()
-  if not (bufnr and api.nvim_buf_is_loaded(bufnr)) then
-    return
-  end
-  local win = prompt_win()
+local function loaded()
+  return bufnr ~= nil and api.nvim_buf_is_loaded(bufnr)
+end
+
+-- The rule, the queued prompts and the footer, as virtual lines under the
+-- last line.
+local function place_footer()
   local last = api.nvim_buf_line_count(bufnr) - 1
-  local width = win_width(win)
+  local width = win_width(prompt_win())
   local lines = { { { ("─"):rep(width), "AnvimRule" } } }
   -- Each queued prompt's first line, cut to the window.
   for i, q in ipairs(queued) do
@@ -858,6 +863,25 @@ function M.render()
     virt_lines = lines,
     virt_lines_leftcol = true,
   })
+end
+
+local spin = spinner.animate(function()
+  return loaded() and count_shown()
+end, function()
+  if loaded() then
+    place_footer()
+  end
+end)
+
+-- Places the footer under the last line, and fits the window to the prompt:
+-- its lines plus the footer, within the configured height.
+function M.render()
+  if not loaded() then
+    return
+  end
+  place_footer()
+  spin()
+  local win = prompt_win()
   if win then
     local limits = config.options.layout.input_height
     local rows = api.nvim_win_text_height(win, {}).all
