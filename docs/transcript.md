@@ -21,6 +21,6 @@ Claude's [todo list](todos.md) stays below the newest output while it has open i
 
 ## Scroll, search and copy
 
-The transcript normally takes no focus. Scroll it with the mouse wheel, `PageUp`/`PageDown`, or `Ctrl-U`, `Ctrl-D`, `Ctrl-B` and `Ctrl-F` in prompt normal mode. New output follows the bottom unless you have scrolled up; scroll back down or send a prompt to follow it again.
+The transcript normally takes no focus. Scroll it with the mouse wheel, `PageUp`/`PageDown`, or `Ctrl-U`, `Ctrl-D`, `Ctrl-B` and `Ctrl-F` in prompt normal mode. While agents are running, `Ctrl-F` instead cycles through them and back to Claude. New output follows the bottom unless you have scrolled up; scroll back down or send a prompt to follow it again.
 
 To use Vim motions, search or yank, enter read mode with `<leader>cr` or `:AnvimTranscript`. `q` or `Esc` returns to the prompt; `i`, `a` and the other insert keys return and begin typing. You can also drag across the transcript: releasing the mouse copies the selection without its margin. `<leader>cy` copies Claude's last reply directly.

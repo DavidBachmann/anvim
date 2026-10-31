@@ -9,7 +9,9 @@ Each Agent call gives a short task, such as `Verify statusline slice`. anvim sho
 
 ## Find and follow an agent
 
-The prompt footer shows colored dots and the number of running agents. In prompt normal mode, press `j` or `Down` on the last line to select the count. `Enter` opens the Agent Overview; `f` cycles through agents and back to Claude. `k`, `Up` or `Esc` clears the selection. `Ctrl-F` does what `f` does, in normal mode in any window, without the selection. With no agent running, `Ctrl-F` keeps its usual job.
+While agents are running, press `Ctrl-F` in normal mode to cycle through them and back to Claude. The code window and tool pane follow the selected agent. With no agent running, `Ctrl-F` keeps its usual job.
+
+The prompt footer shows colored dots and the number of running agents. In prompt normal mode, press `j` or `Down` on the last line to select the count. `Enter` opens the Agent Overview; `f` also cycles through agents and back to Claude. `k`, `Up` or `Esc` clears the selection.
 
 Alternatively, `<leader>ca` opens the Overview, `<leader>c1` through `<leader>c4` focus an agent directly, and `<leader>c0` returns to Claude. The Overview lists each agent's task, tool use, location and estimated context use, with a preview of its location. Its list expands to fit, up to half the window.
 

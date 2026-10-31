@@ -18,7 +18,7 @@ Claude Code's terminal tells you `Read(src/app.ts)`, then `Update(src/app.ts)`. 
 
 - Follow Claude from file to file, right down to the lines it's reading.
 - Watch edits stream in, with old text struck through, before the changes reach disk.
-- Keep tabs on agents by their colored dots in the explorer. Pick one to follow its reads and edits.
+- Keep tabs on agents by their colored dots in the explorer. While agents are running, press `Ctrl-F` in normal mode to cycle through them and back to Claude; the code window and tool pane follow the selected agent.
 - Peek at the Agent Overview for each agent's task, context use and tool calls.
 - Bring [Codex](docs/subagents.md#codex-agents) along with `--codex`: ask Claude to hand it a task, and it gets its own dot and row like everyone else.
 
@@ -34,7 +34,7 @@ Your skills, plugins, MCP servers, hooks, settings, permission rules, subagents 
 
 The SDK leaves the interface to us. Here's what *anvim* puts back:
 
-- The transcript and tool pane.
+- A conversation that stays easy to read: tool calls and results go in a separate pane beneath the code, while the transcript summarizes each run. Hide the pane with `<leader>us` to show calls in the transcript instead.
 - A todo list per project, which `/clear` keeps and `/reset` deletes.
 - The prompt: `@` and `/` completion, past prompts and pasted images.
 - `Ctrl-G` for long prompts, `Up` to retrieve queued prompts, `Ctrl-B` to background agents.
@@ -56,6 +56,7 @@ You'll still need Claude Code's terminal for MCP sign-in, paid cloud reviews and
 - Keys follow LazyVim, so they should feel familiar. Keys that change files sit this one out.
 - The transcript and tool pane stay out of your cursor's way. Scroll with the mouse wheel; drag to copy text.
 - Notifications only pipe up when *anvim* is out of sight.
+- Switch Claude accounts with `/account`, or add one with `/account add <name>`. anvim remembers your choice per project; see [accounts](docs/sessions.md#accounts).
 
 ## Install
 

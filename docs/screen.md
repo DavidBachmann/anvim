@@ -30,7 +30,7 @@ Only one window displays project files. A split or diff-split action opens the f
 
 ## The tool pane
 
-The pane below the code lists tool calls and results for Claude or the followed agent. Its bar names the agent and elapsed run time when applicable. The transcript summarizes each run. Drag the pane's top border or use `:resize` in the code window to change its share of the column for this run. It hides temporarily when the terminal is too short.
+The pane below the code lists tool calls and results for Claude or the followed agent, keeping them separate from the conversation. The transcript summarizes each run, while the pane shows the details. Its bar names the agent and elapsed run time when applicable. Drag the pane's top border or use `:resize` in the code window to change its share of the column for this run. It hides temporarily when the terminal is too short.
 
 The pane takes no focus; use the mouse wheel to scroll it. `<leader>us` hides it and sends subsequent tool calls to the transcript. Calls already drawn stay where they are, and the choice persists across starts. `Ctrl-O` toggles full tool input and output; see [the transcript](transcript.md#tool-output).
 
