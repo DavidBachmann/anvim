@@ -1,6 +1,10 @@
 # *anvim*
 
-Claude Code, dressed as Neovim.
+*anvim* is a Neovim workspace for Claude Code.
+
+A Claude Code harness built around the code.
+
+Follow Claude through your project, watch edits take shape, and use familiar Vim motions, search, LSP and Git tools to explore the code.
 
 ![The Ctrl-G prompt editor in anvim](docs/readme01.png)
 
@@ -8,9 +12,7 @@ Claude Code, dressed as Neovim.
 
 ![A subagent's edit streams into sessions.ts](docs/readme03.png)
 
-*anvim* is a read-only Neovim for keeping an eye on your coding agents. Claude does the typing; you get your Vim motions, a proper view of the code, and a comfortable place to say "hang on a second."
-
-## Why read-only?
+## See the work. Stay in it.
 
 Claude Code's terminal tells you `Read(src/app.ts)`, then `Update(src/app.ts)`. *anvim* opens the file so you can see what Claude is actually up to.
 
@@ -22,7 +24,7 @@ Claude Code's terminal tells you `Read(src/app.ts)`, then `Update(src/app.ts)`. 
 
 Hop out of the prompt to review code with LSP, grep, git log and diffs. `<leader>j` brings you back to Claude when you've found something to point at.
 
-Claude writes; you review and steer. If you want to edit a file yourself, open your usual Neovim. *anvim* picks up the changes from disk.
+Code buffers are for navigation and review; Claude makes the edits. If you want to edit a file yourself, open your usual Neovim. *anvim* picks up the changes from disk.
 
 ## Claude Code under the hood
 
