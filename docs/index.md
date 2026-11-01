@@ -10,7 +10,7 @@ When you need a particular answer:
 - [The todo list](todos.md) covers the project's todo list, which Claude keeps and the transcript shows.
 - [Subagents](subagents.md) covers following Claude's agents and using Codex.
 - [Permissions and the sandbox](permissions.md) explains what can run without asking, what the sandbox protects and where it has gaps. Read this before relying on the default mode.
-- [Architecture](architecture.md) traces an event from Claude Code to the screen and points contributors to the relevant modules.
+- [Architecture](architecture.md) traces an event from Claude Code to the screen, lists all the text that anvim adds to Claude's context, and points contributors to the relevant modules.
 - [Development](development.md) covers tests, recordings, the screen tool and debug mode.
 
 The project is a personal tool without releases or a compatibility promise. The docs describe the behavior of this checkout; [CLAUDE.md](../CLAUDE.md) contains the working rules and implementation traps for contributors.

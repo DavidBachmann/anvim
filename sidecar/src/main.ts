@@ -31,6 +31,7 @@ import { PreviewBridge } from "./preview";
 import type { Command, Event } from "./protocol";
 import { SandboxGuard, SandboxNotice, sandboxSetup, startMode } from "./sandbox";
 import * as sessions from "./sessions";
+import { systemPrompt } from "./systemprompt";
 import { TodoStore } from "./todos";
 import { errorText, head } from "./text";
 import { EditorBridge, editorServer, SERVER } from "./tools";
@@ -281,7 +282,7 @@ async function run(cmd: Start): Promise<void> {
     },
     // anvim's todo list is the only one, also if Claude Code offers its own again.
     disallowedTools: ["TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"],
-    systemPrompt: { type: "preset", preset: "claude_code", append: cmd.append_system_prompt },
+    systemPrompt: { type: "preset", preset: "claude_code", append: systemPrompt({ amnesia: cmd.amnesia === true }) },
     // Off, auto memory also keeps the subagents' memory out.
     ...(cmd.amnesia ? { settings: { autoMemoryEnabled: false, autoDreamEnabled: false } } : {}),
     extraArgs: chromeArgs(cmd.chrome),

@@ -48,6 +48,10 @@ Claude Code sends subagent edits in one go; *anvim* types them into the buffer a
 
 You'll still need Claude Code's terminal for MCP sign-in, paid cloud reviews and terminal-only commands such as `/doctor`.
 
+## What *anvim* tells Claude
+
+Claude Code's own system prompt stays as it is. *anvim* adds one short paragraph about the viewer, its editor tools and the todo list, and all of it is in [`sidecar/src/systemprompt.ts`](sidecar/src/systemprompt.ts). Every other bit of text that *anvim* hands Claude, such as tool descriptions and permission replies, is listed in [the architecture guide](docs/architecture.md#what-anvim-tells-claude).
+
 ## Quality of life
 
 - Timestamps on every prompt, reply, tool call and notice, including agent logs and resumed sessions.
@@ -110,6 +114,7 @@ anvim --debug ~/dev/anvim              # let Claude work on anvim itself
 - [The transcript](docs/transcript.md)
 - [Subagents](docs/subagents.md)
 - [Permissions and the sandbox](docs/permissions.md)
+- [Architecture](docs/architecture.md): from a prompt to the screen, and what *anvim* tells Claude
 - [Development](docs/development.md): the gates, record and replay, the screen tool
 
 ## Make it yours

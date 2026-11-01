@@ -96,9 +96,9 @@ export type Command =
       // Resume only up to and including the chain entry with this uuid, as
       // /rewind does. The history ends there too.
       resume_at?: string;
-      append_system_prompt?: string;
       // anvim runs with --amnesia: Claude reads and writes no memories, its
-      // subagents' memories too.
+      // subagents' memories too, and the system prompt says that the session
+      // is temporary.
       amnesia?: boolean;
       // anvim runs with --debug: the editor tools include screenshot and reload.
       debug?: boolean;
