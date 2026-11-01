@@ -30,7 +30,7 @@ Claude Code owns session persistence. `sessions.ts` reads saved sessions, and `r
 
 ## What anvim tells Claude
 
-anvim keeps Claude Code's own system prompt and adds one short paragraph to it. [`sidecar/src/systemprompt.ts`](../sidecar/src/systemprompt.ts) holds the whole paragraph: how the user reads code, when to use the editor tools, how to keep the todo list and how to use the [`.anvim/` folder](notes.md). Only the main agent gets it. With `--amnesia`, a line that says the session is temporary takes the place of the `.anvim/` part. The same file holds the short context that each subagent gets about `.anvim/`.
+anvim keeps Claude Code's own system prompt and adds one short paragraph to it. [`sidecar/src/systemprompt.ts`](../sidecar/src/systemprompt.ts) holds the whole paragraph: how the user reads code, when to use the editor tools, how to keep the todo list and how to use the [`.anvim/` folder](notes.md). Only the main agent gets it. With `--amnesia`, a line that says the session is temporary takes the place of the `.anvim/` part. The same file holds the short context that each subagent gets about `.anvim/`. Claude Code saves the system prompt with the session, so a resumed session keeps the paragraph it started with, also after an anvim update.
 
 Your prompts reach Claude as you typed them, with any pasted images. anvim never adds the file or the selection on screen. The other text that anvim puts in Claude's context comes from these files:
 
