@@ -84,6 +84,24 @@ describe("sessions", function()
     assert.are.same(first.todos_path, second.todos_path)
   end)
 
+  it("keeps the todo list in .anvim/, and moves a list from the old dir there once", function()
+    local todos = require("anvim.todos")
+    local was = todos.old_dir
+    todos.old_dir = vim.fn.tempname()
+    vim.fn.mkdir(todos.old_dir, "p")
+    local old = require("anvim.paths").project_file(todos.old_dir)
+    vim.fn.writefile({ '{"next_id":2}' }, old)
+    vim.fn.writefile({ '{"next_id":1}' }, (old:gsub("%.json$", ".prev.json")))
+    local path = sessions.start_command().todos_path
+    todos.old_dir = was
+    local moved = { vim.fn.readfile(path)[1], vim.fn.readfile((path:gsub("%.json$", ".prev.json")))[1] }
+    local gone = vim.uv.fs_stat(old) == nil
+    vim.fn.delete(state.cwd .. "/.anvim", "rf")
+    assert.are.same(state.cwd .. "/.anvim/todos.json", path)
+    assert.are.same({ '{"next_id":2}', '{"next_id":1}' }, moved)
+    assert.is_true(gone)
+  end)
+
   it("opens the picker with this directory's sessions, and a choice resumes one", function()
     local shown = {}
     local _, unfetch = stub(sessions, "fetch", function(cb)

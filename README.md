@@ -38,6 +38,7 @@ The SDK leaves the interface to us. Here's what *anvim* puts back:
 
 - A conversation that stays easy to read: tool calls and results go in a separate pane beneath the code, while the transcript summarizes each run. Hide the pane with `<leader>us` to show calls in the transcript instead.
 - A todo list per project, which `/clear` keeps and `/reset` deletes.
+- A private [`.anvim/` folder](docs/notes.md) per project, where Claude keeps a README, a diary with one file per day, reference docs and scratch files. Git never sees it.
 - The prompt: `@` and `/` completion, past prompts and pasted images.
 - `Ctrl-G` for long prompts, `Up` to retrieve queued prompts, `Ctrl-B` to background agents.
 - Permission requests, Claude's questions and plan approval.

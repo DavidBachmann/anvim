@@ -454,10 +454,12 @@ describe("the edit guard", () => {
 
   test("off registers no guard hooks, on runs the edit guard after the preview", async () => {
     const preview: HookCallback = async () => ({});
-    expect(preToolUse(preview)).toEqual([
-      { matcher: "Edit|Write|NotebookEdit", hooks: [preview] },
-      { matcher: TODO_TOOLS.join("|"), hooks: [refuseSubagentTodos] },
+    const off = preToolUse(preview);
+    expect(off.map((h) => [h.matcher, h.timeout])).toEqual([
+      ["Edit|Write|NotebookEdit", undefined],
+      [TODO_TOOLS.join("|"), undefined],
     ]);
+    expect(off[1]!.hooks).toEqual([refuseSubagentTodos]);
     const order: string[] = [];
     const slow: HookCallback = async () => {
       order.push("preview starts");

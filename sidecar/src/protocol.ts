@@ -97,8 +97,8 @@ export type Command =
       // /rewind does. The history ends there too.
       resume_at?: string;
       // anvim runs with --amnesia: Claude reads and writes no memories, its
-      // subagents' memories too, and the system prompt says that the session
-      // is temporary.
+      // subagents' memories too, it cannot read .anvim/, and the system prompt
+      // says that the session is temporary.
       amnesia?: boolean;
       // anvim runs with --debug: the editor tools include screenshot and reload.
       debug?: boolean;

@@ -22,19 +22,33 @@ M.items = {}
 -- The transcript draws no tool line for these, and the tool pane does not count them.
 M.tools = { mcp__anvim__todo_add = true, mcp__anvim__todo_update = true, mcp__anvim__todo_list = true }
 
-M.dir = vim.fn.stdpath("state") .. "/todos"
+-- Where the lists lived before they moved into the projects.
+M.old_dir = vim.fn.stdpath("state") .. "/todos"
 
 -- With amnesia, the list is a temporary one, for as long as this Neovim runs.
 -- The project's list would tell Claude what came before.
 ---@type string?
 local temp
 
+-- The list lives in the project's .anvim/, so it moves with the project. A
+-- list in the old dir moves there once.
 function M.path()
   if require("anvim.config").options.amnesia then
     temp = temp or vim.fn.tempname() .. ".json"
     return temp
   end
-  return require("anvim.paths").project_file(M.dir)
+  local path = require("anvim.state").cwd .. "/.anvim/todos.json"
+  local old = require("anvim.paths").project_file(M.old_dir)
+  if not vim.uv.fs_stat(path) and vim.uv.fs_stat(old) then
+    vim.fn.mkdir(vim.fs.dirname(path), "p")
+    for _, suffix in ipairs({ ".json", ".prev.json" }) do
+      local from = old:gsub("%.json$", suffix)
+      if vim.uv.fs_stat(from) then
+        vim.fn.rename(from, (path:gsub("%.json$", suffix)))
+      end
+    end
+  end
+  return path
 end
 
 ---@param item anvim.TodoItem

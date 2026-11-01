@@ -1,7 +1,7 @@
 // The whole text that anvim adds to Claude Code's own system prompt. Only the
-// main agent gets it; subagents keep Claude Code's prompts. The other text
-// that anvim puts in Claude's context, such as tool descriptions and hook
-// context, is listed in docs/architecture.md.
+// main agent gets it; subagents keep Claude Code's prompts and get the short
+// context at the end. The other text that anvim puts in Claude's context, such
+// as tool descriptions and hook context, is listed in docs/architecture.md.
 
 const VIEWER = [
   "The user reads code in anvim, a read-only Neovim viewer, while you work.",
@@ -28,12 +28,40 @@ const TODOS = [
   "Give the agent its task, and do not mention the list.",
 ];
 
-// With --amnesia, Claude Code drops its own memory instructions. This is the
-// safety net.
+const NOTES = [
+  "This project keeps private notes in .anvim/, which git excludes. Only you and the user read them.",
+  ".anvim/README.md holds the standing context: the project in a paragraph, the decisions in force and where things live.",
+  "Update it when a standing fact changes.",
+  ".anvim/diary/ holds one markdown file per day, named YYYY-MM-DD.md.",
+  "As you work, write in today's file what happened, what the user decided, in their words, and what is open.",
+  "Only the main agent writes the diary.",
+  ".anvim/docs/ holds internal reference docs: plans, specs, research, reviews, handovers and drafts for other people.",
+  ".anvim/scratch/ holds scripts, test kits, outputs, logs and data worth keeping. Put throwaway files in $TMPDIR.",
+  "Never name .anvim/ or its files in code, code comments, tests, committed docs, commits, or PR and issue text.",
+  "When a fact from these notes belongs in the repo, write it there in full.",
+  "Memory holds rules about how to work with the user. The state of the work goes in the diary.",
+];
+
+// With --amnesia, Claude Code drops its own memory instructions, and the notes
+// are hidden. This is the safety net.
 const AMNESIA = [
   "This is a temporary session. Treat the project as new to you. Do not save memories about the user or the project.",
 ];
 
 export function systemPrompt(opts: { amnesia: boolean }): string {
-  return [...VIEWER, ...EDITOR_TOOLS, ...TODOS, ...(opts.amnesia ? AMNESIA : [])].join(" ");
+  return [...VIEWER, ...EDITOR_TOOLS, ...TODOS, ...(opts.amnesia ? AMNESIA : NOTES)].join(" ");
+}
+
+// What each subagent learns about the notes, from a SubagentStart hook.
+const SUBAGENT_NOTES = [
+  "This project keeps private notes in .anvim/, which git excludes.",
+  ".anvim/docs/ holds internal reference docs. Read them when your task points to them.",
+  "Never name .anvim/ or its files in code, code comments, tests, committed docs, commits, or PR and issue text.",
+  "When a fact from them belongs in the repo, write it there in full.",
+  "Put scripts and outputs that you want to keep in .anvim/scratch/, and throwaway files in $TMPDIR.",
+  "The diary in .anvim/diary/ belongs to the main agent. Report back instead.",
+];
+
+export function subagentContext(): string {
+  return SUBAGENT_NOTES.join(" ");
 }

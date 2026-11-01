@@ -1,4 +1,5 @@
 import {
+  type HookCallback,
   query,
   type Options,
   type Query,
@@ -26,6 +27,7 @@ import { Effort, getSettings } from "./effort";
 import { preToolUse } from "./hooks";
 import { type ImageBlock, imageBlocks } from "./images";
 import { Limits, limitsEvent } from "./limits";
+import { amnesiaOptions, DIR, diaryRefusal, excludeFromGit, Notes } from "./notes";
 import { PermissionBridge } from "./permissions";
 import { PreviewBridge } from "./preview";
 import type { Command, Event } from "./protocol";
@@ -257,8 +259,15 @@ async function run(cmd: Start): Promise<void> {
         servers: { [CHROME_SERVER]: () => ready.then((q) => chromeForCodex(chromeCalls(q), permissions.mode ?? mode)) },
       })
     : undefined;
+  // Before the todo list's store creates the dir.
+  await excludeFromGit(cmd.cwd).catch((err) => process.stderr.write(`could not exclude ${DIR}/ from git: ${err}\n`));
   todos = cmd.todos_path ? new TodoStore(cmd.todos_path, emit) : undefined;
   todos?.start();
+  const amnesia = cmd.amnesia === true;
+  const notes = amnesia ? undefined : new Notes(cmd.cwd);
+  const defined = (hooks: (HookCallback | undefined)[]) => hooks.filter((h): h is HookCallback => h !== undefined);
+  const startHooks = defined([todos?.sessionStart, notes?.sessionStart]);
+  const promptHooks = defined([todos?.firstPrompt, notes?.prompt]);
   const options: Options = {
     ...sandbox.options,
     cwd: cmd.cwd,
@@ -274,17 +283,16 @@ async function run(cmd: Start): Promise<void> {
     // Foreground subagents send their text only with this.
     forwardSubagentText: true,
     hooks: {
-      PreToolUse: preToolUse(previews.hook, guard),
+      PreToolUse: preToolUse(previews.hook, guard, (input) => diaryRefusal(cmd.cwd, input)),
       PostToolUse: postToolUse(() => session, cmd.cwd),
-      ...(todos
-        ? { SessionStart: [{ hooks: [todos.sessionStart] }], UserPromptSubmit: [{ hooks: [todos.firstPrompt] }] }
-        : {}),
+      ...(startHooks.length > 0 ? { SessionStart: [{ hooks: startHooks }] } : {}),
+      ...(promptHooks.length > 0 ? { UserPromptSubmit: [{ hooks: promptHooks }] } : {}),
+      ...(notes ? { SubagentStart: [{ hooks: [notes.subagentStart] }] } : {}),
     },
     // anvim's todo list is the only one, also if Claude Code offers its own again.
     disallowedTools: ["TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"],
-    systemPrompt: { type: "preset", preset: "claude_code", append: systemPrompt({ amnesia: cmd.amnesia === true }) },
-    // Off, auto memory also keeps the subagents' memory out.
-    ...(cmd.amnesia ? { settings: { autoMemoryEnabled: false, autoDreamEnabled: false } } : {}),
+    systemPrompt: { type: "preset", preset: "claude_code", append: systemPrompt({ amnesia }) },
+    ...(amnesia ? amnesiaOptions(cmd.cwd, sandbox.options.sandbox) : {}),
     extraArgs: chromeArgs(cmd.chrome),
     mcpServers: { [SERVER]: editorServer(editor, { debug: cmd.debug === true, codex, todos }) },
     canUseTool: permissions.canUseTool,

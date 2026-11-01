@@ -30,12 +30,13 @@ Claude Code owns session persistence. `sessions.ts` reads saved sessions, and `r
 
 ## What anvim tells Claude
 
-anvim keeps Claude Code's own system prompt and adds one short paragraph to it. [`sidecar/src/systemprompt.ts`](../sidecar/src/systemprompt.ts) holds the whole paragraph: how the user reads code, when to use the editor tools and how to keep the todo list. Only the main agent gets it. With `--amnesia`, one more line says that the session is temporary.
+anvim keeps Claude Code's own system prompt and adds one short paragraph to it. [`sidecar/src/systemprompt.ts`](../sidecar/src/systemprompt.ts) holds the whole paragraph: how the user reads code, when to use the editor tools, how to keep the todo list and how to use the [`.anvim/` folder](notes.md). Only the main agent gets it. With `--amnesia`, a line that says the session is temporary takes the place of the `.anvim/` part. The same file holds the short context that each subagent gets about `.anvim/`.
 
 Your prompts reach Claude as you typed them, with any pasted images. anvim never adds the file or the selection on screen. The other text that anvim puts in Claude's context comes from these files:
 
 - `sidecar/src/tools.ts`: the descriptions and results of the `mcp__anvim__*` tools.
 - `sidecar/src/todos.ts`: the open todo items, as hook context when a session starts, resumes, clears or compacts.
+- `sidecar/src/notes.ts`: today's date and diary file, as hook context at the same times and when the date changes, and the reason why an edit in the diary goes back.
 - `sidecar/src/permissions.ts`: a fixed reply when you reject or cancel a permission request, with your message if you give one.
 - `sidecar/src/sendback.ts`: the hint that replaces the result of each agent's first guarded call.
 - `sidecar/src/hooks.ts`: the reason why a subagent cannot use the todo tools.

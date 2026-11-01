@@ -8,6 +8,7 @@ When you need a particular answer:
 - [Sessions and settings](sessions.md) covers resuming work, starting over, fresh-eyes sessions, rewinding, accounts, models, slash commands, MCP, Chrome and the Processes window.
 - [The transcript](transcript.md) explains tool output, reading and copying.
 - [The todo list](todos.md) covers the project's todo list, which Claude keeps and the transcript shows.
+- [The .anvim folder](notes.md) covers the project's private notes: a README, a diary, reference docs and scratch files, which git never sees.
 - [Subagents](subagents.md) covers following Claude's agents and using Codex.
 - [Permissions and the sandbox](permissions.md) explains what can run without asking, what the sandbox protects and where it has gaps. Read this before relying on the default mode.
 - [Architecture](architecture.md) traces an event from Claude Code to the screen, lists all the text that anvim adds to Claude's context, and points contributors to the relevant modules.
