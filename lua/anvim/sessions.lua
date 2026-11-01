@@ -73,6 +73,11 @@ function M.start_command(opts)
   if config.end_fallback() then
     state.permission_mode = config.options.permission_mode
   end
+  local amnesia = config.options.amnesia == true
+  local prompt = config.options.append_system_prompt
+  if amnesia then
+    prompt = (prompt and prompt ~= "" and prompt .. " " or "") .. config.amnesia_prompt
+  end
   return vim.tbl_extend("force", {
     type = "start",
     cwd = state.cwd,
@@ -81,7 +86,8 @@ function M.start_command(opts)
     permission_mode = config.options.permission_mode,
     permission_mode_chosen = config.mode_chosen,
     sandbox = config.options.sandbox ~= false,
-    append_system_prompt = config.options.append_system_prompt,
+    append_system_prompt = prompt,
+    amnesia = amnesia,
     debug = config.options.debug,
     chrome = M.chrome_flag(),
     codex = config.options.codex == true,

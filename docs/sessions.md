@@ -18,6 +18,12 @@ Choosing a session restarts Claude and reconstructs its transcript. If Claude Co
 
 `<leader>cR` or `:AnvimRestart` restarts Claude in the same session if it exits or hangs, keeping the chosen model and effort. With default effort, the restart uses the level a new session would use.
 
+## Fresh eyes
+
+`anvim --amnesia` (or `ANVIM_AMNESIA=1`) starts a session that sees the project as new. Use it when you want a second opinion that past sessions have not shaped. Claude Code's auto memory is off, so Claude reads no `MEMORY.md` and writes no memories. The same switch keeps out the user-scope memory of subagents. The [todo list](todos.md) is a temporary one, and the system prompt tells Claude that the session is temporary. The statusline says `anvim · amnesia`.
+
+The project's `CLAUDE.md` still loads, as a new colleague would read it. Claude Code saves the session as usual, so an account switch or a rewind can restart it. `--amnesia` cannot be combined with `--continue` or `--resume`. The session picker still works inside anvim, but a resumed session brings its past conversation along.
+
 ## Rewind
 
 `/rewind` goes back to before one of your earlier prompts. Pick the prompt, newest first, then choose what to restore:

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Usage: anvim [--model <model>] [--effort <level>] [--mode <mode>] [--account <name>] [--no-sandbox] [--dangerously-skip-permissions] [--chrome | --no-chrome] [--codex | --no-codex] [--debug] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
+# Usage: anvim [--model <model>] [--effort <level>] [--mode <mode>] [--account <name>] [--no-sandbox] [--dangerously-skip-permissions] [--chrome | --no-chrome] [--codex | --no-codex] [--amnesia] [--debug] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
 # The permission mode is default, acceptEdits, plan or bypassPermissions. It is
 # bypassPermissions unless --mode or ANVIM_MODE says otherwise: Claude runs
 # tools without asking. The sandbox limits where its Bash commands write, and
@@ -23,6 +23,8 @@
 # last install, anvim runs scripts/install first. ANVIM_NO_INSTALL=1 skips
 # that. --account (ANVIM_ACCOUNT) names the Claude login to start with:
 # default, or <name> for the Claude Code config dir ~/.claude-<name>.
+# --amnesia (ANVIM_AMNESIA=1) starts a session that sees the project as new:
+# Claude reads and writes no memories, and the todo list is a temporary one.
 root=$(cd "$(dirname "$(realpath "$0")")/.." && pwd)
 
 is_session_id() {
@@ -101,6 +103,11 @@ while [ "$n" -gt 0 ]; do
       shift
       n=$((n - 1))
       ;;
+    --amnesia)
+      ANVIM_AMNESIA=1
+      shift
+      n=$((n - 1))
+      ;;
     -c | --continue)
       ANVIM_CONTINUE=1
       shift
@@ -134,6 +141,7 @@ done
 [ -n "$ANVIM_ACCOUNT" ] && export ANVIM_ACCOUNT
 [ -n "$ANVIM_SANDBOX" ] && export ANVIM_SANDBOX
 [ -n "$ANVIM_DEBUG" ] && export ANVIM_DEBUG
+[ -n "$ANVIM_AMNESIA" ] && export ANVIM_AMNESIA
 [ -n "$ANVIM_CHROME" ] && export ANVIM_CHROME
 [ -n "$ANVIM_CODEX" ] && export ANVIM_CODEX
 if [ -n "$mode" ] || [ -n "$ANVIM_MODE" ]; then
@@ -156,6 +164,10 @@ if [ -n "$effort" ] || [ -n "$ANVIM_EFFORT" ]; then
 fi
 if [ -n "$ANVIM_CONTINUE" ] && [ -n "$ANVIM_RESUME" ]; then
   echo "anvim: use --continue or --resume, not both" >&2
+  exit 2
+fi
+if [ "$ANVIM_AMNESIA" = 1 ] && [ -n "$ANVIM_CONTINUE$ANVIM_RESUME" ]; then
+  echo "anvim: --amnesia starts a new session, so it cannot --continue or --resume one" >&2
   exit 2
 fi
 [ -n "$ANVIM_CONTINUE" ] && export ANVIM_CONTINUE

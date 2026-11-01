@@ -97,6 +97,9 @@ export type Command =
       // /rewind does. The history ends there too.
       resume_at?: string;
       append_system_prompt?: string;
+      // anvim runs with --amnesia: Claude reads and writes no memories, its
+      // subagents' memories too.
+      amnesia?: boolean;
       // anvim runs with --debug: the editor tools include screenshot and reload.
       debug?: boolean;
       // Claude in Chrome: true is Claude Code's --chrome, false its

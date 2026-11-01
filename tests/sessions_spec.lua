@@ -67,6 +67,24 @@ describe("sessions", function()
     assert.are.same({ false, true, false, true }, { sent_off, sent_on, spec_off, spec_on })
   end)
 
+  it("starts an amnesia session with its own todo list and the amnesia prompt", function()
+    local config = require("anvim.config")
+    local env = vim.env.ANVIM_AMNESIA
+    vim.env.ANVIM_AMNESIA = "1"
+    local spec_on = dofile(helpers.root .. "/lua/anvim/plugins/anvim.lua")[1].opts.amnesia
+    vim.env.ANVIM_AMNESIA = env
+    local project = sessions.start_command().todos_path
+    config.options.amnesia = true
+    local first, second = sessions.start_command(), sessions.start_command()
+    config.options.amnesia = false
+    assert.is_true(spec_on)
+    assert.is_true(first.amnesia)
+    assert.are_not.same(project, first.todos_path)
+    -- A restart, such as an account switch, keeps the temporary list.
+    assert.are.same(first.todos_path, second.todos_path)
+    assert.are.same(config.amnesia_prompt, first.append_system_prompt:sub(-#config.amnesia_prompt))
+  end)
+
   it("opens the picker with this directory's sessions, and a choice resumes one", function()
     local shown = {}
     local _, unfetch = stub(sessions, "fetch", function(cb)

@@ -225,6 +225,7 @@ async function run(cmd: Start): Promise<void> {
   const guard = sandboxOn
     ? new SandboxGuard({
         cwd: cmd.cwd,
+        amnesia: cmd.amnesia === true,
         settings: async () => (session ? getSettings(session) : {}),
         prompt: (tool, input, opts) => permissions.canUseTool(tool, input, { ...opts, requestId: "anvim-guard" }),
       })
@@ -281,6 +282,8 @@ async function run(cmd: Start): Promise<void> {
     // anvim's todo list is the only one, also if Claude Code offers its own again.
     disallowedTools: ["TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"],
     systemPrompt: { type: "preset", preset: "claude_code", append: cmd.append_system_prompt },
+    // Off, auto memory also keeps the subagents' memory out.
+    ...(cmd.amnesia ? { settings: { autoMemoryEnabled: false, autoDreamEnabled: false } } : {}),
     extraArgs: chromeArgs(cmd.chrome),
     mcpServers: { [SERVER]: editorServer(editor, { debug: cmd.debug === true, codex, todos }) },
     canUseTool: permissions.canUseTool,

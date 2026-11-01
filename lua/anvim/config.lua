@@ -23,6 +23,8 @@ M.defaults = {
   codex = false,
   -- For anvim's own development: Claude gets the mcp__anvim__screenshot and mcp__anvim__reload tools.
   debug = false,
+  -- Claude sees the project as new: it reads and writes no memories, and the todo list is a temporary one.
+  amnesia = false,
   bun = "bun",
   ---@type string? A recording that ANVIM_RECORD saved. The sidecar plays it instead of a live session.
   replay = nil,
@@ -77,6 +79,11 @@ M.defaults = {
 
 ---@type anvim.Config
 M.options = vim.deepcopy(M.defaults)
+
+-- Goes after append_system_prompt with amnesia. Claude Code drops its own
+-- memory instructions then, and this line is the safety net.
+M.amnesia_prompt =
+  "This is a temporary session. Treat the project as new to you. Do not save memories about the user or the project."
 
 M.effort_levels = { "low", "medium", "high", "xhigh", "max" }
 

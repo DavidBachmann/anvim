@@ -94,6 +94,7 @@ anvim --mode default ~/dev/project     # ask before edits and commands
 anvim --account personal ~/dev/project # use the login in ~/.claude-personal
 anvim -c ~/dev/project                 # pick up the latest session
 anvim --resume ~/dev/project           # pick a session
+anvim --amnesia ~/dev/project          # fresh eyes: no memories of the project
 anvim --debug ~/dev/anvim              # let Claude work on anvim itself
 ```
 

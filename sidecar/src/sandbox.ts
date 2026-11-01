@@ -272,6 +272,8 @@ export type GuardPrompt = (
 
 export type GuardOptions = {
   cwd: string;
+  // The session keeps no memories, so an edit of a memory dir asks.
+  amnesia?: boolean;
   settings: () => Promise<GuardSettings>;
   prompt?: GuardPrompt;
   home?: string;
@@ -437,15 +439,12 @@ export class SandboxGuard {
       // Claude Code expands a glob anew for each command. anvim asks instead.
       .filter((entry) => typeof entry === "string" && entry !== "" && !/[*?[\]{}]/.test(entry))
       .map((entry) => (entry.startsWith("//") ? entry.slice(1) : entry));
-    return [
-      this.opts.cwd,
-      ...entries,
-      this.tmpDir,
-      join(this.configDir, "projects"),
-      join(this.configDir, "plans"),
-      // Subagents keep their user-scope memory here.
-      join(this.configDir, "agent-memory"),
-    ].map((dir) => realPath(this.absolute(dir)));
+    // Auto memory lives below projects, and subagents keep their user-scope
+    // memory in agent-memory.
+    const memory = this.opts.amnesia ? [] : [join(this.configDir, "projects"), join(this.configDir, "agent-memory")];
+    return [this.opts.cwd, ...entries, this.tmpDir, join(this.configDir, "plans"), ...memory].map((dir) =>
+      realPath(this.absolute(dir)),
+    );
   }
 }
 

@@ -165,9 +165,10 @@ symlinkSync(outside, join(cwd, "link"));
 symlinkSync(join(cwd, "src"), join(outside, "back"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
-function guard(settings: GuardSettings = {}) {
+function guard(settings: GuardSettings = {}, amnesia = false) {
   return new SandboxGuard({
     cwd,
+    amnesia,
     home,
     configDir: join(home, ".claude"),
     tmpDir: join(root, "sbtmp"),
@@ -379,6 +380,18 @@ describe("the edit guard", () => {
     expect(await write(g, join(repo, "README.md"))).toBeUndefined();
     // A glob entry is no trusted dir.
     expect(await write(g, join(root, "glob", "x"))).toBe(REASONS.outside(join(root, "glob", "x")));
+  });
+
+  test("asks for an edit of a memory dir in an amnesia session", async () => {
+    const g = guard({}, true);
+    expect(await write(g, join(home, ".claude", "projects", "p", "memory", "m.md"))).toBe(
+      REASONS.outside("~/.claude/projects/p/memory/m.md"),
+    );
+    expect(await write(g, join(home, ".claude", "agent-memory", "a", "m.md"))).toBe(
+      REASONS.outside("~/.claude/agent-memory/a/m.md"),
+    );
+    expect(await write(g, join(home, ".claude", "plans", "plan.md"))).toBeUndefined();
+    expect(await write(g, join(cwd, "src", "a.ts"))).toBeUndefined();
   });
 
   test("trusts the caches that the sandbox may write, next to a settings file's allowWrite", async () => {

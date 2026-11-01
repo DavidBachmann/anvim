@@ -311,7 +311,12 @@ local function render()
     block, group = "FOLLOW", "AnvimStatusFollow"
   end
   local follows = group == "AnvimStatusFollow"
-  local brand = ("%%#AnvimStatusBrand# anvim %%#AnvimStatusBrand%s#%s"):format(follows and "Follow" or kind, sep.left)
+  local title = require("anvim.config").options.amnesia and "anvim · amnesia" or "anvim"
+  local brand = ("%%#AnvimStatusBrand# %s %%#AnvimStatusBrand%s#%s"):format(
+    title,
+    follows and "Follow" or kind,
+    sep.left
+  )
   local label, branch, left, right, s, file_at = nil, nil, {}, {}, nil, nil
   if ft == "lazy" then
     local stats = require("lazy").stats()

@@ -24,7 +24,16 @@ M.tools = { mcp__anvim__todo_add = true, mcp__anvim__todo_update = true, mcp__an
 
 M.dir = vim.fn.stdpath("state") .. "/todos"
 
+-- With amnesia, the list is a temporary one, for as long as this Neovim runs.
+-- The project's list would tell Claude what came before.
+---@type string?
+local temp
+
 function M.path()
+  if require("anvim.config").options.amnesia then
+    temp = temp or vim.fn.tempname() .. ".json"
+    return temp
+  end
   return require("anvim.paths").project_file(M.dir)
 end
 
