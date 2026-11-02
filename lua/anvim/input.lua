@@ -319,7 +319,8 @@ function M.submit()
   end
   -- The prompt stays in the box until an account starts Claude.
   local accounts = require("anvim.accounts")
-  if accounts.waiting() and not (text == "/account" or text:match("^/account%s")) then
+  local command = text:match("^/(%S+)")
+  if accounts.waiting() and command ~= "account" and command ~= "accounts" then
     accounts.stopped()
     return
   end

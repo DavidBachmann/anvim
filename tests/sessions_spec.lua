@@ -247,6 +247,28 @@ describe("sessions", function()
     assert.are.same({ 1, 1 }, { #picks, #models })
   end)
 
+  it("keeps a typo of a command from Claude, also while Claude works", function()
+    local completion = require("anvim.completion")
+    local commands = completion.commands
+    completion.commands = { { name = "account" }, { name = "compact", builtin = true } }
+    local runs, unrun = stub(require("anvim.accounts"), "command")
+    helpers.capture_sends(function(sent)
+      input.set_busy(true)
+      vim.api.nvim_buf_set_lines(input.buf(), 0, -1, false, { "/accounts" })
+      input.submit()
+      assert(sessions.command("/compat keep the notes"))
+      assert.is_false(sessions.command("/hello there"))
+      assert.is_false(sessions.command("/tmp/a.txt is empty"))
+      assert.are.same({}, sent)
+    end)
+    input.set_busy(false)
+    unrun()
+    completion.commands = commands
+    assert.are.same({ { "" } }, runs)
+    local all = buf_lines(transcript.buf())
+    assert.are.same("✻ Unknown command: /compat. Did you mean /compact?", all[#all])
+  end)
+
   it("/reset sends /clear and arms it for a new todo list; a plain /clear keeps the list", function()
     local todos = require("anvim.todos")
     local function todo_rows()

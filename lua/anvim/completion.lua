@@ -248,6 +248,43 @@ function M.unusable(name, arg)
   return c and c.builtin and refused(c.name, name) or nil
 end
 
+-- The number of one-character inserts, deletes and changes that turn a into b.
+local function distance(a, b)
+  local prev = {}
+  for j = 0, #b do
+    prev[j] = j
+  end
+  for i = 1, #a do
+    local cur = { [0] = i }
+    for j = 1, #b do
+      local change = a:byte(i) == b:byte(j) and 0 or 1
+      cur[j] = math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + change)
+    end
+    prev = cur
+  end
+  return prev[#b]
+end
+
+-- The command that an unknown /name was meant to be, 2 edits away at most,
+-- as Claude Code's terminal suggests one. In an SDK session, Claude Code
+-- sends an unknown command to the model as text instead, and its list does
+-- not have anvim's commands.
+---@param name string without the slash
+---@return string?
+function M.meant(name)
+  if resolve(name) or not name:match("^[%w:_-]+$") then
+    return nil
+  end
+  local best, least = nil, 3
+  for _, c in ipairs(M.commands) do
+    local d = distance(name:lower(), c.name)
+    if d < least then
+      best, least = c.name, d
+    end
+  end
+  return best
+end
+
 -- The items for a slash command, `query` being the typed name. They show the
 -- description in the menu and, with the argument hint, in the info popup.
 ---@return table[] complete-items

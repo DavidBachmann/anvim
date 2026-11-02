@@ -90,4 +90,6 @@ The extension's site permissions govern browsing, clicking and typing. A session
 
 Commands not handled by anvim run in Claude Code and show their output in the transcript. Completion includes supported Claude Code commands and commands from your projects, plugins and skills. `Enter` completes and sends a command; if it needs an argument, it completes without sending.
 
+An unknown command up to two letters away from a known one, such as `/acount`, stays with anvim, which suggests the command you meant. Claude Code would pass it to Claude as text, which also happens to any other unknown command. `/accounts` is another name for `/account`.
+
 Some commands require Claude Code's terminal, including `/color`, `/focus` and `/doctor`; anvim displays a notice if you type them. Other unavailable terminal-only commands may be rejected by Claude Code. Paid cloud reviews, including `/ultrareview` and `/code-review ultra`, must also run in Claude Code's terminal.

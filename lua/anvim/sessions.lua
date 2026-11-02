@@ -528,11 +528,12 @@ function M.pick_model()
 end
 
 -- Slash commands that Claude Code's TUI runs itself, and anvim runs here. A
--- built-in that does nothing here gets a notice, and goes nowhere.
+-- built-in that does nothing here gets a notice, and goes nowhere, and so
+-- does a typo of a command.
 ---@return boolean handled
 function M.command(text)
   local name, arg = text:match("^(/%S+)%s*(.-)%s*$")
-  if name == "/account" then
+  if name == "/account" or name == "/accounts" then
     require("anvim.accounts").command(arg)
     return true
   elseif name == "/resume" then
@@ -581,6 +582,11 @@ function M.command(text)
   local reason = name and require("anvim.completion").unusable(name:sub(2), arg)
   if reason then
     transcript.notice("info", reason)
+    return true
+  end
+  local meant = name and require("anvim.completion").meant(name:sub(2))
+  if meant then
+    transcript.notice("info", ("Unknown command: %s. Did you mean /%s?"):format(name, meant))
     return true
   end
   return false
