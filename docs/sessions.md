@@ -12,7 +12,7 @@ Choosing a session restarts Claude and reconstructs its transcript. If Claude Co
 
 ## Start over
 
-`/clear` starts a new session, and the view starts over with it. anvim clears the transcript, the agents, the code window's tabs, the `<leader>cf` file list and the `<leader>ct` trail. Claude's count of send-backs starts again, and Codex runs stop. The code window keeps its file, and the prompt history stays.
+`/clear` starts a new session, and the view starts over with it. anvim clears the transcript, the agents, the code window's tabs, the `<leader>cf` file list and the `<leader>ct` trail. Claude's count of send-backs starts again, and Codex runs stop. Away mode and the held list stay. The code window keeps its file, and the prompt history stays.
 
 `/clear` and its alias `/new` keep the [todo list](todos.md). `/reset` does what `/clear` does and also starts a new, empty list. Claude can still change the old list until the clear takes effect, which waits for a running turn to end. `/undo-reset` brings the old list back.
 
@@ -85,6 +85,10 @@ CPU is the share of one core, so 100% is one full core and a group can show more
 Claude in Chrome lets Claude use Chrome through the Claude extension. It requires a claude.ai login. Start with `--chrome` or `--no-chrome` to override Claude Code's “Enabled by default” setting. `/chrome` opens the Chrome tab, where `Enter` runs the selected action: install or manage the extension, choose a browser, reconnect, or change the default for future sessions. Reconnecting can restart Claude in the same session with Chrome enabled.
 
 The extension's site permissions govern browsing, clicking and typing. A session that **starts in bypass mode** tells the extension to skip those checks, allowing actions on any site without asking. Start with `--mode default` to retain the checks. See [permissions](permissions.md) for the other implications of bypass mode.
+
+## Away mode
+
+`/away` turns [away mode](permissions.md#away) on, and `/away` again turns it off. While you are away, no request waits for you, except a plan's approval. `/held` lists the calls and questions that anvim [held](permissions.md#held-calls) for you, newest first.
 
 ## Other slash commands
 

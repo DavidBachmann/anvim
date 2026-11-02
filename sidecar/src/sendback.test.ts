@@ -3,6 +3,7 @@ import type { HookInput, PermissionResult, SDKMessage } from "@anthropic-ai/clau
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { heldText } from "./away";
 import { CANCELLED, PermissionBridge } from "./permissions";
 import type { Event } from "./protocol";
 import { REASONS, SandboxGuard } from "./sandbox";
@@ -163,42 +164,42 @@ describe("the send-back", () => {
     expect(log).toHaveLength(2);
   });
 
-  test("each subagent gets its own send-back, a background one too", async () => {
-    const { ask, bypass, requests, sendBacks, log } = setup();
+  test("holds a subagent's guarded calls, a background one's too, and the main agent keeps its send-back", async () => {
+    const { ask, bypass, sent, requests, sendBacks, log } = setup();
     await ask("Bash", escape);
     const sub = await ask("Bash", escape, "a1");
-    expect(await sub.result).toMatchObject({ behavior: "deny" });
-    await ask("Bash", escape, "a1");
+    expect(await sub.result).toEqual({ behavior: "deny", message: heldText(REASONS.escape, false, TMP) });
     // A background agent's call between turns comes in bypass mode with its id.
     const bg = bypass("Write", { file_path: join(cwd, ".mcp.json"), content: "{}" }, "bg2");
+    const config = heldText(REASONS.config, false, TMP);
     expect(await bg.out).toMatchObject({
-      hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: hint(REASONS.config, TMP) },
+      hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: config },
     });
-    expect(sendBacks().map((e) => [e.agent_id, e.reason])).toEqual([
-      [undefined, REASONS.escape],
-      ["a1", REASONS.escape],
-      ["bg2", REASONS.config],
+    expect(sendBacks().map((e) => [e.agent_id, e.reason])).toEqual([[undefined, REASONS.escape]]);
+    expect(sent.filter((e) => e.type === "held")).toMatchObject([
+      { tool_use_id: sub.id, agent_id: "a1", tool: "Bash", target: "npm i -g x", reason: REASONS.escape, away: false },
+      { tool_use_id: bg.id, agent_id: "bg2", tool: "Write", reason: REASONS.config, away: false },
     ]);
-    expect(requests().map((e) => e.agent_id)).toEqual(["a1"]);
-    expect(log[3]).toBe(
-      `send-back: bg2 Write changes a config that runs outside the sandbox: ${join(cwd, ".mcp.json")}`,
-    );
+    expect(requests()).toHaveLength(0);
+    expect(log.slice(1)).toEqual([
+      "held: a1 Bash runs outside the sandbox: npm i -g x",
+      `held: bg2 Write changes a config that runs outside the sandbox: ${join(cwd, ".mcp.json")}`,
+    ]);
+    // The main agent's next guarded call asks.
+    await ask("Bash", escape);
+    expect(requests().map((e) => e.agent_id)).toEqual([undefined]);
   });
 
   test("/clear starts over for the main agent, and a compaction does not", async () => {
     const { bridge, ask, sendBacks, requests } = setup();
     await ask("Bash", escape);
-    await ask("Bash", escape, "bg1");
     bridge.message({ type: "system", subtype: "compact_boundary" } as SDKMessage);
     await ask("Bash", escape);
-    expect(sendBacks()).toHaveLength(2);
+    expect(sendBacks()).toHaveLength(1);
+    expect(requests()).toHaveLength(1);
     bridge.message({ type: "conversation_reset", trigger: "clear" } as unknown as SDKMessage);
     await ask("Bash", escape);
-    expect(sendBacks()).toHaveLength(3);
-    // A background agent that runs past /clear keeps its context, and the hint in it.
-    await ask("Bash", escape, "bg1");
-    expect(sendBacks()).toHaveLength(3);
-    expect(requests().map((e) => e.agent_id)).toEqual([undefined, "bg1"]);
+    expect(sendBacks()).toHaveLength(2);
   });
 
   test("a cancelled request does not use up the send-back", async () => {

@@ -222,6 +222,8 @@ async function run(cmd: Start): Promise<void> {
   cwd = cmd.cwd;
   permissions.cwd = cmd.cwd;
   permissions.bypass = mode === "bypassPermissions";
+  permissions.away = cmd.away === true;
+  permissions.awayAfterMs = Math.max(cmd.away_after ?? 0, 0) * 60_000;
   chromeSkipsChecks = mode === "bypassPermissions";
   if (start.fallback) fallBack();
   // With the sandbox off, its guards are off too. One switch has one meaning.
@@ -267,7 +269,7 @@ async function run(cmd: Start): Promise<void> {
   const notes = amnesia ? undefined : new Notes(cmd.cwd);
   const defined = (hooks: (HookCallback | undefined)[]) => hooks.filter((h): h is HookCallback => h !== undefined);
   const startHooks = defined([todos?.sessionStart, notes?.sessionStart]);
-  const promptHooks = defined([todos?.firstPrompt, notes?.prompt]);
+  const promptHooks = defined([todos?.firstPrompt, notes?.prompt, permissions.notice.prompt]);
   const options: Options = {
     ...sandbox.options,
     cwd: cmd.cwd,
@@ -283,7 +285,10 @@ async function run(cmd: Start): Promise<void> {
     // Foreground subagents send their text only with this.
     forwardSubagentText: true,
     hooks: {
-      PreToolUse: preToolUse(previews.hook, guard, (input) => diaryRefusal(cmd.cwd, input)),
+      PreToolUse: [
+        ...preToolUse(previews.hook, guard, (input) => diaryRefusal(cmd.cwd, input)),
+        { hooks: [permissions.notice.preToolUse] },
+      ],
       PostToolUse: postToolUse(() => session, cmd.cwd),
       ...(startHooks.length > 0 ? { SessionStart: [{ hooks: startHooks }] } : {}),
       ...(promptHooks.length > 0 ? { UserPromptSubmit: [{ hooks: promptHooks }] } : {}),
@@ -459,6 +464,9 @@ export async function handle(cmd: Command): Promise<void> {
       return;
     case "permission_response":
       permissions.respond(cmd);
+      return;
+    case "set_away":
+      permissions.setAway(cmd.away);
       return;
   }
 }

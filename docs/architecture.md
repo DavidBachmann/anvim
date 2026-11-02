@@ -24,7 +24,7 @@ Subagent inputs arrive as whole messages, so anvim animates their preview only w
 
 ## Permissions and sessions
 
-`permissions.ts` bridges SDK permission requests to the UI. `sandbox.ts` configures the Bash sandbox and guards its gaps; `sendback.ts` can return the first guarded call to an agent with a hint before asking the user on a later call. Read [permissions](permissions.md) for the actual boundaries and exceptions. `codex.ts` runs Codex agents separately in their own sandbox.
+`permissions.ts` bridges SDK permission requests to the UI. `sandbox.ts` configures the Bash sandbox and guards its gaps; `sendback.ts` can return the main agent's first guarded call with a hint before asking the user on a later call. `away.ts` holds the calls that would ask: a subagent's guarded calls, and every request while the user is away, except a plan's approval. Read [permissions](permissions.md) for the actual boundaries and exceptions. `codex.ts` runs Codex agents separately in their own sandbox.
 
 Claude Code owns session persistence. `sessions.ts` reads saved sessions, and `replay.ts` plays recordings for development. anvim renders history but does not write Claude Code's session files itself.
 
@@ -38,7 +38,8 @@ Your prompts reach Claude as you typed them, with any pasted images. anvim never
 - `sidecar/src/todos.ts`: the open todo items, as hook context when a session starts, resumes, clears or compacts.
 - `sidecar/src/notes.ts`: today's date and diary file, as hook context at the same times and when the date changes, and the reason why an edit in the diary goes back.
 - `sidecar/src/permissions.ts`: a fixed reply when you reject or cancel a permission request, with your message if you give one.
-- `sidecar/src/sendback.ts`: the hint that replaces the result of each agent's first guarded call.
+- `sidecar/src/sendback.ts`: the hint that replaces the result of the main agent's first guarded call.
+- `sidecar/src/away.ts`: the text that replaces the result of a held call, the text that tells Claude to answer its own question while the user is away, and the notice of each away switch, as hook context with the main agent's next tool call or prompt.
 - `sidecar/src/hooks.ts`: the reason why a subagent cannot use the todo tools.
 - `sidecar/src/agentfiles.ts`: a note after Claude writes an agent file, which says when the agent can run.
 - `sidecar/src/codex.ts`: a Codex agent's result, as a task notification.

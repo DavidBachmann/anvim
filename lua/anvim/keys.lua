@@ -20,7 +20,7 @@ local M = {}
 ---@class anvim.KeyPlace
 ---@field id string
 ---@field name string
----@field ctx "global"|"file"|"prompt"|"transcript"|"compose"|"explorer"|"files"|"overview"|"agentlog"|"view"|"settings"|"processes"|"login"|"other" Where its maps live.
+---@field ctx "global"|"file"|"prompt"|"transcript"|"compose"|"explorer"|"files"|"overview"|"agentlog"|"view"|"settings"|"processes"|"held"|"login"|"other" Where its maps live.
 ---@field keys anvim.Key[]
 
 ---@type anvim.KeyPlace[]
@@ -361,6 +361,17 @@ M.places = {
       { "x", "Stop the process or group (SIGTERM)" },
       { "X", "Kill the process or group (SIGKILL)" },
       { "s", "Sort by CPU or by memory" },
+      { { "q", "<Esc>" }, "Close the window" },
+    },
+  },
+  -- /held: the calls and questions that anvim held for the user.
+  {
+    id = "held",
+    name = "Held calls",
+    ctx = "held",
+    keys = {
+      { "<CR>", "Put the entry in the prompt" },
+      { "<CR>", "Put the selected entries in the prompt", mode = "x" },
       { { "q", "<Esc>" }, "Close the window" },
     },
   },

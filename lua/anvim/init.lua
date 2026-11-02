@@ -39,6 +39,8 @@ local highlights = {
   AnvimDanger = { link = "DiagnosticError" },
   AnvimShow = { link = "Visual" },
   AnvimNote = { link = "DiagnosticInfo" },
+  -- The statusline's away mode.
+  AnvimAway = { link = "Function" },
   AnvimChip = { link = "Comment" },
   -- The footer's agent count while j has selected it.
   AnvimChipSelected = { link = "PmenuSel" },
@@ -162,6 +164,7 @@ local function wire()
   stream.attach()
   require("anvim.tools").attach()
   require("anvim.permission").attach()
+  require("anvim.away").attach()
   require("anvim.trail").attach(sidecar)
   require("anvim.files").attach(sidecar)
   require("anvim.completion").attach(sidecar)

@@ -92,7 +92,7 @@ function M.start_command(opts)
     -- A restart after /clear resumes nothing, as the new session has no turn
     -- yet, but its todo list goes on.
     todos_session = state.session_id,
-  }, opts or {})
+  }, require("anvim.away").start_fields(), opts or {})
 end
 
 local function redraw()
@@ -578,6 +578,12 @@ function M.command(text)
   elseif name == "/chrome" then
     require("anvim.settings").open("chrome")
     return true
+  elseif name == "/away" then
+    require("anvim.away").toggle()
+    return true
+  elseif name == "/held" then
+    require("anvim.away").open()
+    return true
   end
   local reason = name and require("anvim.completion").unusable(name:sub(2), arg)
   if reason then
@@ -629,6 +635,8 @@ local own_commands = {
     argument_hint = "[reconnect|enable|disable [<server>|all]]",
   },
   { name = "chrome", description = "Open Claude in Chrome settings" },
+  { name = "away", description = "Toggle away mode: no request waits for you, except a plan" },
+  { name = "held", description = "Show the calls and questions that anvim held for you" },
   { name = "account", description = "Switch the Claude account, or add one", argument_hint = "[<name>|add <name>]" },
   { name = "codex-model", description = "Set the model of Codex agents", argument_hint = "[<model>|default]" },
   {

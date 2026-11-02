@@ -120,6 +120,13 @@ These keys work in the prompt, in normal mode, while Claude waits for your answe
 | `j`, `k` | Move to the next or previous option |
 | `Esc`, a pause, `Esc` | No |
 
+In the `/held` window:
+
+| Key | Action |
+| --- | --- |
+| `Enter` | Put the entry, or the selected entries, in the prompt |
+| `q`, `Esc` | Close the window |
+
 <a id="claude-and-its-agents"></a>
 
 ## Claude and agents

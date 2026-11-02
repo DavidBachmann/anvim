@@ -117,6 +117,11 @@ export type Command =
       // The session that the todo list belongs to, when resume is absent: a
       // restart after /clear resumes nothing, but keeps the new session's list.
       todos_session?: string;
+      // The user is away (away.ts). A restart keeps the state.
+      away?: boolean;
+      // Minutes that a request may wait before away mode turns on. 0 or
+      // absent: never.
+      away_after?: number;
     }
   // Absolute paths of the images that the prompt's [Image #N] chips stand for.
   // id is a UUID, which Claude Code's prompt_state events name.
@@ -171,6 +176,8 @@ export type Command =
   | { type: "todo_undo_reset" }
   // The answer to an editor_request: plain text for Claude, or an error.
   | { type: "editor_response"; req: number; result?: string; error?: string }
+  // /away turns away mode on or off.
+  | { type: "set_away"; away: boolean }
   // The user's answer to a permission_request (permissions.ts).
   | {
       type: "permission_response";
@@ -254,9 +261,27 @@ export type Event =
     }
   // The request was aborted, for example by an interrupt. The plugin drops it.
   | { type: "permission_cancel"; req: number }
-  // anvim denied the first guarded call of an agent without asking, with a
+  // anvim denied the main agent's first guarded call without asking, with a
   // hint for Claude (sendback.ts). The call's tool_result comes after it.
   | { type: "send_back"; tool_use_id: string; agent_id?: string; reason: string }
+  // anvim denied a request in place of a prompt and lists it for the user
+  // (away.ts). It comes before the call's tool_result. time is in seconds
+  // since the epoch. target is the command, the path, the host or the
+  // questions. away: away mode held it, not the rule for subagents.
+  | {
+      type: "held";
+      id: number;
+      time: number;
+      tool_use_id?: string;
+      agent_id?: string;
+      tool: string;
+      target: string;
+      description?: string;
+      reason: string;
+      away: boolean;
+    }
+  // The sidecar turned away mode on, because a request waited `after` minutes.
+  | { type: "away"; away: true; after: number }
   // A subagent's tool calls have the id of the Agent tool call that started
   // it as parent_id, and the subagent's own id as agent_id.
   | {

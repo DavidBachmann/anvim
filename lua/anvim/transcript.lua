@@ -75,7 +75,7 @@ local held = {}
 -- verbose mode.
 ---@type anvim.Tool[]
 local drawn = {}
--- The guard's reason of each main agent's call that anvim sent back. The
+-- The outcome of each main agent's call that anvim sent back or held. The
 -- event can come before the call's tool_start.
 ---@type table<string, string>
 local sent_back = {}
@@ -713,11 +713,19 @@ end
 
 M.agent_done, M.tokens, M.duration = agent_done, tokens, duration
 
--- Whether a failed call's text is a send-back's hint, as a resumed session
--- keeps it. In bypass mode Claude Code puts the hook's words before it.
+-- Whether a failed call's text is a send-back's hint ("sent") or a held
+-- call's text ("held"), as a resumed session keeps it. In bypass mode Claude
+-- Code puts the hook's words before it.
+---@return 'sent'|'held'|nil
 local function held_back(ev)
-  local text = type(ev.text) == "string" and ev.text or ""
-  return text:find("^anvim held this ") ~= nil or text:find("^PreToolUse:%w+ hook error: anvim held this ") ~= nil
+  local text = (type(ev.text) == "string" and ev.text or ""):gsub("^PreToolUse:%w+ hook error: ", "")
+  if text:find("^anvim held this ") then
+    return "sent"
+  elseif
+    text:find("^The user is away, so anvim did not ") or text:find("^anvim does not ask the user about a subagent")
+  then
+    return "held"
+  end
 end
 
 M.held_back = held_back
@@ -726,7 +734,7 @@ local function summarize(tool, ev)
   if tool.outcome then
     return tool.outcome[1], tool.outcome[2]
   elseif ev.is_error and held_back(ev) then
-    return "Sent back to Claude"
+    return held_back(ev) == "held" and "Held for the user" or "Sent back to Claude"
   elseif ev.is_error then
     return first_line(ev.text), "AnvimToolError", ev.text
   end
@@ -1208,7 +1216,8 @@ local function finish_question(tool, ev)
     end
   end
   if ev.is_error then
-    finish_tool(tool, true, rows, nil, "User declined to answer questions")
+    local away = held_back(ev) == "held" and "Held for the user"
+    finish_tool(tool, true, rows, nil, tool.outcome and tool.outcome[1] or away or "User declined to answer questions")
   elseif #rows > 0 then
     finish_tool(tool, false, rows, nil, "User answered Claude's questions:")
   else
@@ -1234,10 +1243,10 @@ end
 
 function M.tool_result(ev)
   local tool = tools[ev.id]
-  local reason = sent_back[ev.id]
+  local outcome = sent_back[ev.id]
   sent_back[ev.id] = nil
-  if tool and reason then
-    tool.outcome = { "Sent back to Claude: " .. reason }
+  if tool and outcome then
+    tool.outcome = { outcome }
   end
   if tool and tool.todo then
     tool.done = true
@@ -1700,10 +1709,16 @@ function M.attach(sidecar)
     M.output(ev.text)
   end)
   sidecar.on("compact", M.compact)
-  -- A subagent's call has no line here. Its log shows the send-back.
+  -- A subagent's call has no line here. Its log shows the held call.
   sidecar.on("send_back", function(ev)
     if not ev.agent_id and ev.tool_use_id then
-      sent_back[ev.tool_use_id] = ev.reason
+      sent_back[ev.tool_use_id] = "Sent back to Claude: " .. ev.reason
+    end
+  end)
+  sidecar.on("held", function(ev)
+    if not ev.agent_id and ev.tool_use_id then
+      sent_back[ev.tool_use_id] = ev.tool == "AskUserQuestion" and "The user is away, so Claude answers itself"
+        or "Held for the user: " .. ev.reason
     end
   end)
   local group = api.nvim_create_augroup("anvim.transcript", {})

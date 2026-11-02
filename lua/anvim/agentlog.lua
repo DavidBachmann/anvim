@@ -46,9 +46,9 @@ local messages = {}
 -- The agents that had a log, so a log that starts again knows it continues.
 ---@type table<string, true>
 local seen = {}
--- The guard's reason of each call that anvim sent back to the agent. The
--- event can come before the call's tool_use.
----@type table<string, string>
+-- The guard's reason of each call that anvim sent back to the agent or held.
+-- The event can come before the call's tool_use.
+---@type table<string, { reason: string, held: boolean? }>
 local sent_back = {}
 -- When each agent's first prompt came, for a new log that shows it again.
 ---@type table<string, integer>
@@ -447,7 +447,7 @@ function M.tool_use(ev)
 end
 
 function M.tool_result(ev)
-  local reason = sent_back[ev.id]
+  local outcome = sent_back[ev.id]
   sent_back[ev.id] = nil
   local agent = agents.of(ev)
   local log = agent and logs[agent.id]
@@ -455,9 +455,13 @@ function M.tool_result(ev)
     return
   end
   local text, group, full = transcript.summary(log.tools[ev.id], ev)
-  if reason and agent then
-    text, group, full = ("Sent back to %s: %s"):format(agents.name(agent), reason), nil, nil
-  elseif agent and ev.is_error and transcript.held_back(ev) then
+  local held = agent and ev.is_error and transcript.held_back(ev)
+  if outcome and agent then
+    local what = outcome.held and "Held for the user" or "Sent back to " .. agents.name(agent)
+    text, group, full = ("%s: %s"):format(what, outcome.reason), nil, nil
+  elseif held == "held" then
+    text, group, full = "Held for the user", nil, nil
+  elseif held then
     text, group, full = "Sent back to " .. agents.name(agent), nil, nil
   end
   finish(log, ev.id, ev.is_error, text, group, full)
@@ -479,7 +483,13 @@ end
 
 function M.send_back(ev)
   if ev.agent_id and ev.tool_use_id then
-    sent_back[ev.tool_use_id] = ev.reason
+    sent_back[ev.tool_use_id] = { reason = ev.reason }
+  end
+end
+
+function M.held(ev)
+  if ev.agent_id and ev.tool_use_id then
+    sent_back[ev.tool_use_id] = { reason = ev.reason, held = true }
   end
 end
 
@@ -626,6 +636,7 @@ function M.attach(sidecar)
   sidecar.on("tool_use", M.tool_use)
   sidecar.on("tool_result", M.tool_result)
   sidecar.on("send_back", M.send_back)
+  sidecar.on("held", M.held)
   sidecar.on("reset", M.clear)
   sidecar.on("history", M.clear)
   sidecar.on("exit", M.clear)

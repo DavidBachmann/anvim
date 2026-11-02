@@ -1,7 +1,8 @@
-// The send-back: the first call of each agent that anvim's sandbox guards
+// The send-back: the main agent's first call that anvim's sandbox guards
 // would ask about goes back to Claude with a hint, and the user sees no
 // prompt. A model sometimes picks such a call when a sandboxed way exists.
-// After that one send-back, each guarded call of the agent asks the user.
+// After that one send-back, each guarded call asks the user. A subagent's
+// guarded calls and every call while the user is away are held (away.ts).
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { REASONS } from "./sandbox";
 
@@ -52,7 +53,8 @@ export type SendBackOptions = {
 };
 
 export class SendBack {
-  // The sent-back call of each agent, by agent_id, "" for the main agent.
+  // The sent-back call, by agent_id, "" for the main agent. Only the main
+  // agent comes here (permissions.ts).
   private sent = new Map<string, { tool: string; target: string }>();
   private log: (line: string) => void;
 

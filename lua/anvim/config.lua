@@ -25,6 +25,8 @@ M.defaults = {
   debug = false,
   -- Claude sees the project as new: it reads and writes no memories, and the todo list is a temporary one.
   amnesia = false,
+  ---@type number|false Minutes that a request may wait for you before away mode turns on. 0 or false: never.
+  away_after = 10,
   bun = "bun",
   ---@type string? A recording that ANVIM_RECORD saved. The sidecar plays it instead of a live session.
   replay = nil,

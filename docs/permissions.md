@@ -56,7 +56,33 @@ The following guards can prompt even in bypass mode. Their yellow explanation sa
 - **Configuration that runs code.** Claude Code's list includes directories such as `.git`, `.claude`, `.vscode` and `.husky`, and files such as `.mcp.json`, `.envrc`, `.npmrc`, `.zshrc` and `lefthook.yml`. MCP servers and Git hooks, for example, can run outside the sandbox later. For this configuration-file guard, the first `.claude/worktrees` path component is exempt, as in Claude Code; other guards can still apply. A hook script configured elsewhere remains a gap: editing it can affect a later hook without this guard.
 - **Codex writes.** Codex has its own sandbox and can write project files, including configuration that anvim would guard for Claude. In bypass mode anvim asks before a write-capable Codex run, but not for a read-only run. In default and accept edits modes, Codex calls are subject to ordinary approval. Plan mode runs Codex read-only, and asks first when the run gets the browser.
 
-For Claude and each subagent, anvim sends the first guarded call back with a hint instead of immediately asking. The hint explains that you have not been asked, suggests an alternative and permits the agent to retry. Later guarded calls from that agent ask you. The transcript shows the send-back, and `~/.local/state/anvim/anvim.log` records send-backs and subsequent prompts with `send-back:`. `/clear` resets Claude's count. Write-capable Codex calls are the exception: they ask directly because there is no equivalent run inside Claude's sandbox. `--no-sandbox` disables these guards as well.
+Only Claude, the main agent, asks you about a guarded call. Its first guarded call goes back with a hint instead of a prompt. The hint explains that you have not been asked, suggests an alternative and permits Claude to retry. Later guarded calls ask you. The transcript shows the send-back, and `~/.local/state/anvim/anvim.log` records send-backs and subsequent prompts with `send-back:`. `/clear` resets the count. Write-capable Codex calls are the exception: they ask directly because there is no equivalent run inside Claude's sandbox. `--no-sandbox` disables these guards as well.
+
+A subagent's guarded call never asks, so a task cannot hang on a prompt while you are gone. anvim [holds](#held-calls) the call: it denies the call with advice for the reason, such as a way to run the command inside the sandbox, and lists it for you. The subagent goes on with the rest of its task and names the call in its report.
+
+<a id="away"></a>
+
+## Away mode
+
+`/away` tells anvim that you are gone, and `/away` again that you are back. While you are away, no request waits for you, except a plan's approval:
+
+- A call that would ask you, guarded or not, is [held](#held-calls).
+- A question from Claude gets no prompt. Claude chooses the option that it would recommend, tells you which one, and goes on. The question goes on the held list.
+- A plan's approval waits for you as usual.
+
+Turning away mode on answers the requests that are open at that moment, except a plan's. Claude hears of each switch once, with its next tool call or prompt. While away, Claude is told to take the next step when it is clear, instead of ending its turn with a question.
+
+A request that waits 10 minutes turns away mode on as `/away` does, and the transcript says so. Set `away_after` in a personal spec to change the minutes; `0` or `false` turns this off. The statusline shows a blue `zZz [/away]` after the login's email while you are away. A restart of Claude keeps the state, and a new anvim starts with you present.
+
+When you turn away mode off, one line in the transcript counts what waited, such as “While you were away, anvim held 7 calls, and Claude answered 2 questions itself. /held shows them.”
+
+<a id="held-calls"></a>
+
+### Held calls
+
+anvim denies a held call in place of a prompt, and Claude reads why. The call's line in the transcript, or in a subagent's log, says “Held for the user”, and `anvim.log` records it with `held:`. The held list keeps every held call and question while anvim runs. Nothing in it needs dismissing. While it has entries that you have not seen, the statusline shows `N held [/held]`.
+
+`/held` opens the list, newest first, and marks every entry as seen. Turning away mode off does that too. A row shows the time, the agent, the call's description or target, and the reason. Repeats of the same call by the same agent share one row with a count, such as `×4`. Seen entries are dimmed. `Enter` puts the entry under the cursor, or the selected entries, in the prompt as text that asks Claude to run the call again if it is still needed. Edit it and send it: Claude runs the call, which asks you live. anvim never runs a held call itself.
 
 ### Browser actions
 

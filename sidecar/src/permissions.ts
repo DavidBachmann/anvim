@@ -9,6 +9,7 @@ import type {
   SDKMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { isAbsolute, relative } from "node:path";
+import { ASKS, ASKS_QUESTION, AwayNotice, heldTarget, heldText, QUESTION } from "./away";
 import type { Command, Event } from "./protocol";
 import { tildePath } from "./paths";
 import { SendBack } from "./sendback";
@@ -25,11 +26,25 @@ export const REJECT = `${REJECTED} STOP what you are doing and wait for the user
 export const REJECT_WITH = `${REJECTED} To tell you how to proceed, the user said:\n`;
 export const CANCELLED = "The permission request was cancelled before the user answered.";
 
+// What a held request needs from canUseTool's options.
+type Call = { toolUseID?: string; agentID?: string; description?: string; reason?: string };
+
 type Pending = {
   tool: string;
   input: Input;
+  call: Call;
   suggestions?: PermissionUpdate[];
   resolve: (result: PermissionResult) => void;
+  // Clears the request's away timer.
+  stop?: () => void;
+};
+
+// Starts a timer, and returns the function that clears it.
+export type Timer = (fn: () => void, ms: number) => () => void;
+
+const setTimer: Timer = (fn, ms) => {
+  const t = setTimeout(fn, ms);
+  return () => clearTimeout(t);
 };
 
 // Matches the plugin's answers to Claude Code's requests. A request stays open
@@ -45,21 +60,37 @@ export class PermissionBridge {
   mode?: string;
   // anvim's own asks (sandbox.ts), whose reason the request shows.
   guard?: Guard;
-  // Sends the first guarded call of each agent back to Claude (sendback.ts).
+  // Sends the main agent's first guarded call back to Claude (sendback.ts).
   sendBack?: SendBack;
+  // The user is away: no request waits for them, except a plan's approval.
+  away = false;
+  // How long a request may wait before away mode turns on. 0 is never.
+  awayAfterMs = 0;
+  // Tells the main agent when away mode switches.
+  readonly notice = new AwayNotice(() => this.away);
+  private held = 0;
+  private tmpDir?: string;
+  // Lines for anvim.log, through the sidecar's stderr.
+  private log: (line: string) => void = (line) => process.stderr.write(line + "\n");
 
-  constructor(private emit: (ev: Event) => void) {}
+  constructor(
+    private emit: (ev: Event) => void,
+    private timer: Timer = setTimer,
+  ) {}
 
   // The sandbox's guards, or none while the sandbox is off. log takes the
-  // send-back's lines, which go to stderr by default.
+  // send-back's and the held calls' lines, which go to stderr by default.
   useGuard(guard: (Guard & { tmpDir: string }) | undefined, log?: (line: string) => void): void {
     this.guard = guard;
+    this.tmpDir = guard?.tmpDir;
+    if (log) this.log = log;
     this.sendBack = guard ? new SendBack({ tmpDir: guard.tmpDir, log }) : undefined;
   }
 
-  // Each SDK message of the session, for the send-back's reset.
+  // Each SDK message of the session, for the resets of the send-back and the away notice.
   message(msg: SDKMessage): void {
     this.sendBack?.message(msg);
+    if (msg.type === "conversation_reset") this.notice.reset();
     const m = msg as { type: string; subtype?: string; permissionMode?: string };
     if (m.type === "system" && (m.subtype === "init" || m.subtype === "status") && m.permissionMode) {
       this.mode = m.permissionMode;
@@ -84,6 +115,14 @@ export class PermissionBridge {
     // "don't ask again". In bypass mode the guard calls canUseTool itself, so
     // both paths decide the send-back here, once per call.
     const reason = this.guard?.take(opts.toolUseID);
+    const call: Call = {
+      toolUseID: opts.toolUseID,
+      agentID: opts.agentID,
+      description: opts.description ?? (typeof input.description === "string" ? input.description : undefined),
+      reason,
+    };
+    // Only the main agent asks the user, and only while the user is present.
+    if (!opts.signal.aborted && this.holds(tool, call)) return Promise.resolve(this.hold(tool, input, call));
     // A cancelled request does not use up the send-back.
     const hint =
       reason && !opts.signal.aborted
@@ -102,19 +141,25 @@ export class PermissionBridge {
     const suggestions = remember ? opts.suggestions : undefined;
     return new Promise((resolve) => {
       const abort = () => {
-        if (!this.pending.delete(req)) return;
+        const p = this.pending.get(req);
+        if (!p) return;
+        this.pending.delete(req);
+        p.stop?.();
         this.emit({ type: "permission_cancel", req });
         resolve({ behavior: "deny", message: CANCELLED });
       };
-      this.pending.set(req, {
+      const p: Pending = {
         tool,
         input,
+        call,
         suggestions,
         resolve: (result) => {
           opts.signal.removeEventListener("abort", abort);
           resolve(result);
         },
-      });
+      };
+      this.pending.set(req, p);
+      this.wait(p);
       this.emit({
         type: "permission_request",
         req,
@@ -138,12 +183,71 @@ export class PermissionBridge {
     const p = this.pending.get(res.req);
     if (!p) return;
     this.pending.delete(res.req);
+    p.stop?.();
     // A mode switch reaches the plugin as a status event from Claude Code.
     p.resolve(decide(p, res, this.bypass));
   }
 
   get waiting(): number {
     return this.pending.size;
+  }
+
+  private holds(tool: string, call: Call): boolean {
+    if (tool === "ExitPlanMode") return false;
+    return this.away || (call.reason !== undefined && call.agentID !== undefined);
+  }
+
+  // Denies the request in place of a prompt, and lists it for the user.
+  private hold(tool: string, input: Input, call: Call): PermissionResult {
+    const question = tool === "AskUserQuestion";
+    const reason = call.reason ?? (question ? ASKS_QUESTION : ASKS);
+    const target = heldTarget(tool, input);
+    this.log(`held: ${call.agentID ?? "main"} ${tool} ${reason}: ${target.replace(/\n/g, "\\n").slice(0, 200)}`);
+    this.emit({
+      type: "held",
+      id: ++this.held,
+      time: Math.floor(Date.now() / 1000),
+      tool_use_id: call.toolUseID,
+      agent_id: call.agentID,
+      tool,
+      target,
+      description: call.description,
+      reason,
+      away: this.away,
+    });
+    const message = question && this.away ? QUESTION : heldText(reason, this.away, this.tmpDir);
+    // Without interrupt, so the turn goes on.
+    return { behavior: "deny", message };
+  }
+
+  // A request that waits awayAfterMs turns away mode on.
+  private wait(p: Pending): void {
+    if (this.away || this.awayAfterMs <= 0) return;
+    p.stop = this.timer(() => {
+      p.stop = undefined;
+      this.setAway(true, this.awayAfterMs);
+    }, this.awayAfterMs);
+  }
+
+  // Turning away mode on answers the open requests, except a plan's
+  // approval. waited: the sidecar turns it on itself, after a request waited
+  // that many ms, and tells the plugin.
+  setAway(on: boolean, waited?: number): void {
+    if (on === this.away) return;
+    this.away = on;
+    if (waited !== undefined) this.emit({ type: "away", away: true, after: Math.round(waited / 60_000) });
+    for (const [req, p] of this.pending) {
+      p.stop?.();
+      p.stop = undefined;
+      if (!on) {
+        this.wait(p);
+      } else if (this.holds(p.tool, p.call)) {
+        this.pending.delete(req);
+        const result = this.hold(p.tool, p.input, p.call);
+        this.emit({ type: "permission_cancel", req });
+        p.resolve(result);
+      }
+    }
   }
 }
 

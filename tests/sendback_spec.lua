@@ -1,6 +1,9 @@
 ---@module "luassert"
 
 local helpers = require("helpers")
+local input = require("anvim.input")
+local layout = require("anvim.layout")
+local sessions = require("anvim.sessions")
 local sidecar = require("anvim.sidecar")
 local transcript = require("anvim.transcript")
 
@@ -70,5 +73,65 @@ describe("a send-back", function()
       "  ⎿  Sent back to Claude: changes the sandbox's settings",
       (result_of(transcript.buf(), "anvim.transcript", "Edit(settings.json)"))
     )
+  end)
+end)
+
+local function status()
+  local win = layout.wins.input
+  return api.nvim_eval_statusline("%!v:lua.require'anvim.statusline'.render()", { winid = win, maxwidth = 300 }).str
+end
+
+describe("away mode", function()
+  it("shows zZz while away, lists a held call in /held, and reports it when the user is back", function()
+    helpers.fresh()
+    layout.focus_input({ insert = false })
+    helpers.capture_sends(function(sent)
+      sessions.command("/away")
+      assert.are.same({ type = "set_away", away = true }, sent[1])
+      assert.are.same(true, sessions.start_command().away)
+      local line = status()
+      assert(line:find("zZz [/away]", 1, true), line)
+
+      sidecar.dispatch({ type = "tool_start", id = "aw1", name = "Bash" })
+      sidecar.dispatch({ type = "tool_use", id = "aw1", name = "Bash", input = { command = "make check" } })
+      sidecar.dispatch({
+        type = "held",
+        id = 1,
+        time = os.time(),
+        tool_use_id = "aw1",
+        tool = "Bash",
+        target = "make check",
+        reason = "runs outside the sandbox",
+        away = true,
+      })
+      sidecar.dispatch({ type = "tool_result", id = "aw1", is_error = true, text = "The user is away, so anvim..." })
+      helpers.contains(helpers.buf_lines(transcript.buf()), "^  ⎿  Held for the user: runs outside the sandbox$")
+      line = status()
+      assert(line:find("1 held [/held]", 1, true), line)
+
+      sessions.command("/held")
+      local buf = api.nvim_get_current_buf()
+      assert.are.same("anvim_held", vim.bo[buf].filetype)
+      helpers.contains(helpers.buf_lines(buf), "Claude%s+make check  runs outside the sandbox$")
+      -- Opening the list marks its entries as seen.
+      line = status()
+      assert(not line:find("held [/held]", 1, true), line)
+      api.nvim_feedkeys(vim.keycode("<CR>"), "mxt", false)
+      assert.are.same(layout.wins.input, api.nvim_get_current_win())
+      assert.are.same("n", api.nvim_get_mode().mode)
+      local prompt = table.concat(api.nvim_buf_get_lines(input.buf(), 0, -1, false), "\n")
+      assert(prompt:find("anvim held this Bash call of Claude (runs outside the sandbox)", 1, true), prompt)
+      assert(prompt:find("`make check`", 1, true), prompt)
+      api.nvim_buf_set_lines(input.buf(), 0, -1, false, { "" })
+
+      sessions.command("/away")
+      assert.are.same({ type = "set_away", away = false }, sent[2])
+      helpers.contains(
+        helpers.buf_lines(transcript.buf()),
+        "While you were away, anvim held 1 call%. /held shows them%.$"
+      )
+      line = status()
+      assert(not line:find("zZz", 1, true), line)
+    end)
   end)
 end)
