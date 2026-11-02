@@ -291,6 +291,7 @@ M.places = {
       { "<leader>cm", "Choose the model" },
       { "<leader>cR", "Restart Claude" },
       { "<leader>cp", "Show the running processes" },
+      { "<leader>cc", "Show the cheatsheet" },
     },
   },
   -- The list of a snacks picker, which keeps snacks' own keys.

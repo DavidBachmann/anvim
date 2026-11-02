@@ -1,6 +1,7 @@
 -- The key view: every key of anvim, by the place where it works, in a float
 -- with the look of which-key's helix preset. which-key cannot show it: its
 -- view lists the keys under one prefix, sorted by key, one group at a time.
+-- The cheatsheet opens in the same float, with the same keys.
 local keys = require("anvim.keys")
 
 local M = {}
@@ -12,7 +13,12 @@ local SEP = " ➜ "
 local GAP = 3
 local MODES = { i = "insert", x = "visual", o = "operator" }
 
+-- Writes the float's buffer, and returns its config: the key view's or the
+-- cheatsheet's.
+---@alias anvim.KeyView.Draw fun(buf: integer): vim.api.keyset.win_config
+
 ---@class anvim.KeyView
+---@field draw anvim.KeyView.Draw
 ---@field win integer?
 ---@field buf integer?
 ---@field from integer The window that had the cursor.
@@ -227,7 +233,7 @@ end
 
 -- Writes the view into its buffer, and returns the float's config.
 ---@return vim.api.keyset.win_config
-local function draw(buf)
+local function draw_keys(buf)
   local status = vim.o.laststatus > 0 and 1 or 0
   local bottom = vim.o.lines - vim.o.cmdheight - status
   local cols, height = arrange(vim.o.columns - 2, bottom - 2)
@@ -322,9 +328,17 @@ function M.close()
   close(true)
 end
 
+-- Opens the float that `draw` fills. An open float of the other view shows
+-- this one instead, and the cursor still goes back where it was before.
+---@param draw anvim.KeyView.Draw
 ---@param opts? { insert: boolean? } The prompt was in insert mode.
-function M.open(opts)
+function M.show(draw, opts)
   if M.win() then
+    if view.draw ~= draw then
+      view.draw = draw
+      api.nvim_win_set_config(view.win, draw(view.buf))
+      api.nvim_win_set_cursor(view.win, { 1, 0 })
+    end
     api.nvim_set_current_win(view.win)
     return
   end
@@ -333,6 +347,7 @@ function M.open(opts)
   local layout = require("anvim.layout")
   local reading = from == layout.wins.transcript and vim.w[from].anvim_read == true
   view = {
+    draw = draw,
     from = from,
     previous = previous ~= 0 and previous or nil,
     cursor = api.nvim_win_get_cursor(from),
@@ -398,10 +413,15 @@ function M.open(opts)
     group = group,
     callback = function()
       if view and view.buf == buf and M.win() then
-        api.nvim_win_set_config(win, draw(buf))
+        api.nvim_win_set_config(win, view.draw(buf))
       end
     end,
   })
+end
+
+---@param opts? { insert: boolean? } The prompt was in insert mode.
+function M.open(opts)
+  M.show(draw_keys, opts)
 end
 
 return M

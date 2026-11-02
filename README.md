@@ -103,7 +103,7 @@ anvim --amnesia ~/dev/project          # fresh eyes: no memories of the project
 anvim --debug ~/dev/anvim              # let Claude work on anvim itself
 ```
 
-`<leader>` is Space. If you forget a key, `<leader>?` has the whole list.
+`<leader>` is Space. If you forget a key, `<leader>cc` shows a cheatsheet of the keys that people use most, and `<leader>?` has the whole list.
 
 ## Docs
 

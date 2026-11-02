@@ -2,7 +2,7 @@
 
 <a id="keys"></a>
 
-`<leader>` is Space. Use `<leader>?` for the live key view, grouped by context. In prompt normal mode, `?` also opens it; in insert mode it does so only in an empty prompt with no request waiting. Otherwise `?` is text. Scroll with `j`/`k`, and close with `q`, `Esc` or `:q`; the previous cursor and mode return. Mode tags identify mappings that need insert or visual mode.
+`<leader>` is Space. Use `<leader>?` for the live key view, grouped by context. In prompt normal mode, `?` also opens it; in insert mode it does so only in an empty prompt with no request waiting. Otherwise `?` is text. Scroll with `j`/`k`, and close with `q`, `Esc` or `:q`; the previous cursor and mode return. Mode tags identify mappings that need insert or visual mode. `<leader>cc` opens the cheatsheet: the keys and slash commands that people use most, grouped by task. It scrolls and closes as the key view does.
 
 The tables below are a quick reference; Vim's normal motions still work. The reading keys follow LazyVim conventions. File-changing mappings such as rename and code actions are unavailable in the code window; split actions open files there instead. In the explorer, file operations and `Ctrl-C` (change directory) are disabled. Git pickers can stage with `Tab` but cannot restore files or check out commits. Neovim's text-changing `gc`, `gcc`, `[<Space>`, `]<Space>` and `&` are also disabled; operator-pending `gc` remains a comment text object, so `cgc` can reference a comment for Claude.
 
@@ -146,6 +146,7 @@ In the `/held` window:
 | `<leader>cm`, `:AnvimModel` | Choose Claude's model |
 | `<leader>cR`, `:AnvimRestart` | Start Claude again, in the same session |
 | `<leader>cp`, `:AnvimProcesses` | Show which processes use the CPU |
+| `<leader>cc` | Show the cheatsheet |
 
 In the Processes window:
 

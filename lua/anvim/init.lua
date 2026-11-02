@@ -51,6 +51,11 @@ local highlights = {
   -- The code window's winbar. Without a background of its own, it has the code's.
   AnvimWinBar = { link = "Comment" },
   AnvimWinBarWriting = { link = "AnvimClaude" },
+  -- The cheatsheet. A heading is bold over AnvimClaude, and a key's color goes
+  -- over its chip's background.
+  AnvimSheetHeading = { bold = true },
+  AnvimSheetKey = { link = "Function" },
+  AnvimSheetChip = { link = "CursorLine" },
   -- Far apart from each other and from AnvimClaude in the usual colorschemes.
   AnvimAgent1 = { link = "MiniIconsAzure" },
   AnvimAgent2 = { link = "MiniIconsPurple" },
@@ -261,6 +266,9 @@ function M.setup(opts)
   api.nvim_create_user_command("AnvimProcesses", processes.open, { desc = "Show the running processes" })
   keys.set("global", "n", "<leader>?", function()
     require("anvim.keyview").open()
+  end)
+  keys.set("claude", "n", "<leader>cc", function()
+    require("anvim.cheatsheet").open()
   end)
 end
 
