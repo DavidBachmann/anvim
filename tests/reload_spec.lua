@@ -18,6 +18,7 @@ describe("reload", function()
       replay = config.options.replay,
       chosen = config.mode_chosen,
       id = state.session_id,
+      model = state.model,
       mode = state.permission_mode,
       tui = reload.tui,
       exec = reload.exec,
@@ -71,7 +72,8 @@ describe("reload", function()
       vim.env[name] = value
     end
     config.options.debug, config.options.replay, config.mode_chosen = saved.debug, saved.replay, saved.chosen
-    state.session_id, state.permission_mode = saved.id, saved.mode
+    -- The dispatched init carries no model, and later specs read the fixture's model.
+    state.session_id, state.model, state.permission_mode = saved.id, saved.model, saved.mode
     reload.tui, reload.exec, sessions.model = saved.tui, saved.exec, nil
     api.nvim_buf_set_lines(input.buf(), 0, -1, false, { "" })
     assert(ok, err)
@@ -83,6 +85,7 @@ describe("reload", function()
       debug = config.options.debug,
       replay = config.options.replay,
       id = state.session_id,
+      model = state.model,
       tui = reload.tui,
       exec = reload.exec,
     }
@@ -108,6 +111,7 @@ describe("reload", function()
     end)
 
     config.options.debug, config.options.replay, state.session_id = saved.debug, saved.replay, saved.id
+    state.model = saved.model
     reload.tui, reload.exec = saved.tui, saved.exec
     assert(ok, err)
   end)
