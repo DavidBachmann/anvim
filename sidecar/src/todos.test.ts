@@ -2,9 +2,9 @@ import { afterAll, describe, expect, test } from "bun:test";
 import type { HookInput } from "@anthropic-ai/claude-agent-sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { Event } from "./protocol";
 import { TodoStore } from "./todos";
 import { EditorBridge, editorServer, isEditorTool, SERVER, TODO_TOOLS } from "./tools";
@@ -14,21 +14,35 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
 const signal = new AbortController().signal;
 let n = 0;
 
-function store(path = join(root, `p${++n}`, "todos.json")) {
+function store(opts: { dir?: string; resume?: string } = {}) {
+  const dir = opts.dir ?? join(root, `p${++n}`, ".anvim", "todos");
   const events: Extract<Event, { type: "todos" }>[] = [];
-  const s = new TodoStore(path, (ev) => events.push(ev as Extract<Event, { type: "todos" }>));
-  return { s, events, path };
+  const s = new TodoStore(dir, (ev) => events.push(ev as Extract<Event, { type: "todos" }>), opts.resume);
+  return { s, events, dir };
 }
 
 const subjects = (items: { id: number; subject: string; status: string }[]) =>
   items.map((i) => `#${i.id} ${i.status} ${i.subject}`);
 
+// The file of a session's list.
+const listFile = (dir: string, session: string) =>
+  join(dir, `${JSON.parse(readFileSync(join(dir, "sessions.json"), "utf8"))[session]}.json`);
+
+// What a store that resumes the session shows.
+async function resumed(dir: string, session: string) {
+  const { s } = store({ dir, resume: session });
+  await s.start();
+  s.close();
+  return subjects(s.items());
+}
+
 describe("the todo store", () => {
   test("adds, updates and deletes items, and never uses an id again", async () => {
-    const { s, events, path } = store();
-    s.start();
-    // A missing file is an empty list, and the start sends it.
+    const { s, events, dir } = store();
+    await s.start();
+    // A new session has an empty list, and the start sends it.
     expect(events).toEqual([{ type: "todos", items: [] }]);
+    await s.bind("A");
     const { ids } = await s.add([
       { subject: " Read the parser " },
       { subject: "Fix it", owner: "fixer", blocked_by: [1] },
@@ -53,11 +67,11 @@ describe("the todo store", () => {
       "#1 in_progress Read the parser, #3 pending Test it",
     ]);
     expect(events[3]!.items[1]!.owner).toBeUndefined();
-    const file = JSON.parse(readFileSync(path, "utf8"));
+    const file = JSON.parse(readFileSync(listFile(dir, "A"), "utf8"));
     expect(file.next_id).toBe(4);
     expect(typeof file.items[0].created).toBe("number");
     // The lock is gone after each change.
-    expect(existsSync(`${path}.lock`)).toBe(false);
+    expect(existsSync(join(dir, ".lock"))).toBe(false);
     s.close();
   });
 
@@ -72,23 +86,26 @@ describe("the todo store", () => {
   });
 
   test("a broken file is an empty list, and a stale lock does not block a change", async () => {
-    const { s, path } = store();
-    s.start();
-    writeFileSync(path, "{ not json");
+    const { s, dir } = store();
+    await s.start();
+    await s.bind("A");
+    await s.add([{ subject: "Before the break" }]);
+    writeFileSync(listFile(dir, "A"), "{ not json");
     expect(s.items()).toEqual([]);
-    writeFileSync(`${path}.lock`, "");
+    const lock = join(dir, ".lock");
+    writeFileSync(lock, "");
     const old = (Date.now() - 6_000) / 1000;
-    utimesSync(`${path}.lock`, old, old);
+    utimesSync(lock, old, old);
     await s.add([{ subject: "After the stale lock" }]);
     expect(subjects(s.items())).toEqual(["#1 pending After the stale lock"]);
     s.close();
   });
 
-  test("another anvim's change reaches this store's events", async () => {
-    const first = store();
-    const second = store(first.path);
-    first.s.start();
-    second.s.start();
+  test("another anvim on the same session sends its changes to this store", async () => {
+    const first = store({ resume: "A" });
+    const second = store({ dir: first.dir, resume: "A" });
+    await first.s.start();
+    await second.s.start();
     // The watch starts to listen a moment after start(), later under load.
     await Bun.sleep(200);
     await second.s.add([{ subject: "From the other anvim" }]);
@@ -102,23 +119,59 @@ describe("the todo store", () => {
     second.s.close();
   });
 
-  test("/reset keeps the list as the previous list, and /undo-reset swaps the two", async () => {
-    const { s, events, path } = store();
-    s.start();
+  test("a new session does not see the list of another session", async () => {
+    const first = store();
+    await first.s.start();
+    await first.s.bind("A");
+    await first.s.add([{ subject: "Mobile app" }]);
+    const second = store({ dir: first.dir });
+    await second.s.start();
+    await second.s.bind("B");
+    expect(second.s.items()).toEqual([]);
+    expect(second.events).toEqual([{ type: "todos", items: [] }]);
+    expect(await resumed(first.dir, "A")).toEqual(["#1 pending Mobile app"]);
+    first.s.close();
+    second.s.close();
+  });
+
+  test("/clear gives the new session the list, and a resume of either session finds it", async () => {
+    const { s, dir } = store();
+    await s.start();
+    await s.bind("A");
+    await s.add([{ subject: "Kept" }]);
+    await s.cleared(undefined);
+    await s.bind("B");
+    expect(subjects(s.items())).toEqual(["#1 pending Kept"]);
+    s.close();
+    expect(await resumed(dir, "B")).toEqual(["#1 pending Kept"]);
+    expect(await resumed(dir, "A")).toEqual(["#1 pending Kept"]);
+  });
+
+  test("/reset starts a new list for the new session, and /undo-reset swaps the two", async () => {
+    const { s, events, dir } = store();
+    await s.start();
+    await s.bind("A");
     await s.add([{ subject: "Old one" }, { subject: "Old two" }]);
-    await s.reset();
+    s.armReset("u1");
+    // Another prompt's /clear changes nothing.
+    await s.cleared("u2");
+    expect(s.items().length).toBe(2);
+    await s.cleared("u1");
+    await s.bind("B");
     expect(s.items()).toEqual([]);
-    expect(existsSync(path)).toBe(false);
-    expect(JSON.parse(readFileSync(s.prevPath, "utf8")).items.length).toBe(2);
-    // Ids start again at 1.
+    // Ids start again at 1, and the old session keeps the old list.
     expect((await s.add([{ subject: "New one" }])).ids).toEqual([1]);
+    expect(await resumed(dir, "A")).toEqual(["#1 pending Old one", "#2 pending Old two"]);
     expect(await s.undo()).toBe(true);
     expect(subjects(s.items())).toEqual(["#1 pending Old one", "#2 pending Old two"]);
+    expect(await resumed(dir, "B")).toEqual(["#1 pending Old one", "#2 pending Old two"]);
     expect(await s.undo()).toBe(true);
     expect(subjects(s.items())).toEqual(["#1 pending New one"]);
-    // A reset of an empty list keeps the previous list.
+    // A /reset of an empty list keeps the previous list.
     await s.update({ id: 1, status: "deleted" });
-    await s.reset();
+    s.armReset("u3");
+    await s.cleared("u3");
+    await s.bind("C");
     expect(await s.undo()).toBe(true);
     expect(subjects(s.items())).toEqual(["#1 pending Old one", "#2 pending Old two"]);
     // Each reset and swap sends one event, and the watch adds none.
@@ -139,7 +192,9 @@ describe("the todo store", () => {
 
   test("/undo-reset without a previous list changes nothing", async () => {
     const { s, events } = store();
-    s.start();
+    await s.start();
+    expect(await s.undo()).toBe(false);
+    await s.bind("A");
     await s.add([{ subject: "Kept" }]);
     expect(await s.undo()).toBe(false);
     expect(subjects(s.items())).toEqual(["#1 pending Kept"]);
@@ -147,25 +202,41 @@ describe("the todo store", () => {
     s.close();
   });
 
-  test("another anvim sees a reset and an undo", async () => {
-    const first = store();
-    const second = store(first.path);
-    first.s.start();
-    second.s.start();
-    const last = () => subjects(first.events.at(-1)!.items).join(", ");
-    const until = async (text: string) => {
-      for (let i = 0; i < 500 && last() !== text; i++) await Bun.sleep(10);
-      expect(last()).toBe(text);
-    };
-    await Bun.sleep(200);
-    await second.s.add([{ subject: "Shared" }]);
-    await until("#1 pending Shared");
-    await second.s.reset();
-    await until("");
-    await second.s.undo();
-    await until("#1 pending Shared");
-    first.s.close();
-    second.s.close();
+  test("an older anvim's project list becomes the list of the first start, with its previous list", async () => {
+    const { s, dir } = store({ resume: "A" });
+    const parent = dirname(dir);
+    mkdirSync(parent, { recursive: true });
+    const file = (subject: string) => JSON.stringify({ next_id: 2, items: [{ id: 1, subject, status: "pending" }] });
+    writeFileSync(join(parent, "todos.json"), file("Shared"));
+    writeFileSync(join(parent, "todos.prev.json"), file("Before the reset"));
+    await s.start();
+    expect(subjects(s.items())).toEqual(["#1 pending Shared"]);
+    expect(existsSync(join(parent, "todos.json")) || existsSync(join(parent, "todos.prev.json"))).toBe(false);
+    expect(await resumed(dir, "A")).toEqual(["#1 pending Shared"]);
+    // A second anvim starts empty.
+    expect(await resumed(dir, "B")).toEqual([]);
+    expect(await s.undo()).toBe(true);
+    expect(subjects(s.items())).toEqual(["#1 pending Before the reset"]);
+    s.close();
+  });
+
+  test("a start without a session shows an older anvim's list, and only the first init takes it in", async () => {
+    const { s, dir } = store();
+    const parent = dirname(dir);
+    mkdirSync(parent, { recursive: true });
+    writeFileSync(join(parent, "todos.json"), JSON.stringify({ next_id: 2, items: [{ id: 1, subject: "Shared", status: "pending" }] }));
+    await s.start();
+    expect(subjects(s.items())).toEqual(["#1 pending Shared"]);
+    // The anvim quits before its first prompt, and the list stays.
+    s.close();
+    const again = store({ dir });
+    await again.s.start();
+    expect(subjects(again.s.items())).toEqual(["#1 pending Shared"]);
+    await again.s.bind("A");
+    expect(subjects(again.s.items())).toEqual(["#1 pending Shared"]);
+    expect(existsSync(join(parent, "todos.json"))).toBe(false);
+    expect(await resumed(dir, "A")).toEqual(["#1 pending Shared"]);
+    again.s.close();
   });
 
   test("a new session learns the open items", async () => {
@@ -179,7 +250,7 @@ describe("the todo store", () => {
       hookSpecificOutput: {
         hookEventName: "SessionStart",
         additionalContext: [
-          "anvim's todo list for this project has open items:",
+          "anvim's todo list for this session has open items:",
           "#2 [pending] Open one (owner: explorer)",
           "Call todo_list for the whole list with the descriptions.",
         ].join("\n"),
@@ -197,7 +268,7 @@ describe("the todo store", () => {
     expect(first.hookSpecificOutput.hookEventName).toBe("UserPromptSubmit");
     expect(first.hookSpecificOutput.additionalContext).toContain("#1 [pending] Open one");
     expect(await prompt()).toEqual({});
-    // A clear's hook tells nothing, because a /reset may delete the list next.
+    // A clear's hook tells nothing, because a /reset may start a new list next.
     // The next prompt tells.
     const clear = { hook_event_name: "SessionStart", source: "clear" } as HookInput;
     expect(await s.sessionStart(clear, undefined, { signal })).toEqual({});

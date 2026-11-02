@@ -73,18 +73,18 @@ describe("sessions", function()
     vim.env.ANVIM_AMNESIA = "1"
     local spec_on = dofile(helpers.root .. "/lua/anvim/plugins/anvim.lua")[1].opts.amnesia
     vim.env.ANVIM_AMNESIA = env
-    local project = sessions.start_command().todos_path
+    local project = sessions.start_command().todos_dir
     config.options.amnesia = true
     local first, second = sessions.start_command(), sessions.start_command()
     config.options.amnesia = false
     assert.is_true(spec_on)
     assert.is_true(first.amnesia)
-    assert.are_not.same(project, first.todos_path)
-    -- A restart, such as an account switch, keeps the temporary list.
-    assert.are.same(first.todos_path, second.todos_path)
+    assert.are_not.same(project, first.todos_dir)
+    -- A restart, such as an account switch, keeps the temporary lists.
+    assert.are.same(first.todos_dir, second.todos_dir)
   end)
 
-  it("keeps the todo list in .anvim/, and moves a list from the old dir there once", function()
+  it("keeps the todo lists in .anvim/todos/, and moves a list from the old dir to .anvim/ once", function()
     local todos = require("anvim.todos")
     local was = todos.old_dir
     todos.old_dir = vim.fn.tempname()
@@ -92,12 +92,13 @@ describe("sessions", function()
     local old = require("anvim.paths").project_file(todos.old_dir)
     vim.fn.writefile({ '{"next_id":2}' }, old)
     vim.fn.writefile({ '{"next_id":1}' }, (old:gsub("%.json$", ".prev.json")))
-    local path = sessions.start_command().todos_path
+    local dir = sessions.start_command().todos_dir
     todos.old_dir = was
+    local path = state.cwd .. "/.anvim/todos.json"
     local moved = { vim.fn.readfile(path)[1], vim.fn.readfile((path:gsub("%.json$", ".prev.json")))[1] }
     local gone = vim.uv.fs_stat(old) == nil
     vim.fn.delete(state.cwd .. "/.anvim", "rf")
-    assert.are.same(state.cwd .. "/.anvim/todos.json", path)
+    assert.are.same(state.cwd .. "/.anvim/todos", dir)
     assert.are.same({ '{"next_id":2}', '{"next_id":1}' }, moved)
     assert.is_true(gone)
   end)
@@ -130,6 +131,18 @@ describe("sessions", function()
     assert(ok, err)
     assert.are.same(1, #restarts)
     helpers.contains(buf_lines(transcript.buf()), "Restarting Claude")
+  end)
+
+  it("a restart after /clear resumes nothing, but names the new session for its todo list", function()
+    local was = { state.session_id, state.turns, state.model }
+    sidecar.dispatch({ type = "reset" })
+    sidecar.dispatch({ type = "init", session_id = "after-clear", model = state.model })
+    local restarts, unrestart = stub(sidecar, "restart")
+    sessions.restart()
+    unrestart()
+    state.session_id, state.turns, state.model = was[1], was[2], was[3]
+    local cmd = restarts[1][1]
+    assert.are.same({ nil, "after-clear" }, { cmd.resume, cmd.todos_session })
   end)
 
   it("restarts the sidecar process, and what was sent meanwhile reaches the new one", function()
@@ -234,7 +247,7 @@ describe("sessions", function()
     assert.are.same({ 1, 1 }, { #picks, #models })
   end)
 
-  it("/reset sends /clear, and its reset deletes the todo list; a plain /clear keeps it", function()
+  it("/reset sends /clear and arms it for a new todo list; a plain /clear keeps the list", function()
     local todos = require("anvim.todos")
     local function todo_rows()
       return vim.tbl_filter(function(l)
@@ -248,8 +261,9 @@ describe("sessions", function()
       vim.api.nvim_buf_set_lines(input.buf(), 0, -1, false, { "/reset" })
       input.submit()
       assert.are.same({ "prompt", "/clear" }, { sent[1].type, sent[1].text })
+      assert.are.same({ type = "todo_reset", id = sent[1].id }, sent[2])
       sidecar.dispatch({ type = "reset" })
-      assert.are.same({ type = "todo_reset" }, sent[2])
+      assert.are.same(2, #sent)
       -- No frame shows the old list after the clear.
       assert.are.same({}, todos.items)
       assert.are.same({}, todo_rows())
@@ -260,12 +274,12 @@ describe("sessions", function()
       assert.are.same(2, #sent)
       assert.are.same(1, #todo_rows())
       assert(sessions.command("/undo-reset"))
-      assert.are.same({ type = "todo_reset", undo = true }, sent[3])
-      -- A /reset that <Up> took back from the queue deletes nothing.
+      assert.are.same({ type = "todo_undo_reset" }, sent[3])
+      -- A /reset that <Up> took back from the queue empties nothing.
       assert(sessions.command("/reset"))
       sidecar.dispatch({ type = "prompt_state", id = sent[4].id, state = "cancelled" })
       sidecar.dispatch({ type = "reset" })
-      assert.are.same(4, #sent)
+      assert.are.same(5, #sent)
       assert.are.same(1, #todo_rows())
     end)
     input.set_busy(false)

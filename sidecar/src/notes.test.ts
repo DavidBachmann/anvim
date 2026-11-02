@@ -20,8 +20,8 @@ describe("the .anvim folder", () => {
     await excludeFromGit(join(repo, "app"));
     await excludeFromGit(repo);
     expect(readFileSync(exclude, "utf8")).toBe("# git's own lines\n*.log\n# anvim's notes and todo list\n.anvim/\n");
-    mkdirSync(join(repo, ".anvim"));
-    writeFileSync(join(repo, ".anvim", "todos.json"), "{}");
+    mkdirSync(join(repo, ".anvim", "todos"), { recursive: true });
+    writeFileSync(join(repo, ".anvim", "todos", "sessions.json"), "{}");
     const status = Bun.spawnSync(["git", "status", "--porcelain", "--ignored=no"], { cwd: repo });
     expect(status.stdout.toString()).not.toContain(".anvim");
     const plain = temp();

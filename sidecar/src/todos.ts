@@ -1,10 +1,14 @@
-// anvim's todo list: one JSON file per project, which every anvim in the
-// project shares. Each change takes a lock, and a watch on the file's dir
-// sends the changes of other anvims on.
+// anvim's todo lists: one JSON file per list in the project's todo dir.
+// sessions.json maps each session to its list, so /clear, a fork or a
+// resume keeps the list, and two anvims on other sessions keep apart. Each
+// change takes the dir's lock, and a watch on the dir sends the changes of
+// other anvims on.
 import type { HookCallback, SessionStartHookInput } from "@anthropic-ai/claude-agent-sdk";
+import { randomBytes } from "node:crypto";
 import {
   type FSWatcher,
   closeSync,
+  existsSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -19,7 +23,13 @@ import { basename, dirname, join } from "node:path";
 import type { Event, TodoItem, TodoStatus } from "./protocol";
 
 export type StoredTodo = TodoItem & { created: number; updated: number };
-export type TodoFile = { next_id: number; items: StoredTodo[] };
+// prev: the list that the /reset before this list replaced.
+export type TodoFile = { next_id: number; items: StoredTodo[]; prev?: string };
+// Session id to list id.
+type SessionMap = Record<string, string>;
+
+// A list id names a file in the dir.
+const LIST_ID = /^[\w-]+$/;
 
 export type NewTodo = {
   subject: string;
@@ -54,7 +64,7 @@ export function parse(text: string | undefined): TodoFile {
   } catch {
     data = undefined;
   }
-  const raw = data as { next_id?: unknown; items?: unknown } | undefined;
+  const raw = data as { next_id?: unknown; items?: unknown; prev?: unknown } | undefined;
   const items: StoredTodo[] = [];
   for (const it of Array.isArray(raw?.items) ? raw.items : []) {
     const i = it as Partial<StoredTodo>;
@@ -77,7 +87,8 @@ export function parse(text: string | undefined): TodoFile {
   }
   const top = items.reduce((max, i) => Math.max(max, i.id), 0);
   const next = typeof raw?.next_id === "number" && Number.isInteger(raw.next_id) ? raw.next_id : 1;
-  return { next_id: Math.max(next, top + 1), items };
+  const prev = typeof raw?.prev === "string" && LIST_ID.test(raw.prev) ? { prev: raw.prev } : {};
+  return { next_id: Math.max(next, top + 1), items, ...prev };
 }
 
 // The list as the protocol sends it, without the times.
@@ -115,7 +126,7 @@ export function openText(items: TodoItem[]): string | undefined {
   const rest = items.filter(open);
   if (rest.length === 0) return undefined;
   return [
-    "anvim's todo list for this project has open items:",
+    "anvim's todo list for this session has open items:",
     ...rest.map((item) => line(item, items)),
     "Call todo_list for the whole list with the descriptions.",
   ].join("\n");
@@ -162,29 +173,100 @@ function writeFile(path: string, text: string): void {
 
 const serialize = (file: TodoFile) => JSON.stringify(file, null, 2) + "\n";
 
+const listPath = (dir: string, list: string) => join(dir, `${list}.json`);
+
+function readSessions(dir: string): SessionMap {
+  let data: unknown;
+  try {
+    data = JSON.parse(readText(join(dir, "sessions.json")) ?? "");
+  } catch {
+    return {};
+  }
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return {};
+  const map: SessionMap = {};
+  for (const [session, list] of Object.entries(data)) {
+    if (typeof list === "string" && LIST_ID.test(list)) map[session] = list;
+  }
+  return map;
+}
+
+const writeSessions = (dir: string, map: SessionMap) =>
+  writeFile(join(dir, "sessions.json"), JSON.stringify(map, null, 2) + "\n");
+
+// A new list id, such as 20261102-141503-a1b2: the local time and 4 random
+// hex digits.
+function newListId(dir: string): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  while (true) {
+    const d = new Date();
+    const day = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+    const time = `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+    const id = `${day}-${time}-${randomBytes(2).toString("hex")}`;
+    if (!existsSync(listPath(dir, id))) return id;
+  }
+}
+
+// The open items of each session's list, for the resume picker. A session
+// without open items has no entry.
+export function openCounts(dir: string): Record<string, number> {
+  const counts: Record<string, number> = {};
+  const lists = new Map<string, number>();
+  for (const [session, list] of Object.entries(readSessions(dir))) {
+    let n = lists.get(list);
+    if (n === undefined) {
+      n = parse(readText(listPath(dir, list))).items.filter(open).length;
+      lists.set(list, n);
+    }
+    if (n > 0) counts[session] = n;
+  }
+  return counts;
+}
+
 export class TodoStore {
   private last: string | undefined;
   private watcher: FSWatcher | undefined;
+  // The session of the last init, and its list. A new session has neither.
+  private session: string | undefined;
+  private list: string | undefined;
+  // The ids of the /clear prompts that a /reset sent.
+  private resets = new Set<string>();
+  // An older anvim's project list, which a start without a session shows,
+  // and the first init takes in.
+  private legacy = false;
 
   constructor(
-    readonly path: string,
+    readonly dir: string,
     private emit: (ev: Event) => void,
-  ) {}
+    resume?: string,
+  ) {
+    this.session = resume;
+  }
 
-  // Creates the dir, sends the list and watches for other anvims' changes.
-  // A rename replaces the file, so the watch is on the dir.
-  // A dir that anvim cannot write costs the list, not the session.
-  start(): void {
-    this.sync();
-    const name = basename(this.path);
+  // Finds the session's list, takes in an older anvim's project list, sends
+  // the list and watches for other anvims' changes. Without a session, the
+  // project list stays where it is until the first init, so a start that
+  // ends before it loses nothing. A rename replaces a file, so the watch is
+  // on the dir. A dir that anvim cannot write costs the list, not the
+  // session.
+  async start(): Promise<void> {
     try {
-      mkdirSync(dirname(this.path), { recursive: true });
-      this.watcher = watch(dirname(this.path), (_event, file) => {
-        if (file == null || file === name) this.sync();
+      await this.locked(() => {
+        const parent = dirname(this.dir);
+        this.legacy = existsSync(join(parent, "todos.json")) || existsSync(join(parent, "todos.prev.json"));
+        if (this.session) this.take(this.session);
+      });
+    } catch (err) {
+      process.stderr.write(`could not read the todo lists in ${this.dir}: ${err}\n`);
+    }
+    this.sync();
+    try {
+      this.watcher = watch(this.dir, (_event, file) => {
+        if (file == null || file === "sessions.json") this.adopt();
+        if (file == null || (this.list && file === `${this.list}.json`)) this.sync();
       });
       this.watcher.unref?.();
     } catch (err) {
-      process.stderr.write(`could not watch ${dirname(this.path)}: ${err}\n`);
+      process.stderr.write(`could not watch ${this.dir}: ${err}\n`);
     }
   }
 
@@ -193,13 +275,66 @@ export class TodoStore {
     this.watcher = undefined;
   }
 
-  // The list that the last /reset replaced.
-  get prevPath(): string {
-    return this.path.replace(/(\.json)?$/, ".prev.json");
+  // Under the lock: the session's own list, else the project list of an
+  // older anvim, else the current list. A session without an entry gets one.
+  private take(session: string): void {
+    const own = readSessions(this.dir)[session];
+    const adopted = this.legacy ? this.migrate() : undefined;
+    this.legacy = false;
+    this.list = own ?? adopted ?? this.list;
+    if (!own && this.list) this.link(session, this.list);
+  }
+
+  // The project list of an older anvim, todos.json next to the dir, becomes
+  // a list in the dir, and todos.prev.json becomes its prev. Another anvim
+  // may have taken it first.
+  private migrate(): string | undefined {
+    const parent = dirname(this.dir);
+    const current = readText(join(parent, "todos.json"));
+    const previous = readText(join(parent, "todos.prev.json"));
+    if (current === undefined && previous === undefined) return undefined;
+    let prev: string | undefined;
+    if (previous !== undefined) {
+      prev = newListId(this.dir);
+      writeFile(listPath(this.dir, prev), serialize(parse(previous)));
+      rmSync(join(parent, "todos.prev.json"), { force: true });
+    }
+    const id = newListId(this.dir);
+    writeFile(listPath(this.dir, id), serialize({ ...parse(current), ...(prev ? { prev } : {}) }));
+    rmSync(join(parent, "todos.json"), { force: true });
+    return id;
+  }
+
+  // Gives a session an entry for a list.
+  private link(session: string, list: string): void {
+    const map = readSessions(this.dir);
+    map[session] = list;
+    writeSessions(this.dir, map);
+  }
+
+  // Another anvim on this session made its list.
+  private adopt(): void {
+    if (this.list || !this.session) return;
+    this.list = readSessions(this.dir)[this.session];
+    if (this.list) this.sync();
+  }
+
+  // Each init of the main thread. A new session id, after /clear, a fork or
+  // a rewind, takes the current list, unless it has a list of its own.
+  async bind(session: string): Promise<void> {
+    if (session === this.session) return;
+    try {
+      await this.locked(() => this.take(session));
+    } catch (err) {
+      process.stderr.write(`could not link session ${session} to its todo list: ${err}\n`);
+    }
+    this.session = session;
+    this.sync();
   }
 
   read(): TodoFile {
-    return parse(readText(this.path));
+    if (this.list) return parse(readText(listPath(this.dir, this.list)));
+    return parse(this.legacy ? readText(join(dirname(this.dir), "todos.json")) : undefined);
   }
 
   items(): TodoItem[] {
@@ -268,28 +403,42 @@ export class TodoStore {
     return items;
   }
 
-  // /reset: the list becomes the previous list, and ids start at 1 again. An
-  // empty list leaves the previous list alone, so a second /reset loses nothing.
-  async reset(): Promise<void> {
+  // /reset sends a /clear prompt with this id.
+  armReset(id: string): void {
+    this.resets.add(id);
+  }
+
+  // conversation_reset, ahead of the new session's init. The /clear of a
+  // /reset starts a new list, whose prev is the old one, and the init gives
+  // the new session the new list. An empty list stays, so a second /reset
+  // loses nothing.
+  async cleared(id: string | undefined): Promise<void> {
+    if (id === undefined || !this.resets.delete(id)) return;
     try {
       await this.locked(() => {
-        if (this.read().items.length > 0) renameSync(this.path, this.prevPath);
-        else rmSync(this.path, { force: true });
+        if (!this.list || this.read().items.length === 0) return;
+        const list = newListId(this.dir);
+        writeFile(listPath(this.dir, list), serialize({ next_id: 1, items: [], prev: this.list }));
+        this.list = list;
       });
+    } catch (err) {
+      process.stderr.write(`could not start a new todo list: ${err}\n`);
     } finally {
       this.resend();
     }
   }
 
-  // /undo-reset: swaps the list and the previous list, so a second undo swaps
+  // /undo-reset: the list and its prev swap places, so a second undo swaps
   // them back. False when there is no previous list.
   async undo(): Promise<boolean> {
     const swapped = await this.locked(() => {
-      const prev = readText(this.prevPath);
-      if (prev === undefined) return false;
-      const current = readText(this.path) ?? serialize(parse(undefined));
-      writeFile(this.path, prev);
-      writeFile(this.prevPath, current);
+      const current = this.list;
+      const prev = this.read().prev;
+      const text = prev && readText(listPath(this.dir, prev));
+      if (!current || !prev || text === undefined) return false;
+      writeFile(listPath(this.dir, prev), serialize({ ...parse(text), prev: current }));
+      this.list = prev;
+      if (this.session) this.link(this.session, prev);
       return true;
     });
     if (swapped) {
@@ -307,13 +456,23 @@ export class TodoStore {
     this.sync();
   }
 
-  // Reads, changes and writes the file under the lock. A change that throws
-  // writes nothing.
+  // Reads, changes and writes the list under the lock. A change that throws
+  // writes nothing. The first change makes the list.
   private async change<T>(fn: (file: TodoFile) => T): Promise<{ result: T; items: TodoItem[] }> {
     const { result, items } = await this.locked(() => {
+      // Another anvim on this session may have made the list meanwhile.
+      if (!this.list && this.session) this.list = readSessions(this.dir)[this.session];
+      if (!this.list && this.legacy) {
+        this.list = this.migrate();
+        this.legacy = false;
+      }
       const file = this.read();
       const result = fn(file);
-      writeFile(this.path, serialize(file));
+      if (!this.list) {
+        this.list = newListId(this.dir);
+        if (this.session) this.link(this.session, this.list);
+      }
+      writeFile(listPath(this.dir, this.list), serialize(file));
       return { result, items: plain(file) };
     });
     this.sync(items);
@@ -330,11 +489,11 @@ export class TodoStore {
   }
 
   private get lockPath(): string {
-    return `${this.path}.lock`;
+    return join(this.dir, ".lock");
   }
 
   private async lock(): Promise<void> {
-    mkdirSync(dirname(this.path), { recursive: true });
+    mkdirSync(this.dir, { recursive: true });
     while (true) {
       try {
         closeSync(openSync(this.lockPath, "wx"));
@@ -365,8 +524,8 @@ export class TodoStore {
   }
 
   // Tells a session that compacts what is still open. After a clear, the next
-  // prompt tells: Claude Code runs this hook just after conversation_reset,
-  // before a /reset can delete the list.
+  // prompt tells: this hook can run before the store sees that a /reset
+  // started a new list.
   sessionStart: HookCallback = async (input) => {
     const { hook_event_name, source } = input as SessionStartHookInput;
     this.told = source !== "clear";

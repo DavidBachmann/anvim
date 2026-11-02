@@ -15,6 +15,7 @@ local M = {}
 ---@field size integer? bytes
 ---@field branch string?
 ---@field first_prompt string?
+---@field todos_open integer? the open items of the session's todo list
 
 ---@class anvim.ModelInfo
 ---@field value string the id or alias to set
@@ -87,7 +88,10 @@ function M.start_command(opts)
     codex = config.options.codex == true,
     codex_model = require("anvim.codex").model(),
     codex_effort = require("anvim.codex").effort(),
-    todos_path = require("anvim.todos").path(),
+    todos_dir = require("anvim.todos").dir(),
+    -- A restart after /clear resumes nothing, as the new session has no turn
+    -- yet, but its todo list goes on.
+    todos_session = state.session_id,
   }, opts or {})
 end
 
@@ -95,9 +99,9 @@ local function redraw()
   require("anvim.input").redraw()
 end
 
--- The id of the /clear that a /reset sent. The todo list goes when that
--- /clear takes effect, which can be after the turn that runs now. Until then,
--- Claude may still change the list.
+-- The id of the /clear that a /reset sent. The sidecar starts a new todo list
+-- when that /clear takes effect, which can be after the turn that runs now.
+-- Until then, Claude may still change the list.
 ---@type string?
 local resetting
 
@@ -204,9 +208,9 @@ function M.rewind(at)
     state.resume_at = at
     sidecar.restart(M.start_command({ resume = id, resume_at = at, history = true }))
   else
-    -- The view starts over, as after /clear.
+    -- The view starts over, as after /clear, and the todo list goes on.
     sidecar.dispatch({ type = "reset" })
-    sidecar.restart(M.start_command())
+    sidecar.restart(M.start_command({ todos_session = id }))
   end
   redraw()
 end
@@ -234,9 +238,7 @@ end
 -- new session. The view starts over too, as a resume does.
 function M.reset()
   if resetting then
-    sidecar.send({ type = "todo_reset" })
     -- No frame shows the old list, in the todo window or in the transcript.
-    -- The sidecar's todos event confirms the empty list.
     require("anvim.todos").set({})
   end
   forget()
@@ -284,6 +286,9 @@ function M.items(list, now)
     if s.branch then
       about[#about + 1] = ("- Branch `%s`"):format(s.branch)
     end
+    if s.todos_open then
+      about[#about + 1] = ("- %d open %s"):format(s.todos_open, s.todos_open == 1 and "todo" or "todos")
+    end
     about[#about + 1] = ("- Session `%s`%s"):format(s.id, current and " (this one)" or "")
     if s.first_prompt and s.first_prompt ~= s.title then
       vim.list_extend(about, { "", "First prompt:", "", "> " .. s.first_prompt:gsub("\n", "\n> ") })
@@ -296,6 +301,7 @@ function M.items(list, now)
       ago = M.ago(s.modified, now),
       size = M.size(s.size),
       branch = s.branch,
+      todos = s.todos_open and ("%d %s"):format(s.todos_open, s.todos_open == 1 and "todo" or "todos"),
       preview = { text = table.concat(about, "\n"), ft = "markdown" },
     }
   end
@@ -325,9 +331,13 @@ local function format(item)
     { item.current and "⏺ " or "  ", "AnvimClaude" },
     { item.text },
   }
-  local extra = item.size
-  if item.branch then
-    extra = extra ~= "" and (extra .. " · " .. item.branch) or item.branch
+  -- The count first, so that a long title does not hide it.
+  local extra = ""
+  for _, key in ipairs({ "todos", "size", "branch" }) do
+    local more = item[key]
+    if more and more ~= "" then
+      extra = extra ~= "" and (extra .. " · " .. more) or more
+    end
   end
   if extra ~= "" then
     ret[#ret + 1] = { "  " .. extra, "SnacksPickerComment" }
@@ -530,12 +540,13 @@ function M.command(text)
     return true
   elseif name == "/reset" then
     resetting = require("anvim.input").send("/clear", "/reset")
+    sidecar.send({ type = "todo_reset", id = resetting })
     return true
   elseif name == "/rewind" then
     require("anvim.rewind").open()
     return true
   elseif name == "/undo-reset" then
-    sidecar.send({ type = "todo_reset", undo = true })
+    sidecar.send({ type = "todo_undo_reset" })
     return true
   elseif name == "/model" and arg == "" then
     M.pick_model()
@@ -598,8 +609,8 @@ end
 -- would keep Enter from sending it.
 local own_commands = {
   { name = "resume", description = "Resume a session of this directory" },
-  { name = "reset", description = "Clear the conversation and delete the todo list" },
-  { name = "undo-reset", description = "Bring back the todo list that /reset deleted" },
+  { name = "reset", description = "Clear the conversation and start a new todo list" },
+  { name = "undo-reset", description = "Bring back the todo list from before /reset" },
   { name = "rewind", description = "Restore the code or the conversation to before an earlier prompt" },
   { name = "model", description = "Choose Claude's model", argument_hint = "[model]" },
   { name = "effort", description = "Set the effort level for this session", argument_hint = "[level]" },

@@ -2,8 +2,10 @@
 // anvim never writes them. As a script, it prints the list for the picker:
 //   bun src/sessions.ts list <dir>
 import { getSessionInfo, getSessionMessages, listSessions, type SessionMessage } from "@anthropic-ai/claude-agent-sdk";
+import { join } from "node:path";
 import type { Event, RewindPoint } from "./protocol";
 import { type AnyRecord, commandOutput, readResult, resultText, truncate, truncateOutput } from "./text";
+import { openCounts } from "./todos";
 
 export type SessionItem = {
   id: string;
@@ -13,6 +15,8 @@ export type SessionItem = {
   size?: number;
   branch?: string;
   first_prompt?: string;
+  // The open items of the session's todo list, when it has any.
+  todos_open?: number;
 };
 
 type HistoryEvent = Extract<Event, { type: "history" }>["events"][number];
@@ -21,6 +25,7 @@ type HistoryEvent = Extract<Event, { type: "history" }>["events"][number];
 // resume here.
 export async function list(cwd: string): Promise<SessionItem[]> {
   const sessions = await listSessions({ dir: cwd, includeWorktrees: false });
+  const todos = openCounts(join(cwd, ".anvim", "todos"));
   return sessions.map((s) => ({
     id: s.sessionId,
     title: s.customTitle || s.summary || s.firstPrompt || "(no prompt)",
@@ -29,6 +34,7 @@ export async function list(cwd: string): Promise<SessionItem[]> {
     size: s.fileSize,
     branch: s.gitBranch,
     first_prompt: s.firstPrompt,
+    ...(todos[s.sessionId] ? { todos_open: todos[s.sessionId] } : {}),
   }));
 }
 

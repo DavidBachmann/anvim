@@ -111,8 +111,12 @@ export type Command =
       // Codex's own config decides.
       codex_model?: string;
       codex_effort?: string;
-      // The project's todo list. Without it, Claude gets no todo tools.
-      todos_path?: string;
+      // The dir of the project's todo lists, one list per chain of sessions.
+      // Without it, Claude gets no todo tools.
+      todos_dir?: string;
+      // The session that the todo list belongs to, when resume is absent: a
+      // restart after /clear resumes nothing, but keeps the new session's list.
+      todos_session?: string;
     }
   // Absolute paths of the images that the prompt's [Image #N] chips stand for.
   // id is a UUID, which Claude Code's prompt_state events name.
@@ -158,9 +162,13 @@ export type Command =
   // Restores the files that Claude's edit tools changed since the prompt with
   // this uuid. A dry run changes nothing. Answered with rewind_files.
   | { type: "rewind_files"; uuid: string; dry_run?: boolean }
-  // /reset deletes the todo list, and keeps it as the previous list. With
-  // undo, the list and the previous list swap. The answer is a todos event.
-  | { type: "todo_reset"; undo?: boolean }
+  // /reset: the /clear prompt with this id starts a new todo list, and the
+  // old one becomes its previous list. The answer is a todos event, before
+  // the reset event.
+  | { type: "todo_reset"; id: string }
+  // /undo-reset: the list and its previous list swap. The answer is a todos
+  // event.
+  | { type: "todo_undo_reset" }
   // The answer to an editor_request: plain text for Claude, or an error.
   | { type: "editor_response"; req: number; result?: string; error?: string }
   // The user's answer to a permission_request (permissions.ts).

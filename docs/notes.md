@@ -8,10 +8,10 @@ Each project has a private folder, `.anvim/`, for the notes that you and Claude 
   diary/        one markdown file per day, such as 2026-11-01.md
   docs/         internal reference docs: plans, specs, research, reviews, handovers, drafts for other people
   scratch/      scripts, test kits, outputs, logs and data worth keeping
-  todos.json    the todo list
+  todos/        the todo lists, one per chain of sessions
 ```
 
-anvim creates the folder for the [todo list](todos.md). Claude creates the rest when it has something to record.
+anvim creates the folder for the [todo lists](todos.md). Claude creates the rest when it has something to record.
 
 ## How Claude uses it
 

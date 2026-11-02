@@ -117,7 +117,7 @@ const previews = new PreviewBridge(emit);
 let codex: CodexRunner | undefined;
 // The user's model and effort for the next Codex runs.
 let codexDefaults: CodexSettings = {};
-// The project's todo list. A start without todos_path has none.
+// The session's todo list. A start without todos_dir has none.
 let todos: TodoStore | undefined;
 // The directory of the session, where Claude Code saves it.
 let cwd = process.cwd();
@@ -261,8 +261,8 @@ async function run(cmd: Start): Promise<void> {
     : undefined;
   // Before the todo list's store creates the dir.
   await excludeFromGit(cmd.cwd).catch((err) => process.stderr.write(`could not exclude ${DIR}/ from git: ${err}\n`));
-  todos = cmd.todos_path ? new TodoStore(cmd.todos_path, emit) : undefined;
-  todos?.start();
+  todos = cmd.todos_dir ? new TodoStore(cmd.todos_dir, emit, resume ?? cmd.todos_session) : undefined;
+  await todos?.start();
   const amnesia = cmd.amnesia === true;
   const notes = amnesia ? undefined : new Notes(cmd.cwd);
   const defined = (hooks: (HookCallback | undefined)[]) => hooks.filter((h): h is HookCallback => h !== undefined);
@@ -319,6 +319,9 @@ async function run(cmd: Start): Promise<void> {
     permissions.message(msg);
     // /clear: no conversation waits for the result of a Codex agent.
     if (msg.type === "conversation_reset") codex?.stopAll();
+    // The list of a new session goes out before the view hears of it.
+    if (msg.type === "conversation_reset") await todos?.cleared(msg.user_message_uuid);
+    if (msg.type === "system" && msg.subtype === "init") await todos?.bind(msg.session_id);
     for (const ev of translate(msg)) emit(ev);
     limits.message(msg);
     if (msg.type === "result") {
@@ -429,8 +432,10 @@ export async function handle(cmd: Command): Promise<void> {
       await control(async (q) => emitChrome(q, await selectChrome(q, cmd.device_id)));
       return;
     case "todo_reset":
-      if (!cmd.undo) await todos?.reset();
-      else if (todos && !(await todos.undo())) emitNotice("info", "There is no previous todo list to bring back.");
+      todos?.armReset(cmd.id);
+      return;
+    case "todo_undo_reset":
+      if (todos && !(await todos.undo())) emitNotice("info", "There is no previous todo list to bring back.");
       return;
     case "preview_done":
       previews.done(cmd.req);

@@ -1,6 +1,6 @@
 # The todo list
 
-anvim keeps one todo list per project directory. Claude fills it with three tools on anvim's own MCP server: `todo_add`, `todo_update` and `todo_list`. They run without a permission prompt. Claude adds items on its own for work of 3 or more steps, or when you give several tasks. It skips the list for a small task or a question. Each item has an id, a subject, a status (pending, in progress or completed), and optionally a description, an owner and the ids of the items that block it. Ids count up from 1 and are never used twice in a list.
+anvim keeps one todo list per session. Claude fills it with three tools on anvim's own MCP server: `todo_add`, `todo_update` and `todo_list`. They run without a permission prompt. Claude adds items on its own for work of 3 or more steps, or when you give several tasks. It skips the list for a small task or a question. Each item has an id, a subject, a status (pending, in progress or completed), and optionally a description, an owner and the ids of the items that block it. Ids count up from 1 and are never used twice in a list.
 
 Claude Code's own task tools (TodoWrite and the Task tools) are turned off, so Claude has one list.
 
@@ -16,9 +16,11 @@ The window takes the rows that the list needs, up to 30% of the column's rows (`
 
 ## Sessions and agents
 
-The list belongs to the project, not to a session or an account. `/clear` keeps it, and the list moves back to the end of the empty transcript. When a session starts, resumes, clears or compacts, Claude learns the open items, so it can go on with them.
+The list belongs to a session, and to the sessions that come from it. `/clear` starts a new session that keeps the list, and the list moves back to the end of the empty transcript. A compaction, a rewind and a fork keep it too. A resume brings the session's list back, and so does `anvim -c`. A restart, such as `<leader>cR` or an account switch, keeps the list. A new session starts with an empty list, so two anvims in one project, such as one on the app and one on the server, each have their own list. When a session resumes, clears or compacts, Claude learns the open items, so it can go on with them.
 
-`/reset` clears the conversation and deletes the list, so the ids start again at 1. The deleted list becomes the previous list. anvim keeps one previous list, and the next `/reset` replaces it. A `/reset` of an empty list keeps the previous list. `/undo-reset` swaps the list and the previous list, so a second `/undo-reset` swaps them back. It does not clear the conversation.
+`/reset` clears the conversation and starts a new, empty list, so the ids start again at 1. The old session keeps the old list, which becomes the previous list of the new one. A `/reset` of an empty list keeps the previous list. `/undo-reset` swaps the list and the previous list, so a second `/undo-reset` swaps them back. It does not clear the conversation.
+
+The [resume picker](sessions.md#resume) shows the number of open items in each session's list, such as `3 todos`.
 
 Only the main agent (Claude in the transcript) uses the list. Subagents keep anvim's other tools, but a call to a todo tool returns an error that tells them to report back. Claude marks an item done once it has checked the agent's work.
 
@@ -26,4 +28,6 @@ Claude can give an item to an agent. It names the Agent call and sets that name 
 
 ## Where it lives
 
-The list is `todos.json` in the project's [`.anvim/` folder](notes.md), which git excludes, so the list moves with the project. The previous list is `todos.prev.json` next to it. A list from an older anvim, in `~/.local/state/anvim/todos/`, moves into `.anvim/` at the next start. Two anvims in one project share the file. Each change takes a lock, and each anvim shows the other's changes. A replay has no list file and shows only the recorded list. An [amnesia session](sessions.md#fresh-eyes) keeps its list in a temporary file, so it neither sees nor changes the project's list, and the list goes when anvim quits.
+The lists live in `todos/` in the project's [`.anvim/` folder](notes.md), which git excludes, so they move with the project. Each list is a JSON file with its own id, and it names its previous list. `sessions.json` maps each session to its list. A list file appears with the list's first item, at a `/reset` of a list with items, and when an older list moves in. Two anvims that resume the same session share its list. Each change takes a lock, and each anvim shows the other's changes. A replay has no list file and shows only the recorded list. An [amnesia session](sessions.md#fresh-eyes) keeps its lists in a temporary dir, so it neither sees nor changes the project's lists, and the lists go when anvim quits.
+
+An older anvim kept one list per project, in `.anvim/todos.json`, or before that in `~/.local/state/anvim/todos/`. The first anvim to start after the update takes that list as its own, with its previous list. A new session takes it in at its first prompt, so an anvim that quits before then leaves it in place. Other sessions start empty.

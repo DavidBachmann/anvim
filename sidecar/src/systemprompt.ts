@@ -20,7 +20,7 @@ const EDITOR_TOOLS = [
 ];
 
 const TODOS = [
-  "anvim keeps a todo list for this project, which the user sees.",
+  "anvim keeps a todo list for this session, which the user sees.",
   "Plan work of 3 or more steps with the todo_ tools, also when the user does not ask for a list.",
   "Mark an item in_progress when work starts, and completed once the work is done and checked.",
   "When an agent works on an item, give its Agent call a name, and set the item's owner to that name.",

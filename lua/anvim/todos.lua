@@ -1,5 +1,6 @@
--- anvim's todo list. The sidecar keeps it in a file per project, Claude fills
--- it with the todo_ tools, and each change comes as a todos event.
+-- anvim's todo list. The sidecar keeps a list per chain of sessions in the
+-- project's .anvim/todos/, Claude fills it with the todo_ tools, and each
+-- change comes as a todos event.
 local M = {}
 
 local api = vim.api
@@ -25,19 +26,21 @@ M.tools = { mcp__anvim__todo_add = true, mcp__anvim__todo_update = true, mcp__an
 -- Where the lists lived before they moved into the projects.
 M.old_dir = vim.fn.stdpath("state") .. "/todos"
 
--- With amnesia, the list is a temporary one, for as long as this Neovim runs.
--- The project's list would tell Claude what came before.
+-- With amnesia, the lists are temporary ones, for as long as this Neovim runs.
+-- The project's lists would tell Claude what came before.
 ---@type string?
 local temp
 
--- The list lives in the project's .anvim/, so it moves with the project. A
--- list in the old dir moves there once.
-function M.path()
+-- The lists live in the project's .anvim/, so they move with the project. A
+-- list in the old dir moves to .anvim/todos.json once, and the sidecar takes
+-- it into the dir from there.
+function M.dir()
   if require("anvim.config").options.amnesia then
-    temp = temp or vim.fn.tempname() .. ".json"
+    temp = temp or vim.fn.tempname() .. "/todos"
     return temp
   end
-  local path = require("anvim.state").cwd .. "/.anvim/todos.json"
+  local cwd = require("anvim.state").cwd
+  local path = cwd .. "/.anvim/todos.json"
   local old = require("anvim.paths").project_file(M.old_dir)
   if not vim.uv.fs_stat(path) and vim.uv.fs_stat(old) then
     vim.fn.mkdir(vim.fs.dirname(path), "p")
@@ -48,7 +51,7 @@ function M.path()
       end
     end
   end
-  return path
+  return cwd .. "/.anvim/todos"
 end
 
 ---@param item anvim.TodoItem

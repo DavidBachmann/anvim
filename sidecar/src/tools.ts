@@ -192,14 +192,14 @@ const MAIN_ONLY = "Only the main agent uses the todo tools. Subagents report bac
 // The model's habits come from Claude Code's TaskCreate, whose description
 // lists when to use it and when not to.
 const TODO_ADD = [
-  "Add items to the project's todo list, which the user sees. New items are pending.",
+  "Add items to the session's todo list, which the user sees. New items are pending.",
   "Use it on your own, without a request from the user:",
   "- for a task of 3 or more steps, or a task that needs a plan",
   "- when the user gives several tasks, such as a numbered list",
   "- when the user gives a new task while other work is open",
   "- for follow-up work that you find while you work",
   "Skip it for one small task, for fewer than 3 easy steps, and for a question or a chat.",
-  "The list outlives the session. Call todo_list first, so that no item goes on twice.",
+  "The list outlives /clear and compaction. Call todo_list first, so that no item goes on twice.",
   `${MAIN_ONLY} It returns the whole list.`,
 ].join("\n");
 const ACTIVE_FORM = 'The present-continuous form shown while the item is in progress, such as "Fixing the parser"';
@@ -257,7 +257,7 @@ function todoTools(store: TodoStore) {
     ),
     tool(
       "todo_list",
-      `Show the project's todo list: each item's id, status, subject, owner and blockers, and the description of each open item. ${MAIN_ONLY}`,
+      `Show the session's todo list: each item's id, status, subject, owner and blockers, and the description of each open item. ${MAIN_ONLY}`,
       {},
       () => todoResult(async () => listText(store.items())),
       readOnly,

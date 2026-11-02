@@ -6,7 +6,7 @@ Claude Code owns session storage; anvim reads and displays it through the Agent 
 
 ## Resume
 
-Start with `anvim -c` for the latest session in the directory, `anvim --resume <id>` for a specific one, or `anvim --resume` to choose. Inside anvim, `/resume` or `<leader>cs` opens the picker. It shows the title or first prompt, last change, size and branch, with a preview.
+Start with `anvim -c` for the latest session in the directory, `anvim --resume <id>` for a specific one, or `anvim --resume` to choose. Inside anvim, `/resume` or `<leader>cs` opens the picker. It shows the title or first prompt, last change, size, branch and the number of open todos, with a preview.
 
 Choosing a session restarts Claude and reconstructs its transcript. If Claude Code compacted the conversation, history starts at the saved compaction summary. Saved timestamps are shown, but past subagents do not receive live numbers, colors or dots.
 
@@ -14,7 +14,7 @@ Choosing a session restarts Claude and reconstructs its transcript. If Claude Co
 
 `/clear` starts a new session, and the view starts over with it. anvim clears the transcript, the agents, the code window's tabs, the `<leader>cf` file list and the `<leader>ct` trail. Claude's count of send-backs starts again, and Codex runs stop. The code window keeps its file, and the prompt history stays.
 
-`/clear` and its alias `/new` keep the [todo list](todos.md). `/reset` does what `/clear` does and also deletes the list. Claude can still change the list until the clear takes effect, which waits for a running turn to end. `/undo-reset` brings the deleted list back.
+`/clear` and its alias `/new` keep the [todo list](todos.md). `/reset` does what `/clear` does and also starts a new, empty list. Claude can still change the old list until the clear takes effect, which waits for a running turn to end. `/undo-reset` brings the old list back.
 
 `<leader>cR` or `:AnvimRestart` restarts Claude in the same session if it exits or hangs, keeping the chosen model and effort. With default effort, the restart uses the level a new session would use.
 
