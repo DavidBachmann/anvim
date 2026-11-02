@@ -4,7 +4,7 @@
 import { getSessionInfo, getSessionMessages, listSessions, type SessionMessage } from "@anthropic-ai/claude-agent-sdk";
 import { join } from "node:path";
 import type { Event, RewindPoint } from "./protocol";
-import { type AnyRecord, commandOutput, readResult, resultText, truncate, truncateOutput } from "./text";
+import { type AnyRecord, commandOutput, compactSummary, readResult, resultText, truncate, truncateOutput } from "./text";
 import { openCounts } from "./todos";
 
 export type SessionItem = {
@@ -137,6 +137,8 @@ export function historyEvents(messages: SessionMessage[]): HistoryEvent[] {
     if (m.parent_tool_use_id != null) continue;
     if (raw.isCompactSummary) {
       out.push(at({ type: "compact" }));
+      const text = compactSummary(resultText(content));
+      if (text) out.push({ type: "compact_summary", text });
       continue;
     }
     if (raw.is_meta || raw.isMeta) continue;

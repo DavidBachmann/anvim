@@ -75,6 +75,10 @@ local held = {}
 -- verbose mode.
 ---@type anvim.Tool[]
 local drawn = {}
+-- The compaction notices, with the summary that Claude Code wrote, for a
+-- redraw in or out of verbose mode.
+---@type { buf: integer, mark: integer, text: string?, body: integer }[]
+local compactions = {}
 -- The outcome of each main agent's call that anvim sent back or held. The
 -- event can come before the call's tool_start.
 ---@type table<string, string>
@@ -1350,6 +1354,7 @@ local function paint_agents()
 end
 
 -- Info notices, such as a compaction, read like Claude Code's ✻ lines.
+---@return integer row 0-based row of the notice's first line
 function M.notice(level, text)
   text_open, run = false, nil
   local info = level == "info"
@@ -1367,6 +1372,7 @@ function M.notice(level, text)
     hl(buf, row, 0, #"✻", "AnvimClaude")
   end
   M.stamp(buf, row, now())
+  return row
 end
 
 -- A slash command's output, as result lines under the prompt that ran it.
@@ -1391,7 +1397,137 @@ function M.compact(ev)
   if tonumber(ev.pre_tokens) and tonumber(ev.post_tokens) then
     text = ("%s · %s → %s tokens"):format(text, tokens(ev.pre_tokens), tokens(ev.post_tokens))
   end
-  M.notice("info", text .. (ev.trigger == "auto" and " (auto)" or ""))
+  local row = M.notice("info", text .. (ev.trigger == "auto" and " (auto)" or ""))
+  local buf = M.buf()
+  compactions[#compactions + 1] = { buf = buf, mark = api.nvim_buf_set_extmark(buf, ns, row, 0, {}), body = 0 }
+end
+
+-- The sections that say what Claude understood and what it does next. They
+-- show in full also out of verbose mode.
+local summary_full = { "primary request and intent", "pending tasks", "current work", "optional next step" }
+
+-- A section title as the model writes it: "N. Title:", "N. **Title**" with or
+-- without a colon, or "N. Title" with no colon. Each title must have a higher
+-- number than the last one and the form of the first one, so that a numbered
+-- line in a section's text stays text.
+---@return integer? num, string? title, string? form
+local function section_title(line, after, form)
+  local num, rest = line:match("^(%d+)%.%s+(.-)%s*$")
+  num = tonumber(num)
+  if not num or num <= after then
+    return
+  end
+  local title, f = rest:match("^%*%*(.-):?%*%*:?$"), "bold"
+  if not title then
+    title, f = rest:match("^(.-):$"), "colon"
+  end
+  if not title and not rest:find(":") and not rest:find("%.$") then
+    title, f = rest, "plain"
+  end
+  if title and (not form or f == form) then
+    return num, title, f
+  end
+end
+
+-- The rows of a compaction summary. Out of verbose mode, a section that is
+-- not in summary_full folds to its title and line count. Text that does not
+-- start with a numbered section title shows whole: a summary in another form
+-- can have numbered lines of its own.
+---@return { text: string, fold: integer? }[] rows `fold` is where a folded row's count starts.
+local function summary_rows(text)
+  local lines = vim.split(text, "\n", { plain = true })
+  local _, _, form = section_title(lines[1] or "", 0)
+  local items, cur, last = {}, { body = {} }, 0
+  for _, line in ipairs(lines) do
+    local num, title = nil, nil
+    if form then
+      num, title = section_title(line, last, form)
+    end
+    if num then
+      items[#items + 1] = cur
+      cur, last = { num = num, title = title, body = {} }, num
+    else
+      table.insert(cur.body, line)
+    end
+  end
+  items[#items + 1] = cur
+  local rows, folded = {}, false
+  for _, item in ipairs(items) do
+    local body = item.body
+    while body[1] and vim.trim(body[1]) == "" do
+      table.remove(body, 1)
+    end
+    while body[#body] and vim.trim(body[#body]) == "" do
+      table.remove(body)
+    end
+    local full = not item.num or M.verbose
+    for _, name in ipairs(summary_full) do
+      full = full or vim.startswith(item.title:lower(), name)
+    end
+    if item.num or #body > 0 then
+      -- Folded titles stand one under the other. Other items get a blank row.
+      if #rows > 0 and not (folded and not full) then
+        rows[#rows + 1] = { text = "" }
+      end
+      if full then
+        if item.num then
+          rows[#rows + 1] = { text = ("%s. %s:"):format(item.num, item.title) }
+        end
+        for _, line in ipairs(body) do
+          rows[#rows + 1] = { text = line }
+        end
+      else
+        local head = ("%s. %s"):format(item.num, item.title)
+        rows[#rows + 1] = { text = ("%s · %s"):format(head, plural(#body, "line")), fold = #head }
+      end
+      folded = not full
+    end
+  end
+  return rows
+end
+
+-- Draws a compaction's summary under its notice, also again for a redraw.
+local function draw_summary(c)
+  local row = api.nvim_buf_is_valid(c.buf) and api.nvim_buf_get_extmark_by_id(c.buf, ns, c.mark, {})[1]
+  if not (row and c.text) then
+    return
+  end
+  local rows = summary_rows(M.short(c.text))
+  local lines = {}
+  for i, r in ipairs(rows) do
+    lines[i] = r.text == "" and "" or (i == 1 and "  ⎿  " or "     ") .. r.text
+  end
+  local first = row + 1
+  api.nvim_buf_clear_namespace(c.buf, ns, first, first + c.body)
+  with_modifiable(function(buf)
+    api.nvim_buf_set_lines(buf, first, first + c.body, false, lines)
+  end, c.buf)
+  c.body = #lines
+  local margin = #"  ⎿  "
+  for i, r in ipairs(rows) do
+    if r.text ~= "" then
+      local line_row, start = first + i - 1, i == 1 and margin or 5
+      if i == 1 then
+        hl(c.buf, line_row, 0, start, "AnvimResult")
+      end
+      local stop = start + (r.fold or #r.text)
+      hl(c.buf, line_row, start, stop, "AnvimSummary")
+      if r.fold then
+        hl(c.buf, line_row, stop, start + #r.text, "AnvimResult")
+      end
+    end
+  end
+end
+
+-- The summary of the last compaction, which comes right after its notice.
+function M.compact_summary(text)
+  local c = compactions[#compactions]
+  if not (c and c.buf == M.buf() and not c.text) then
+    M.compact({})
+    c = compactions[#compactions]
+  end
+  c.text = text
+  draw_summary(c)
 end
 
 -- Sets the result line of a tool before its result arrives, such as the
@@ -1651,6 +1787,9 @@ function M.set_verbose(on)
       local r = tool.result
       finish_tool(tool, r.is_error, r.summary, r.group, r.label)
     end
+    for _, c in ipairs(compactions) do
+      draw_summary(c)
+    end
     for _, list in ipairs({ tools, held }) do
       for _, tool in pairs(list) do
         if not tool.done then
@@ -1674,7 +1813,7 @@ function M.clear()
     end
   end
   tools, held, drawn, todo, reply, reply_done, text_open, texts = {}, {}, {}, nil, {}, true, false, {}
-  sent_back, run, tables, scan = {}, nil, {}, nil
+  sent_back, run, tables, scan, compactions = {}, nil, {}, nil, {}
   for _, b in ipairs({ buf, log_loaded() }) do
     api.nvim_buf_clear_namespace(b, ns, 0, -1)
     api.nvim_buf_clear_namespace(b, ns_text, 0, -1)
@@ -1709,6 +1848,9 @@ function M.attach(sidecar)
     M.output(ev.text)
   end)
   sidecar.on("compact", M.compact)
+  sidecar.on("compact_summary", function(ev)
+    M.compact_summary(ev.text)
+  end)
   -- A subagent's call has no line here. Its log shows the held call.
   sidecar.on("send_back", function(ev)
     if not ev.agent_id and ev.tool_use_id then

@@ -73,7 +73,20 @@ describe("Translator", () => {
   });
 
   // The message order of a /compact and a /clear, as Claude Code 2.1.304 sends them.
-  test("compaction, its output, a /clear and a slash command's output", () => {
+  test("compaction, its summary, its output, a /clear and a slash command's output", () => {
+    const sections = "1. Primary Request and Intent:\n   Fix the parser.\n\n2. Key Technical Concepts:\n   - Lua";
+    const summary = [
+      "This session is being continued from a previous conversation that ran out of context. The summary below covers it.",
+      "",
+      "<tools-used-before-summary>Bash, Edit</tools-used-before-summary>",
+      "Summary:",
+      sections,
+      "",
+      "If you need specific details from before compaction, read the full transcript at: /tmp/s.jsonl",
+      "Continue the conversation from where it left off without asking the user any further questions.",
+      "",
+      "The messages after this summary are the most recent messages from before compaction, kept verbatim.",
+    ].join("\n");
     const local = (text: string) =>
       msg({ type: "user", parent_tool_use_id: null, message: { role: "user", content: `<local-command-stdout>${text}</local-command-stdout>` } });
     const result = msg({ type: "result", subtype: "success", is_error: false, duration_ms: 1, total_cost_usd: 0, num_turns: 0 });
@@ -81,7 +94,7 @@ describe("Translator", () => {
       msg({ type: "system", subtype: "status", status: "compacting" }),
       msg({ type: "system", subtype: "status", status: null, compact_result: "success" }),
       msg({ type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "manual", pre_tokens: 45065, post_tokens: 16912 } }),
-      msg({ type: "user", parent_tool_use_id: null, isSynthetic: true, message: { role: "user", content: "This session is being continued" } }),
+      msg({ type: "user", parent_tool_use_id: null, isSynthetic: true, message: { role: "user", content: summary } }),
       local("Compacted "),
       result,
       msg({ type: "conversation_reset", new_conversation_id: "c1", trigger: "clear", session_id: "s1" }),
@@ -94,12 +107,22 @@ describe("Translator", () => {
       { type: "status", status: "compacting", permission_mode: undefined },
       { type: "status", status: null, permission_mode: undefined },
       { type: "compact", trigger: "manual", pre_tokens: 45065, post_tokens: 16912 },
+      { type: "compact_summary", text: sections },
       end,
       { type: "reset" },
       end,
       { type: "output", text: "Total cost: $0.01" },
       end,
     ]);
+  });
+
+  test("a compaction without a summary leaves later synthetic messages alone", () => {
+    const events = run([
+      msg({ type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "auto", pre_tokens: 2, post_tokens: 1 } }),
+      msg({ type: "user", parent_tool_use_id: null, message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }] } }),
+      msg({ type: "user", parent_tool_use_id: null, isSynthetic: true, message: { role: "user", content: "Not a summary." } }),
+    ]);
+    expect(events.filter((e) => e.type === "compact_summary")).toEqual([]);
   });
 
   // Shapes as Claude Code 2.1.304 sends them for /usage and /effort: a

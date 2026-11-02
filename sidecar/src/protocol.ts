@@ -370,6 +370,9 @@ export type Event =
   | { type: "todos"; items: TodoItem[] }
   // Claude Code summarized the conversation to free context.
   | { type: "compact"; trigger?: string; pre_tokens?: number; post_tokens?: number }
+  // The summary that Claude reads after the main agent's compaction, right
+  // after its compact event, without Claude Code's instructions around it.
+  | { type: "compact_summary"; text: string }
   // How full the context window is, at start and after each turn.
   | { type: "context"; percent: number; tokens: number; max: number }
   // The effort level that the session uses, after start, after each model or

@@ -23,6 +23,8 @@ local highlights = {
   AnvimToolOk = { link = "DiagnosticOk" },
   AnvimToolError = { link = "DiagnosticError" },
   AnvimResult = { link = "Comment" },
+  -- A compaction summary differs from Claude's text and reads more easily than a result.
+  AnvimSummary = { italic = true },
   AnvimTime = { link = "Comment" },
   AnvimTableBorder = { link = "Comment" },
   AnvimModeManual = { link = "DiagnosticOk" },

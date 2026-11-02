@@ -102,13 +102,29 @@ describe("historyEvents", () => {
 
   test("slash commands, their output and compaction", () => {
     const events = historyEvents([
-      user("This session is being continued from a previous conversation", { is_meta: true, isCompactSummary: true }),
+      // The shape of Claude Code 2.1.314.
+      user(
+        [
+          "This session is being continued from a previous conversation that ran out of context.",
+          "",
+          "<system-reminder>",
+          "<tools-used-before-summary>Bash, Edit</tools-used-before-summary>",
+          "</system-reminder>",
+          "Summary:",
+          "1. Primary Request and Intent:",
+          "   Fix the parser.",
+          "",
+          "Continue the conversation from where it left off without asking the user any further questions.",
+        ].join("\n"),
+        { is_meta: true, isCompactSummary: true },
+      ),
       user("<command-name>/compact</command-name>\n<command-message>compact</command-message>\n<command-args>keep the API notes</command-args>"),
       user("<local-command-stdout>Compacted </local-command-stdout>"),
       user("<local-command-stdout></local-command-stdout>"),
     ]);
     expect(events).toEqual([
       { type: "compact" },
+      { type: "compact_summary", text: "1. Primary Request and Intent:\n   Fix the parser." },
       { type: "user", text: "/compact keep the API notes" },
       { type: "output", text: "Compacted" },
     ]);
@@ -144,6 +160,7 @@ describe("historyEvents", () => {
       { type: "output", text: "Done" },
       { type: "notice", level: "warn", text: "Interrupted by user", time: seconds(12) },
       { type: "compact", time: seconds(13) },
+      { type: "compact_summary", text: "Summary" },
       { type: "user", text: "No time" },
       { type: "user", text: "Bad time" },
       { type: "user", text: "A number" },

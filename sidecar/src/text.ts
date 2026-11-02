@@ -19,6 +19,29 @@ export function commandOutput(content: string): string | undefined {
   return match ? match[1]!.trim() : undefined;
 }
 
+// The lines that start Claude Code's closing instructions to Claude, after
+// the last section of a compaction summary.
+const SUMMARY_END =
+  /^(?:If you need specific details from before compaction|Continue the conversation from where it left off|The messages after this summary are the most recent)/m;
+
+// A compaction summary without the text around it that speaks to Claude: the
+// opening line, the tools line, "Summary:" and the closing instructions. A
+// part whose marker does not match stays.
+export function compactSummary(text: string): string {
+  let s = text.replace(/\r\n/g, "\n");
+  if (s.startsWith("This session is being continued from a previous conversation")) {
+    s = s.replace(/^[^\n]*\n?/, "");
+  }
+  // Claude Code 2.1.314 puts the tools line in a system reminder.
+  const tools = "<tools-used-before-summary>[^\\n]*</tools-used-before-summary>";
+  s = s.replace(new RegExp(`^\\s*<system-reminder>\\s*${tools}\\s*</system-reminder>[ \\t]*(?:\\n|$)`), "");
+  s = s.replace(new RegExp(`^\\s*${tools}[ \\t]*(?:\\n|$)`), "");
+  s = s.replace(/^\s*Summary:[ \t]*(?:\n|$)/, "");
+  const end = s.search(SUMMARY_END);
+  if (end >= 0) s = s.slice(0, end);
+  return s.replace(/^\s*\n/, "").trimEnd();
+}
+
 export function resultText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";

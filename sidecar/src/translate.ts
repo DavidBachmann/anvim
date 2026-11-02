@@ -4,6 +4,7 @@ import type { Event } from "./protocol";
 import {
   type AnyRecord,
   commandOutput,
+  compactSummary,
   MAX_AGENT_TEXT,
   readResult,
   resultText,
@@ -40,6 +41,8 @@ export class Translator {
   private inTurn = false;
   // /compact prints "Compacted" after the compact boundary, which says more.
   private compacted = false;
+  // The main agent's compaction sends its summary next, as a synthetic user message.
+  private summaryNext = false;
   // The task ids of running subagents. Only task_started names a task's type,
   // and shells and other tasks send task messages too.
   private agents = new Set<string>();
@@ -117,6 +120,7 @@ export class Translator {
       case "compact_boundary": {
         const meta = m.compact_metadata ?? {};
         this.compacted = true;
+        this.summaryNext = mainThread(m);
         out.push({ type: "compact", trigger: meta.trigger ?? "auto", pre_tokens: meta.pre_tokens, post_tokens: meta.post_tokens });
         break;
       }
@@ -198,6 +202,7 @@ export class Translator {
   private result(m: AnyRecord, out: Event[]): void {
     this.inTurn = false;
     this.compacted = false;
+    this.summaryNext = false;
     this.blocks.clear();
     out.push({
       type: "turn_end",
@@ -335,6 +340,15 @@ export class Translator {
 
   private user(m: AnyRecord, out: Event[]): void {
     const content = m.message?.content;
+    // Only the first main message after the boundary can be the summary.
+    if (this.summaryNext && mainThread(m)) {
+      this.summaryNext = false;
+      if (m.isSynthetic) {
+        const text = compactSummary(resultText(content));
+        if (text) out.push({ type: "compact_summary", text });
+        return;
+      }
+    }
     if (typeof content === "string" && m.parent_tool_use_id == null) {
       const text = commandOutput(content);
       if (text === undefined) return;

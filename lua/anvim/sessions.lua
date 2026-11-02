@@ -129,6 +129,9 @@ local draw = {
     transcript.output(ev.text)
   end,
   compact = transcript.compact,
+  compact_summary = function(ev)
+    transcript.compact_summary(ev.text)
+  end,
   -- A notification starts a turn of its own, as a prompt does.
   agent_end = function(ev)
     transcript.turn_end()
