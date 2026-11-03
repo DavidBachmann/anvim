@@ -1,5 +1,5 @@
 #!/bin/sh
-# Usage: anvim [--model <model>] [--effort <level>] [--mode <mode>] [--account <name>] [--no-sandbox] [--dangerously-skip-permissions] [--chrome | --no-chrome] [--codex | --no-codex] [--amnesia] [--debug] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
+# Usage: anvim [--model <model>] [--effort <level>] [--mode <mode>] [--account <name>] [--no-sandbox] [--dangerously-skip-permissions] [--chrome | --no-chrome] [--safari | --no-safari] [--codex | --no-codex] [--amnesia] [--debug] [-c | --continue | -r | --resume [id]] [dir] [nvim args...]
 # The permission mode is default, acceptEdits, plan or bypassPermissions. It is
 # bypassPermissions unless --mode or ANVIM_MODE says otherwise: Claude runs
 # tools without asking. The sandbox limits where its Bash commands write, and
@@ -13,7 +13,10 @@
 # is --no-sandbox --mode bypassPermissions: Claude runs every tool anywhere
 # without asking. --chrome (ANVIM_CHROME=1) and
 # --no-chrome (ANVIM_CHROME=0) turn Claude in Chrome on or off, as in Claude
-# Code. Without them, its "Enabled by default" setting decides. --codex
+# Code. Without them, its "Enabled by default" setting decides. --safari
+# (ANVIM_SAFARI=1) lets the mcp-safari server from Claude Code's MCP config
+# load, for Safari automation. --no-safari (ANVIM_SAFARI=0) is the default:
+# anvim blocks the server for the session. --codex
 # (ANVIM_CODEX=1) gives Claude a codex tool, which starts Codex agents. It
 # needs the codex CLI with a login. --no-codex (ANVIM_CODEX=0) is the
 # default. --debug
@@ -93,6 +96,11 @@ while [ "$n" -gt 0 ]; do
       shift
       n=$((n - 1))
       ;;
+    --safari | --no-safari)
+      ANVIM_SAFARI=$([ "$1" = --safari ] && echo 1 || echo 0)
+      shift
+      n=$((n - 1))
+      ;;
     --codex | --no-codex)
       ANVIM_CODEX=$([ "$1" = --codex ] && echo 1 || echo 0)
       shift
@@ -143,6 +151,7 @@ done
 [ -n "$ANVIM_DEBUG" ] && export ANVIM_DEBUG
 [ -n "$ANVIM_AMNESIA" ] && export ANVIM_AMNESIA
 [ -n "$ANVIM_CHROME" ] && export ANVIM_CHROME
+[ -n "$ANVIM_SAFARI" ] && export ANVIM_SAFARI
 [ -n "$ANVIM_CODEX" ] && export ANVIM_CODEX
 if [ -n "$mode" ] || [ -n "$ANVIM_MODE" ]; then
   case "$ANVIM_MODE" in

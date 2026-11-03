@@ -105,6 +105,9 @@ export type Command =
       // Claude in Chrome: true is Claude Code's --chrome, false its
       // --no-chrome. Without it, Claude Code's "Enabled by default" decides.
       chrome?: boolean;
+      // True lets the mcp-safari server from Claude Code's MCP config load.
+      // Without it, anvim denies the server for the session (browsers.ts).
+      safari?: boolean;
       // True turns the Codex agents on (codex.ts).
       codex?: boolean;
       // The model and the reasoning effort of Codex runs. Without them,
@@ -422,6 +425,9 @@ export type Event =
       browsers?: { device_id: string; name: string; os?: string; current: boolean }[];
       error?: string;
     }
+  // The browsers that are on, after the first check and on each change.
+  // why says why a browser is not connected.
+  | { type: "browsers"; browsers: { name: "chrome" | "safari"; connected: boolean; why?: string }[] }
   // The answer to rewind_points, oldest first.
   | { type: "rewind_points"; session_id: string; points?: RewindPoint[]; error?: string }
   // The answer to rewind_files. A dry run lists the files that the restore

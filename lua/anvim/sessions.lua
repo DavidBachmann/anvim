@@ -85,6 +85,7 @@ function M.start_command(opts)
     amnesia = config.options.amnesia == true,
     debug = config.options.debug,
     chrome = M.chrome_flag(),
+    safari = config.options.safari == true,
     codex = config.options.codex == true,
     codex_model = require("anvim.codex").model(),
     codex_effort = require("anvim.codex").effort(),
@@ -674,6 +675,15 @@ function M.attach()
   sidecar.on("history", M.history)
   sidecar.on("codex", function(ev)
     state.codex, state.codex_config, state.codex_models = ev.state, ev.config, ev.models
+  end)
+  sidecar.on("browsers", function(ev)
+    state.browsers = ev.browsers
+    require("anvim.statusline").refresh()
+  end)
+  -- The next sidecar checks its browsers again.
+  sidecar.on("exit", function()
+    state.browsers = nil
+    require("anvim.statusline").refresh()
   end)
   sidecar.on("reset", M.reset)
   -- <Up> took the /reset back, or Claude Code dropped it.

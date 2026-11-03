@@ -27,6 +27,8 @@ local M = {
   codex_config = nil, ---@type { model: string?, effort: string? }?
   -- Codex's models, when the sidecar could read its model list.
   codex_models = nil, ---@type { slug: string, name: string, hidden: boolean, efforts: string[] }[]?
+  -- The browsers that are on, and whether their extensions are connected, as the sidecar's last check found.
+  browsers = nil, ---@type { name: 'chrome'|'safari', connected: boolean, why: string? }[]?
   compacting = false,
   -- Set while a permission prompt waits for the user: the hint that says how
   -- to answer.

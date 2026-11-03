@@ -86,6 +86,12 @@ Claude in Chrome lets Claude use Chrome through the Claude extension. It require
 
 The extension's site permissions govern browsing, clicking and typing. A session that **starts in bypass mode** tells the extension to skip those checks, allowing actions on any site without asking. Start with `--mode default` to retain the checks. See [permissions](permissions.md) for the other implications of bypass mode.
 
+## Safari
+
+Claude can also use Safari through an MCP server named `mcp-safari` in Claude Code's MCP config. Start with `--safari` or `ANVIM_SAFARI=1` to let that server load. Without the flag, anvim blocks it for the session, and Claude does not get its tools. Its tools follow the permission mode, so in bypass mode they act in Safari without asking.
+
+When Claude in Chrome or Safari is on but its extension is not connected, the statusline shows the browser in the warning color, such as `Chrome ✗` or `Chrome ✗ Safari ✗`. anvim checks 30 seconds after Claude starts, because Safari's extension takes a while to find a new server, and then every 15 seconds. A connected browser shows nothing. `:checkhealth anvim` says why a browser is not connected and how to fix it.
+
 ## Away mode
 
 `/away` turns [away mode](permissions.md#away) on, and `/away` again turns it off. While you are away, no request waits for you, except a plan's approval. `/held` lists the calls and questions that anvim [held](permissions.md#held-calls) for you, newest first.

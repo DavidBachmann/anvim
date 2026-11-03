@@ -51,9 +51,9 @@ anvim --resume ~/dev/project         # choose a session
 anvim --resume 12345678-1234-1234-1234-123456789abc ~/dev/project  # resume by session ID
 ```
 
-The launcher accepts `--model`, `--effort` (`low`, `medium`, `high`, `xhigh`, `max`), `--mode` (`default`, `acceptEdits`, `plan`, `bypassPermissions`), `--account`, `--no-sandbox`, `--dangerously-skip-permissions`, `--chrome`, `--no-chrome`, `--codex`, `--no-codex`, `--amnesia`, `--debug`, and `-c`/`--continue` or `-r`/`--resume [id]`. Remaining arguments go to Neovim; if the first remaining argument is a directory, it selects the working directory. Continue and resume cannot be combined with each other or with [`--amnesia`](sessions.md#fresh-eyes).
+The launcher accepts `--model`, `--effort` (`low`, `medium`, `high`, `xhigh`, `max`), `--mode` (`default`, `acceptEdits`, `plan`, `bypassPermissions`), `--account`, `--no-sandbox`, `--dangerously-skip-permissions`, `--chrome`, `--no-chrome`, `--safari`, `--no-safari`, `--codex`, `--no-codex`, `--amnesia`, `--debug`, and `-c`/`--continue` or `-r`/`--resume [id]`. Remaining arguments go to Neovim; if the first remaining argument is a directory, it selects the working directory. Continue and resume cannot be combined with each other or with [`--amnesia`](sessions.md#fresh-eyes).
 
-Environment equivalents are `ANVIM_MODEL`, `ANVIM_EFFORT`, `ANVIM_MODE`, `ANVIM_ACCOUNT`, `ANVIM_SANDBOX=0`, `ANVIM_CHROME=1` or `0`, `ANVIM_CODEX=1` or `0` and `ANVIM_DEBUG=1`. An explicit flag takes precedence. With no effort override, Claude Code's setting, then the model default, decides. With no Chrome override, Claude Code's “Enabled by default” setting decides. `--dangerously-skip-permissions` combines `--no-sandbox` with `--mode bypassPermissions`; see [what that means](permissions.md#without-a-sandbox).
+Environment equivalents are `ANVIM_MODEL`, `ANVIM_EFFORT`, `ANVIM_MODE`, `ANVIM_ACCOUNT`, `ANVIM_SANDBOX=0`, `ANVIM_CHROME=1` or `0`, `ANVIM_SAFARI=1` or `0`, `ANVIM_CODEX=1` or `0` and `ANVIM_DEBUG=1`. An explicit flag takes precedence. With no effort override, Claude Code's setting, then the model default, decides. With no Chrome override, Claude Code's “Enabled by default” setting decides. `--dangerously-skip-permissions` combines `--no-sandbox` with `--mode bypassPermissions`; see [what that means](permissions.md#without-a-sandbox).
 
 <a id="update"></a>
 
@@ -61,7 +61,7 @@ Environment equivalents are `ANVIM_MODEL`, `ANVIM_EFFORT`, `ANVIM_MODE`, `ANVIM_
 
 After `git pull`, start anvim normally. The launcher checks its install stamp against the lockfiles and the parser and package lists; if they changed, it runs the installer. If that fails and an earlier install exists, anvim warns, starts with the earlier install and retries next time. A first install failure stops startup. Set `ANVIM_NO_INSTALL=1` to skip automatic installation.
 
-Run `:checkhealth anvim` to inspect dependencies, the selected account, sandbox, permission mode and Codex availability. The log is normally at `~/.local/state/anvim/anvim.log`. The installer's `scripts/install --check` checks the stamp without starting Neovim. `:Lazy update` changes the installed plugins; a later install after a lockfile change restores anvim's pinned commits. See [development](development.md#plugins) to update the repository's pins.
+Run `:checkhealth anvim` to inspect dependencies, the selected account, sandbox, permission mode, Codex availability and the browsers' connections. The log is normally at `~/.local/state/anvim/anvim.log`. The installer's `scripts/install --check` checks the stamp without starting Neovim. `:Lazy update` changes the installed plugins; a later install after a lockfile change restores anvim's pinned commits. See [development](development.md#plugins) to update the repository's pins.
 
 <a id="your-own-plugins"></a>
 

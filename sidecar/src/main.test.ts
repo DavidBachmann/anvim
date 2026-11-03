@@ -139,6 +139,8 @@ describe("the sidecar's session", () => {
     expect(started.map((o) => [o.model, o.effort, o.resume, o.resumeSessionAt])).toEqual([["haiku", undefined, "s1", "a1"]]);
     expect(started[0]!.enableFileCheckpointing).toBe(true);
     expect(started[0]!.sandbox).toEqual({ enabled: false });
+    // Without --safari, the session does not load the mcp-safari server.
+    expect(started[0]!.settings).toEqual({ deniedMcpServers: [{ serverName: "mcp-safari" }] });
     // anvim's todo list is the only one.
     expect(started[0]!.disallowedTools).toEqual(["TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"]);
     // The history draws the transcript again, so the warning comes after it.

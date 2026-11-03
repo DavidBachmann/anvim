@@ -1,11 +1,11 @@
 -- The global statusline. On the left: anvim's name, Vim's mode, or FOLLOW in
 -- follow mode, the permission mode's label, the git branch, and the file with
 -- its diagnostics. On the right: whether Claude waits, the git diff counts,
--- the login's email, away mode and the held calls that the user has not
--- seen, how full the context window is, the model and its effort, where
--- Claude is, and the cursor's place. 'statusline' is
--- "%!v:lua.require'anvim.statusline'.render()", so Neovim runs render() each
--- time it draws the statusline.
+-- the login's email, away mode, the held calls that the user has not seen,
+-- the browsers that are on but not connected, how full the context window
+-- is, the model and its effort, where Claude is, and the cursor's place.
+-- 'statusline' is "%!v:lua.require'anvim.statusline'.render()", so Neovim
+-- runs render() each time it draws the statusline.
 local M = {}
 
 local api = vim.api
@@ -202,6 +202,7 @@ end
 ---@field email string? The login's email.
 ---@field away boolean The user is away.
 ---@field held integer The held entries that the user has not seen.
+---@field browsers string? The browsers that are on but not connected, such as Chrome ✗.
 ---@field limits string? The plan's usage, such as [S27%/W80%].
 ---@field context string? How full the context window is, as a meter.
 ---@field model string
@@ -245,11 +246,18 @@ local function session()
       limits[#limits + 1] = ("%s%d%%%%"):format(l[1], n)
     end
   end
+  local down = {}
+  for _, b in ipairs(state.browsers or {}) do
+    if not b.connected then
+      down[#down + 1] = b.name:gsub("^%l", string.upper) .. " ✗"
+    end
+  end
   local away = package.loaded["anvim.away"]
   return {
     email = state.email,
     away = away ~= nil and away.on,
     held = away and away.unseen() or 0,
+    browsers = #down > 0 and on_c("DiagnosticWarn") .. table.concat(down, " ") .. "%#AnvimStatusC#" or nil,
     limits = #limits > 0 and "[" .. table.concat(limits, "/") .. "]" or nil,
     context = context,
     model = input.model_label(state.model or require("anvim.config").options.model),
@@ -383,12 +391,15 @@ local function render()
       if s.email and not cut.email then
         account[#account + 1] = esc(s.email)
       end
-      -- Away mode and the held count never drop for width.
+      -- Away mode, the held count and the browsers never drop for width.
       if s.away then
         account[#account + 1] = on_c("AnvimAway") .. "zZz [/away]%#AnvimStatusC#"
       end
       if s.held > 0 then
         account[#account + 1] = ("%d held [/held]"):format(s.held)
+      end
+      if s.browsers then
+        account[#account + 1] = s.browsers
       end
       if s.limits and not cut.limits then
         account[#account + 1] = s.limits

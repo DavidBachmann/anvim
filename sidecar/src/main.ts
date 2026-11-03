@@ -9,6 +9,7 @@ import {
 import { openSync, writeSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { postToolUse } from "./agentfiles";
+import { BrowserWatch, browserCalls, browserSettings } from "./browsers";
 import {
   browsersEvent,
   CHROME_SERVER,
@@ -117,6 +118,8 @@ const previews = new PreviewBridge(emit);
 let codex: CodexRunner | undefined;
 // The user's model and effort for the next Codex runs.
 let codexDefaults: CodexSettings = {};
+// Whether the browsers that are on have their extensions connected.
+let browsers: BrowserWatch | undefined;
 // The session's todo list. A start without todos_dir has none.
 let todos: TodoStore | undefined;
 // The directory of the session, where Claude Code saves it.
@@ -270,6 +273,9 @@ async function run(cmd: Start): Promise<void> {
   const defined = (hooks: (HookCallback | undefined)[]) => hooks.filter((h): h is HookCallback => h !== undefined);
   const startHooks = defined([todos?.sessionStart, notes?.sessionStart]);
   const promptHooks = defined([todos?.firstPrompt, notes?.prompt, permissions.notice.prompt]);
+  const amnesiaOpts = amnesia ? amnesiaOptions(cmd.cwd, sandbox.options.sandbox) : undefined;
+  const safari = cmd.safari === true;
+  const chrome = chromeArgs(cmd.chrome);
   const options: Options = {
     ...sandbox.options,
     cwd: cmd.cwd,
@@ -297,8 +303,10 @@ async function run(cmd: Start): Promise<void> {
     // anvim's todo list is the only one, also if Claude Code offers its own again.
     disallowedTools: ["TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"],
     systemPrompt: { type: "preset", preset: "claude_code", append: systemPrompt({ amnesia }) },
-    ...(amnesia ? amnesiaOptions(cmd.cwd, sandbox.options.sandbox) : {}),
-    extraArgs: chromeArgs(cmd.chrome),
+    ...amnesiaOpts,
+    // Amnesia and the Safari gate both add flag settings.
+    settings: { ...amnesiaOpts?.settings, ...browserSettings(safari) },
+    extraArgs: chrome,
     mcpServers: { [SERVER]: editorServer(editor, { debug: cmd.debug === true, codex, todos }) },
     canUseTool: permissions.canUseTool,
     stderr: (data) => {
@@ -320,6 +328,8 @@ async function run(cmd: Start): Promise<void> {
   emitLater(session.accountInfo().then((a) => ({ type: "account", email: a.email })));
   const limits = new Limits(emit, session);
   void limits.report();
+  browsers = new BrowserWatch(emit, { chrome: "chrome" in chrome, safari });
+  browsers.start(browserCalls(session));
   for await (const msg of session) {
     permissions.message(msg);
     // /clear: no conversation waits for the result of a Codex agent.
@@ -335,6 +345,7 @@ async function run(cmd: Start): Promise<void> {
       void control((q) => effort.report(q));
     }
   }
+  browsers.stop();
 }
 
 export async function handle(cmd: Command): Promise<void> {
@@ -459,6 +470,7 @@ export async function handle(cmd: Command): Promise<void> {
 // Bun runs no exit handlers on SIGTERM, so the SDK would leave Claude Code
 // running. A restart of a hung sidecar sends SIGTERM.
 function shutdown(): void {
+  browsers?.stop();
   codex?.stopAll();
   inbox.close();
   session?.close();

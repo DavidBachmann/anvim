@@ -111,6 +111,39 @@ local function codex()
   end
 end
 
+local browser_names = { chrome = "Claude in Chrome", safari = "Safari" }
+local browser_advice = {
+  chrome = {
+    "Open Chrome with the Claude extension, signed in to claude.ai with the same account as this session",
+    "/chrome can reconnect the extension",
+  },
+  safari = {
+    "Open Safari and turn on the extension in Safari's settings",
+    "The server must be in Claude Code's MCP config under the name `mcp-safari`",
+  },
+}
+
+local function browsers()
+  if config.options.safari ~= true then
+    health.info("Safari automation is off. Start anvim with --safari or ANVIM_SAFARI=1 to load the mcp-safari server")
+  end
+  local list = require("anvim.state").browsers
+  if not list then
+    health.info(
+      "anvim has not checked the browsers yet. It checks 30 s after Claude starts, while Claude in Chrome or Safari is on"
+    )
+    return
+  end
+  for _, b in ipairs(list) do
+    local name = browser_names[b.name] or b.name
+    if b.connected then
+      health.ok(name .. " is connected")
+    else
+      health.warn(("%s is not connected: %s"):format(name, b.why or "anvim does not know why"), browser_advice[b.name])
+    end
+  end
+end
+
 local function accounts()
   health.start("anvim accounts")
   local acc = require("anvim.accounts")
@@ -200,6 +233,7 @@ function M.check()
   local runs = sandbox()
   start_mode(runs)
   codex()
+  browsers()
 
   executables({
     { "git", "lazy.nvim installs the plugins with it.", error = true },

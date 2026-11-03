@@ -14,6 +14,7 @@ return {
       debug = vim.env.ANVIM_DEBUG == "1",
       amnesia = vim.env.ANVIM_AMNESIA == "1",
       chrome = ({ ["1"] = true, ["0"] = false })[vim.env.ANVIM_CHROME or ""],
+      safari = vim.env.ANVIM_SAFARI == "1",
       codex = vim.env.ANVIM_CODEX == "1",
       -- ANVIM_REPLAY=<recording> plays a session that ANVIM_RECORD saved, at no API cost.
       replay = vim.env.ANVIM_REPLAY,

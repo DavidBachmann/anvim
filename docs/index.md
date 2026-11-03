@@ -5,7 +5,7 @@ New to anvim? Start with [installation](install.md), then take a tour of [the sc
 When you need a particular answer:
 
 - [Keys](keys.md) is the reference for navigation, review and requests. `<leader>` means Space.
-- [Sessions and settings](sessions.md) covers resuming work, starting over, fresh-eyes sessions, rewinding, accounts, models, slash commands, MCP, Chrome and the Processes window.
+- [Sessions and settings](sessions.md) covers resuming work, starting over, fresh-eyes sessions, rewinding, accounts, models, slash commands, MCP, Chrome, Safari and the Processes window.
 - [The transcript](transcript.md) explains tool output, reading and copying.
 - [The todo list](todos.md) covers the session's todo list, which Claude keeps and the transcript shows.
 - [The .anvim folder](notes.md) covers the project's private notes: a README, a diary, reference docs and scratch files, which git never sees.

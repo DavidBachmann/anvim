@@ -133,7 +133,10 @@ export function diaryRefusal(cwd: string, input: PreToolUseHookInput): HookJSONO
 // keeps the subagents' memory out. The Read deny rule stops the Read tool and
 // the Bash commands that name the notes' dir. The sandbox stops the other Bash
 // commands, such as a grep over the project.
-export function amnesiaOptions(cwd: string, sandbox: Options["sandbox"]): Pick<Options, "sandbox" | "settings"> {
+export function amnesiaOptions(
+  cwd: string,
+  sandbox: Options["sandbox"],
+): { sandbox: Options["sandbox"]; settings: Exclude<Options["settings"], string | undefined> } {
   const dirs = [...new Set([join(cwd, DIR), join(realPath(cwd), DIR)])];
   return {
     sandbox: sandbox?.enabled
