@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { contextEvent, mcpEvent, modelsEvent, sessionInfoEvent, usageEvent } from "./dialogs";
+import { contextEvent, mcpAction, mcpEvent, modelsEvent, sessionInfoEvent, usageEvent } from "./dialogs";
 import { limitsEvent, limitsResetDelay } from "./limits";
 
 describe("dialogs", () => {
@@ -178,6 +178,26 @@ describe("dialogs", () => {
       ],
       error: "Could not reconnect x: no",
     });
+  });
+
+  test("a sign-in answers with the page for the browser, and a refusal says why", async () => {
+    const figma = { name: "claude.ai Figma", status: "needs-auth", source: "claudeai" };
+    const q = {
+      mcpServerStatus: async () => [figma],
+      mcpAuthenticate: async (server: string) => {
+        if (server !== figma.name) throw new Error('Server type "stdio" does not support OAuth authentication');
+        return { authUrl: "https://claude.ai/start-auth", requiresUserAction: true, callbackExpected: false };
+      },
+    } as unknown as Parameters<typeof mcpAction>[0];
+    expect(await mcpAction(q, { type: "mcp_action", action: "sign_in", server: figma.name })).toMatchObject({
+      servers: [{ name: figma.name, status: "needs-auth" }],
+      sign_in: { server: figma.name, url: "https://claude.ai/start-auth" },
+    });
+    const stdio = await mcpAction(q, { type: "mcp_action", action: "sign_in", server: "safari" });
+    expect(stdio).toMatchObject({
+      error: 'Could not sign in to safari: Server type "stdio" does not support OAuth authentication',
+    });
+    expect(stdio).not.toHaveProperty("sign_in", expect.anything());
   });
 
   test("session_info names the login and counts the MCP servers by status", () => {

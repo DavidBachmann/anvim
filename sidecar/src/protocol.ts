@@ -152,7 +152,7 @@ export type Command =
   | { type: "context_usage" }
   // Both are answered with an mcp_servers event.
   | { type: "mcp_servers" }
-  | { type: "mcp_action"; action: "reconnect" | "enable" | "disable"; server: string }
+  | { type: "mcp_action"; action: "reconnect" | "enable" | "disable" | "sign_in"; server: string }
   // All but chrome_browsers are answered with a chrome event. chrome_default
   // sets "Enabled by default", which holds for the next sessions.
   | { type: "chrome" }
@@ -406,8 +406,9 @@ export type Event =
       config?: { model?: string; effort?: string };
       models?: { slug: string; name: string; hidden: boolean; efforts: string[] }[];
     }
-  // The MCP servers, for the MCP tab. After an action that failed, error says why.
-  | { type: "mcp_servers"; servers?: McpServer[]; error?: string }
+  // The MCP servers, for the MCP tab. After an action that failed, error says
+  // why. After a sign_in, sign_in has the page that the browser opens.
+  | { type: "mcp_servers"; servers?: McpServer[]; error?: string; sign_in?: { server: string; url: string } }
   // The answer to context_usage, for the Context tab.
   | { type: "context_usage"; context?: ContextView; error?: string }
   // The answer to session_info, for the Status tab.

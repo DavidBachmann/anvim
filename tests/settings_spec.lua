@@ -76,6 +76,36 @@ describe("settings", function()
       assert(helpers.contains(helpers.buf_lines(buf), "^ Turning on notion%.%.%.$"))
     end)
 
+    -- A sign-in opens the page, and the hint stays until the server connects.
+    local open = vim.ui.open
+    local opened
+    vim.ui.open = function(url)
+      opened = url
+      return nil, nil
+    end
+    local signed, sign_err = pcall(function()
+      helpers.capture_sends(function(sent)
+        local figma = { name = "figma", status = "needs-auth", scope = "claudeai", tools = {} }
+        sidecar.dispatch({ type = "mcp_servers", servers = { figma } })
+        vim.api.nvim_feedkeys("a", "mx", false)
+        assert.are.same({ type = "mcp_action", action = "sign_in", server = "figma" }, sent[#sent])
+        sidecar.dispatch({
+          type = "mcp_servers",
+          servers = { figma },
+          sign_in = { server = "figma", url = "https://x" },
+        })
+        assert.are.same("https://x", opened)
+        assert(helpers.contains(helpers.buf_lines(buf), "^     https://x$"))
+        sidecar.dispatch({
+          type = "mcp_servers",
+          servers = { vim.tbl_extend("force", figma, { status = "connected" }) },
+        })
+        assert.is_false(pcall(helpers.contains, helpers.buf_lines(buf), "https://x"))
+      end)
+    end)
+    vim.ui.open = open
+    assert(signed, sign_err)
+
     local chrome = {
       allowed = true,
       subscriber = true,

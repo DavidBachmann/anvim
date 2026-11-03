@@ -4,13 +4,15 @@ import type {
   AccountInfo,
   McpServerStatus,
   ModelInfo,
+  Query,
   RewindFilesResult,
   SDKControlGetContextUsageResponse,
   SDKControlGetUsageResponse,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { ContextMark, Event, McpServer, UsageSection } from "./protocol";
+import type { Command, ContextMark, Event, McpServer, UsageSection } from "./protocol";
 import { tildePath } from "./paths";
-import { isOwnServer } from "./tools";
+import { errorText } from "./text";
+import { isOwnServer, SERVER } from "./tools";
 
 export function modelsEvent(models: ModelInfo[]): Event {
   return {
@@ -206,8 +208,39 @@ function mcpServer(s: McpServerStatus): McpServer {
   };
 }
 
-export function mcpEvent(servers: McpServerStatus[], error?: string): Event {
+export function mcpEvent(servers: McpServerStatus[], error?: string): Extract<Event, { type: "mcp_servers" }> {
   return { type: "mcp_servers", servers: servers.map(mcpServer), error };
+}
+
+// The SDK has the sign-in of Claude Code's /mcp, but not in its types.
+type SignInCalls = { mcpAuthenticate(server: string): Promise<{ authUrl?: string }> };
+type McpCalls = Pick<Query, "mcpServerStatus" | "reconnectMcpServer" | "toggleMcpServer">;
+const VERBS = { reconnect: "reconnect", enable: "enable", disable: "disable", sign_in: "sign in to" };
+
+// Runs an action of the MCP tab and answers with the servers. A sign-in
+// answers with the page for the browser. For a claude.ai connector, the page
+// is on claude.ai, and the server connects only after a reconnect. For an
+// OAuth server, Claude Code waits for the browser's redirect and connects by
+// itself.
+export async function mcpAction(q: McpCalls, cmd: Extract<Command, { type: "mcp_action" }>): Promise<Event> {
+  let error: string | undefined;
+  let signIn: { server: string; url: string } | undefined;
+  try {
+    // The editor tools are anvim's, and the session needs them.
+    if (cmd.server === SERVER) throw new Error("anvim's own server always runs");
+    if (cmd.action === "reconnect") await q.reconnectMcpServer(cmd.server);
+    else if (cmd.action === "sign_in") {
+      const url = (await (q as McpCalls & SignInCalls).mcpAuthenticate(cmd.server)).authUrl;
+      if (url) signIn = { server: cmd.server, url };
+    } else await q.toggleMcpServer(cmd.server, cmd.action === "enable");
+  } catch (err) {
+    error = `Could not ${VERBS[cmd.action]} ${cmd.server}: ${errorText(err)}`;
+  }
+  try {
+    return { ...mcpEvent(await q.mcpServerStatus(), error), sign_in: signIn };
+  } catch (err) {
+    return { type: "mcp_servers", error: error ?? errorText(err) };
+  }
 }
 
 const MCP_STATUS: [McpServerStatus["status"], string][] = [

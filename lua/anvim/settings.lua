@@ -52,6 +52,8 @@ local answers = {}
 local expanded = {} ---@type table<string, true>
 local row_keys = {} ---@type table<integer, string>
 local note ---@type [string, string]?
+-- The sign-in page of each MCP server that waits for the user in the browser.
+local signins = {} ---@type table<string, string>
 -- What the Chrome tab says under its options, and whether an action waits
 -- for its answer.
 local chrome_note ---@type [string, string]?
@@ -197,11 +199,18 @@ local function render_mcp(t, ev)
       { words, st[2] },
       { s.scope and ("  " .. s.scope) or "", "Comment" },
     })
+    local function more(text, group)
+      t.keys[#t.lines] = s.name
+      t:add({ { "    " .. text, group or "AnvimResult" } })
+    end
+    -- A claude.ai connector connects only after a reconnect, as in Claude
+    -- Code's /mcp. The URL is there in case no browser opened.
+    local page = s.status ~= "connected" and signins[s.name]
+    if page then
+      more("Sign in on the page that opened in the browser, then press r.", "DiagnosticWarn")
+      more(page, "Comment")
+    end
     if expanded[s.name] then
-      local function more(text, group)
-        t.keys[#t.lines] = s.name
-        t:add({ { "    " .. text, group or "AnvimResult" } })
-      end
       if s.own then
         more("anvim's editor tools, which always run")
       end
@@ -211,8 +220,8 @@ local function render_mcp(t, ev)
       if s.error then
         more(s.error, "DiagnosticError")
       end
-      if s.status == "needs-auth" then
-        more("Sign in with /mcp in Claude Code's terminal.", "DiagnosticWarn")
+      if s.status == "needs-auth" and not page then
+        more("Press a to sign in in the browser.", "DiagnosticWarn")
       end
       for _, tool in ipairs(s.tools) do
         more(tool)
@@ -391,7 +400,8 @@ local function draw()
     api.nvim_buf_set_extmark(buf, ns, m[1], m[2] + 1, { end_col = m[3] + 1, hl_group = m[4] })
   end
   win.opts.title = title()
-  local keys_hint = ({ mcp = "<CR> tools · r reconnect · t on or off · ", chrome = "<CR> choose · " })[tab] or ""
+  local keys_hint = ({ mcp = "<CR> tools · a sign in · r reconnect · t on or off · ", chrome = "<CR> choose · " })[tab]
+    or ""
   win.opts.footer = { { " " .. keys_hint .. "<Tab> next tab · q close ", "FloatFooter" } }
   win.opts.wo.cursorline = tab == "mcp" or tab == "chrome"
   local height = api.nvim_win_text_height(win.win, {}).all
@@ -518,12 +528,17 @@ function M.enter()
   end
 end
 
----@param action "reconnect"|"enable"|"disable"
+---@param action "reconnect"|"enable"|"disable"|"sign_in"
 local function act(action, s)
   if s.own then
     note = { "anvim's own server always runs.", "DiagnosticWarn" }
   else
-    local verb = ({ reconnect = "Reconnecting", enable = "Turning on", disable = "Turning off" })[action]
+    local verb = ({
+      reconnect = "Reconnecting",
+      enable = "Turning on",
+      disable = "Turning off",
+      sign_in = "Signing in to",
+    })[action]
     note = { ("%s %s..."):format(verb, s.name), "AnvimResult" }
     sidecar.send({ type = "mcp_action", action = action, server = s.name })
   end
@@ -534,6 +549,13 @@ function M.reconnect()
   local s = server_at_cursor()
   if s then
     act("reconnect", s)
+  end
+end
+
+function M.sign_in()
+  local s = server_at_cursor()
+  if s then
+    act("sign_in", s)
   end
 end
 
@@ -566,7 +588,7 @@ function M.open(name)
     vim.notify("anvim: Claude is not running. :AnvimRestart starts it", vim.log.levels.WARN)
     return
   end
-  tab, answers, drawn, note, chrome_note, chrome_waits = name, {}, nil, nil, nil, false
+  tab, answers, drawn, note, chrome_note, chrome_waits, signins = name, {}, nil, nil, nil, false, {}
   if not valid() then
     origin = api.nvim_get_current_win()
     win = Snacks.win({
@@ -598,6 +620,7 @@ function M.open(name)
       M.switch(-1)
     end, { buffer = win.buf, nowait = true })
     keys.set("settings", "n", "<CR>", M.enter, { buffer = win.buf, nowait = true })
+    keys.set("settings", "n", "a", M.sign_in, { buffer = win.buf, nowait = true })
     keys.set("settings", "n", "r", M.reconnect, { buffer = win.buf, nowait = true })
     keys.set("settings", "n", "t", M.toggle, { buffer = win.buf, nowait = true })
     -- A click or a window key elsewhere closes it, as it closes the key view.
@@ -635,6 +658,18 @@ function M.attach()
       answers[name] = ev
       if name == "mcp" then
         note = nil
+        for _, s in ipairs(ev.servers or {}) do
+          if s.status == "connected" then
+            signins[s.name] = nil
+          end
+        end
+        if ev.sign_in then
+          signins[ev.sign_in.server] = ev.sign_in.url
+          local _, err = vim.ui.open(ev.sign_in.url)
+          if err then
+            note = { err, "DiagnosticError" }
+          end
+        end
       elseif name == "chrome" and (ev.message or chrome_waits) then
         chrome_note = ev.message and { ev.message.text, ev.message.level == "error" and "DiagnosticError" or nil }
         chrome_waits = false

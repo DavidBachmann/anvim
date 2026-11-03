@@ -22,7 +22,7 @@ import {
   setChromeDefault,
 } from "./chrome";
 import { CodexRunner, type CodexSettings, codexConfig, codexState, codexWarning } from "./codex";
-import { contextEvent, mcpEvent, modelsEvent, rewindFilesEvent, sessionInfoEvent, usageEvent } from "./dialogs";
+import { contextEvent, mcpAction, mcpEvent, modelsEvent, rewindFilesEvent, sessionInfoEvent, usageEvent } from "./dialogs";
 import { Effort, getSettings } from "./effort";
 import { preToolUse } from "./hooks";
 import { type ImageBlock, imageBlocks } from "./images";
@@ -396,22 +396,7 @@ export async function handle(cmd: Command): Promise<void> {
       await answer({ type: "mcp_servers" }, async (q) => mcpEvent(await q.mcpServerStatus()));
       return;
     case "mcp_action":
-      await control(async (q) => {
-        let error: string | undefined;
-        try {
-          // The editor tools are anvim's, and the session needs them.
-          if (cmd.server === SERVER) throw new Error("anvim's own server always runs");
-          if (cmd.action === "reconnect") await q.reconnectMcpServer(cmd.server);
-          else await q.toggleMcpServer(cmd.server, cmd.action === "enable");
-        } catch (err) {
-          error = `Could not ${cmd.action} ${cmd.server}: ${errorText(err)}`;
-        }
-        try {
-          emit(mcpEvent(await q.mcpServerStatus(), error));
-        } catch (err) {
-          emit({ type: "mcp_servers", error: error ?? errorText(err) });
-        }
-      });
+      await control(async (q) => emit(await mcpAction(q, cmd)));
       return;
     case "session_info":
       await answer({ type: "session_info" }, async (q) => {

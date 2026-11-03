@@ -65,7 +65,7 @@ An account is a Claude Code configuration directory. `default` uses the normal `
 - **Status** shows Claude Code version, account, config directory, login, organization, email and MCP servers.
 - **Usage** shows session cost and tokens, plan limits and reset times, and usage over the last 24 hours and seven days. `/cost` and `/stats` open it too.
 - **Context** shows the context grid and its contents, including MCP tools, agents, memory and skills.
-- **MCP** lists servers and status. `Enter` shows a server's command and tools; `r` reconnects and `t` toggles it. anvim's own server always runs. Sign in to servers requiring authentication with Claude Code's `/mcp` in a terminal. `/mcp` forms with arguments still run in Claude Code.
+- **MCP** lists servers and status. `Enter` shows a server's command and tools; `r` reconnects and `t` toggles it. anvim's own server always runs. `a` opens a server's sign-in page in the browser. A claude.ai connector connects once you sign in there and press `r`; an OAuth server connects by itself after the browser's redirect. `/mcp` forms with arguments still run in Claude Code.
 - **Chrome** controls the integration described below.
 
 ## Processes
