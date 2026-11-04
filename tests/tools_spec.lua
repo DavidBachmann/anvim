@@ -65,6 +65,29 @@ describe("show_user", function()
     sidecar.dispatch({ type = "turn_end", subtype = "success", is_error = false, duration_ms = 1, cost_usd = 0 })
     assert.are.same({}, marks(buf), "the next prompt clears the marks once Claude takes it")
   end)
+
+  -- Before the new buffer's gutter is drawn, 'textoff' leaves out its numbers.
+  it("wraps a note to the text width of a file that the code window has not shown", function()
+    helpers.start()
+    local file = helpers.tmp .. "/wide.lua"
+    vim.fn.writefile({ "local a = 1", "local b = 2" }, file)
+    layout.focus_input()
+    local note = ("Gísli has finished session-0, so he starts on session-4 at once. "):rep(4)
+    helpers.ask("show_user", { path = "wide.lua", start_line = 2, note = note })
+
+    local win, buf = layout.wins.code, vim.fn.bufnr(file)
+    local text = api.nvim_win_get_width(win) - follow.review_width(win)
+    local mark = vim.tbl_filter(function(m)
+      return m[4].virt_lines ~= nil
+    end, marks(buf))[1]
+    for _, line in ipairs(mark[4].virt_lines) do
+      local width = 0
+      for _, chunk in ipairs(line) do
+        width = width + api.nvim_strwidth(chunk[1])
+      end
+      assert(width <= text, ("a note row of %d columns fits %d"):format(width, text))
+    end
+  end)
 end)
 
 describe("editor requests", function()

@@ -128,15 +128,16 @@ end
 -- of a new file can grow to 999 lines in a gutter that keeps its width.
 local DIGITS = 3
 
--- The review gutter for the buffer in `win`, as Neovim sizes it for the
--- widest line number: its width, the columns that its numbers have, and the
--- least 'numberwidth' that gives them room for DIGITS digits. Another
+-- The review gutter for `buf`, or the buffer in `win`, as Neovim sizes it for
+-- the widest line number: its width, the columns that its numbers have, and
+-- the least 'numberwidth' that gives them room for DIGITS digits. Another
 -- 'statuscolumn' than snacks' counts as Neovim's own columns.
 ---@param win integer
+---@param buf integer?
 ---@return { width: integer, room: integer, numberwidth: integer }
-local function review_gutter(win)
+local function review_gutter(win, buf)
   local o = M.review_options()
-  local buf = api.nvim_win_get_buf(win)
+  buf = buf or api.nvim_win_get_buf(win)
   local digits = 0
   if o.number or o.relativenumber then
     -- 'relativenumber' alone counts up to the window's height.
@@ -169,9 +170,12 @@ local function review_gutter(win)
   return { width = width, room = width - others - 1, numberwidth = least }
 end
 
+-- Both modes draw this width. Until a 'statuscolumn' is drawn, Neovim's
+-- 'textoff' is a guess that leaves out the number column.
 ---@param win integer
-function M.review_width(win)
-  return review_gutter(win).width
+---@param buf integer?
+function M.review_width(win, buf)
+  return review_gutter(win, buf).width
 end
 
 -- Each line's absolute number, right-aligned, then a space and up to two sign

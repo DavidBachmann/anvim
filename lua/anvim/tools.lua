@@ -136,7 +136,7 @@ local function note_lines(buf, row, note)
   local win = layout.wins.code
   local width = 80
   if win and api.nvim_win_is_valid(win) then
-    width = api.nvim_win_get_width(win) - vim.fn.getwininfo(win)[1].textoff
+    width = api.nvim_win_get_width(win) - follow.review_width(win, buf)
   end
   local lines = {}
   for i, text in ipairs(wrap(note, math.max(width - #pad - 3, 20))) do
