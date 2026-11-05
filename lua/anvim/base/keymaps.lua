@@ -60,6 +60,8 @@ end
 map("n", "<leader><space>", pick("files"))
 map("n", "<leader>/", pick("grep"))
 map("n", "<leader>,", pick("buffers"))
+map("n", "<leader>ff", pick("files"))
+map("n", "<leader>ft", pick("grep"))
 map("n", "<leader>fr", pick("recent"))
 
 map("n", "<leader>e", function()
@@ -67,6 +69,7 @@ map("n", "<leader>e", function()
 end)
 
 -- search
+map("n", "<leader>sg", pick("grep"))
 map({ "n", "x" }, "<leader>sw", pick("grep_word"))
 map("n", "<leader>ss", pick("lsp_symbols"))
 map("n", "<leader>sS", pick("lsp_workspace_symbols"))

@@ -18,6 +18,8 @@ The tables below are a quick reference; Vim's normal motions still work. The rea
 | `j`, `k` | Move by screen line in wrapped text, by line with a count |
 | `Esc` | Clear the search highlight |
 | `<leader><space>`, `<leader>/`, `<leader>,` | Find files, grep, buffers |
+| `<leader>ff` | Find files, as `<leader><space>` does |
+| `<leader>ft`, `<leader>sg` | Grep, as `<leader>/` does |
 | `<leader>fr` | Recent files |
 | `<leader>e` | Toggle the explorer |
 | `<leader>sw` | Grep the word under the cursor, or the selection |
