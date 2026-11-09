@@ -1102,6 +1102,45 @@ describe("stack", function()
     assert.are.same({}, problems)
   end)
 
+  it("runs scheduled callbacks while f waits for its character", function()
+    start()
+    -- The child types 2f, waits, then types x. Its timer schedules a tick
+    -- every 20 ms, which counts only if the callbacks run during the wait.
+    lua([[
+      require("anvim.layout").focus_input({ insert = false })
+      local buf = vim.api.nvim_get_current_buf()
+      vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "a x b x c x" })
+      vim.api.nvim_win_set_cursor(0, { 1, 0 })
+      local ticks, at = 0, {}
+      _G.f_result = nil
+      local timer = vim.uv.new_timer()
+      timer:start(0, 20, function()
+        vim.schedule(function()
+          ticks = ticks + 1
+        end)
+      end)
+      local function after(ms, fn)
+        vim.uv.new_timer():start(ms, 0, fn)
+      end
+      after(50, function() vim.api.nvim_input("2f") end)
+      after(150, function() at.start = ticks end)
+      after(450, function() at.stop = ticks end)
+      after(500, function() vim.api.nvim_input("x") end)
+      after(650, function()
+        vim.schedule(function()
+          timer:stop()
+          _G.f_result = { ticks = at.stop - at.start, col = vim.api.nvim_win_get_cursor(0)[2] }
+          vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "" })
+        end)
+      end)
+    ]])
+    vim.wait(800)
+    wait(2000, "return _G.f_result ~= nil")
+    local result = lua("return _G.f_result")
+    assert(result.ticks > 5, vim.inspect(result))
+    assert.are.same(6, result.col)
+  end)
+
   it("deletes Neovim's keys that only change text, keeps the ones that read, and maps <leader>cR", function()
     start()
     local out = lua([[

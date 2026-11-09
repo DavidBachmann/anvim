@@ -108,10 +108,14 @@ function M.buf()
   map("i", "<S-CR>", newline, { expr = true })
   map("i", "<M-CR>", newline, { expr = true })
   map("n", "<Esc>", M.escape, { nowait = true })
-  -- Off the agent count, f is Neovim's own.
+  -- Off the agent count, f finds a character, as everywhere.
   map("n", "f", function()
-    return selected and "<Cmd>lua require('anvim.input').follow_next()<CR>" or "f"
-  end, { expr = true })
+    if selected then
+      M.follow_next()
+    else
+      keys.char_motion("f")
+    end
+  end)
   map({ "i", "n" }, "<C-c>", M.interrupt)
   -- Claude Code's key. In normal mode, <C-b> scrolls the transcript.
   map("i", "<C-b>", M.background)

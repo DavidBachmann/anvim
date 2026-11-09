@@ -69,6 +69,7 @@ M.places = {
       { "<S-l>", "Next buffer", row = "Previous and next buffer" },
       { { "j", "<Down>" }, "Down a screen line", mode = { "n", "x" }, row = "Down and up by screen line" },
       { { "k", "<Up>" }, "Up a screen line", mode = { "n", "x" }, row = "Down and up by screen line" },
+      { { "f", "F", "t", "T" }, "Go to a character on the line, or next to it", mode = { "n", "x" } },
       { "<Esc>", "Clear the search highlight" },
       { "<leader><space>", "Find files" },
       { "<leader>/", "Grep the files" },
@@ -465,6 +466,19 @@ end
 ---@param opts? vim.keymap.set.Opts
 function M.set(place, mode, lhs, rhs, opts)
   vim.keymap.set(mode, lhs, rhs, vim.tbl_extend("force", opts or {}, { desc = M.desc(place, mode, lhs) }))
+end
+
+-- Neovim's own f, F, t and T wait for their character without running the
+-- scheduled callbacks, so the transcript stops until the motion ends.
+-- getcharstr() runs them while it waits. Then Neovim's own key runs with the
+-- character, so ; and , repeat it. It goes before the keys typed after it.
+---@param key "f"|"F"|"t"|"T"
+function M.char_motion(key)
+  local count = vim.v.count
+  local ok, char = pcall(vim.fn.getcharstr, -1, { cursor = "keep" })
+  if ok and char ~= "\27" then
+    vim.api.nvim_feedkeys((count > 0 and count or "") .. key .. char, "ni", false)
+  end
 end
 
 return M

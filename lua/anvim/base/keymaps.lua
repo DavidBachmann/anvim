@@ -12,6 +12,13 @@ map({ "n", "x" }, "<Down>", "v:count == 0 ? 'gj' : 'j'", { expr = true, silent =
 map({ "n", "x" }, "k", "v:count == 0 ? 'gk' : 'k'", { expr = true, silent = true })
 map({ "n", "x" }, "<Up>", "v:count == 0 ? 'gk' : 'k'", { expr = true, silent = true })
 
+-- Neovim's own keys, but the transcript goes on while they wait.
+for _, key in ipairs({ "f", "F", "t", "T" }) do
+  map({ "n", "x" }, key, function()
+    keys.char_motion(key)
+  end)
+end
+
 map("n", "<C-h>", "<C-w>h", { remap = true })
 map("n", "<C-j>", "<C-w>j", { remap = true })
 map("n", "<C-k>", "<C-w>k", { remap = true })

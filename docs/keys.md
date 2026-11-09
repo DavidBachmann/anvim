@@ -16,6 +16,7 @@ The tables below are a quick reference; Vim's normal motions still work. The rea
 | `Ctrl-H`, `Ctrl-J`, `Ctrl-K`, `Ctrl-L` | Move left, down, up or right between windows |
 | `Shift-H`, `Shift-L` | Previous and next buffer, outside the code window |
 | `j`, `k` | Move by screen line in wrapped text, by line with a count |
+| `f`, `F`, `t`, `T` | Go to a character on the line, as in Neovim. The transcript goes on while the key waits for the character |
 | `Esc` | Clear the search highlight |
 | `<leader><space>`, `<leader>/`, `<leader>,` | Find files, grep, buffers |
 | `<leader>ff` | Find files, as `<leader><space>` does |
