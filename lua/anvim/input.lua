@@ -702,7 +702,8 @@ function M.follow_next()
 end
 
 -- A spinner in each running agent's color, with their count, under the
--- prompt text. The arrow says that j reaches the count.
+-- prompt text, then the count of the other background tasks. The arrow says
+-- that j reaches the agent count.
 ---@return [string, string?][]
 function M.footer()
   local follow, agents = require("anvim.follow"), require("anvim.agents")
@@ -717,11 +718,17 @@ function M.footer()
       chunks[#chunks + 1] = { spinner.frame(agent.id == follow.focus), agents.group(agent.slot) }
     end
   end
+  local n = require("anvim.tasks").count()
+  local tasks = n > 0 and { ("%d task%s"):format(n, n == 1 and "" or "s"), "AnvimChip" } or nil
   if #chunks == 1 then
+    chunks[2] = tasks
     return chunks
   end
   local count = ("%d agent%s ↓"):format(#running, #running == 1 and "" or "s")
   vim.list_extend(chunks, { { " " }, { count, selected and "AnvimChipSelected" or "AnvimChip" } })
+  if tasks then
+    vim.list_extend(chunks, { { " " }, tasks })
+  end
   if selected then
     local width = 0
     for _, chunk in ipairs(chunks) do
@@ -749,7 +756,12 @@ end
 
 -- Whether the footer shows the agent count.
 local function count_shown()
-  return #M.footer() > 1
+  for _, agent in ipairs(require("anvim.agents").running()) do
+    if agent.slot then
+      return true
+    end
+  end
+  return false
 end
 
 ---@return boolean

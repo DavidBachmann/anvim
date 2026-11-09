@@ -20,7 +20,7 @@ local M = {}
 ---@class anvim.KeyPlace
 ---@field id string
 ---@field name string
----@field ctx "global"|"file"|"prompt"|"transcript"|"compose"|"explorer"|"files"|"overview"|"agentlog"|"view"|"settings"|"processes"|"held"|"login"|"other" Where its maps live.
+---@field ctx "global"|"file"|"prompt"|"transcript"|"compose"|"explorer"|"files"|"overview"|"agentlog"|"view"|"settings"|"processes"|"held"|"tasks"|"login"|"other" Where its maps live.
 ---@field keys anvim.Key[]
 
 ---@type anvim.KeyPlace[]
@@ -377,6 +377,15 @@ M.places = {
     keys = {
       { "<CR>", "Put the entry in the prompt" },
       { "<CR>", "Put the selected entries in the prompt", mode = "x" },
+      { { "q", "<Esc>" }, "Close the window" },
+    },
+  },
+  -- /tasks: the background tasks and the scheduled prompts.
+  {
+    id = "tasks",
+    name = "Tasks",
+    ctx = "tasks",
+    keys = {
       { { "q", "<Esc>" }, "Close the window" },
     },
   },

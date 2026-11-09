@@ -83,7 +83,7 @@ describe("completion", function()
     local start, list = complete("/")
     local items = by_abbr(list)
     -- anvim runs /model, /resume, /effort, /status, /usage, /context, /mcp, /chrome, /account, /reset,
-    -- /undo-reset, /rewind, /away, /held and the Codex commands itself, and adds them.
+    -- /undo-reset, /rewind, /away, /held, /tasks and the Codex commands itself, and adds them.
     assert.are.same(0, start)
     assert.are.same({
       "/account",
@@ -102,6 +102,7 @@ describe("completion", function()
       "/review",
       "/rewind",
       "/status",
+      "/tasks",
       "/undo-reset",
       "/usage",
     }, vim.fn.sort(vim.tbl_keys(items)))

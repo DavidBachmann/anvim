@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKMessage, StopHookInput } from "@anthropic-ai/claude-agent-sdk";
 import type { Event } from "./protocol";
-import { mainThread, Translator } from "./translate";
+import { cronsEvent, mainThread, Translator } from "./translate";
 
 const se = (event: object, parent: string | null = null) =>
   ({ type: "stream_event", event, parent_tool_use_id: parent }) as unknown as SDKMessage;
@@ -486,6 +486,20 @@ describe("Translator", () => {
     expect(mainThread(msg({ type: "system", subtype: "background_tasks_changed", tasks: [] }))).toBe(false);
   });
 
+  test("background tasks other than agents go out on each change, and the Stop hook names the scheduled prompts", () => {
+    const level = (tasks: object[]) => msg({ type: "system", subtype: "background_tasks_changed", tasks });
+    const shell = { task_id: "b1", run_id: "r1", task_type: "local_bash", description: "Sleep two minutes" };
+    const agent = { task_id: "a1", task_type: "local_agent", description: "Review the slice" };
+    const watcher = { task_id: "w1", task_type: "local_bash", description: "Watch the logs", ambient: true };
+    expect(run([level([shell]), level([shell, agent, watcher]), level([])])).toEqual([
+      { type: "tasks", tasks: [{ id: "b1", kind: "shell", description: "Sleep two minutes" }] },
+      { type: "tasks", tasks: [] },
+    ]);
+    const cron = { id: "c1", schedule: "55 21 9 11 *", recurring: false, prompt: "say hi" };
+    expect(cronsEvent({ session_crons: [cron] } as StopHookInput)).toEqual({ type: "crons", crons: [cron] });
+    expect(cronsEvent({} as StopHookInput)).toBeUndefined();
+  });
+
   test("a nested subagent names its parent, and other tasks send no agent events", () => {
     const events = run([
       msg({
@@ -564,7 +578,7 @@ describe("Translator", () => {
     const moved = msg({ type: "system", subtype: "task_updated", task_id: "f1", patch: { is_backgrounded: true } });
     const events = run([
       msg({ type: "system", subtype: "task_started", task_id: "f1", tool_use_id: "toolu_F", description: "f1", task_type: "local_agent" }),
-      msg({ type: "system", subtype: "background_tasks_changed", tasks: [{ task_id: "f1" }] }),
+      msg({ type: "system", subtype: "background_tasks_changed", tasks: [{ task_id: "f1", task_type: "local_agent" }] }),
       moved,
       moved,
       msg({ type: "system", subtype: "task_updated", task_id: "f1", patch: { status: "completed" } }),

@@ -54,7 +54,7 @@ An account is a Claude Code configuration directory. `default` uses the normal `
 4. A picker, if two or more accounts remain. Closing it without choosing leaves Claude stopped; `/account` opens it again.
 5. The only account, or `default` if none is found.
 
-`/account` or `:AnvimAccount` opens the picker; `/account personal` switches directly. The picker shows email and organization and marks the current account. Switching restarts Claude. If both accounts can read the same session, for example through a shared `projects` directory, the session continues when it has a turn; otherwise a new session starts. Switching is unavailable while Claude or an agent is working.
+`/account` or `:AnvimAccount` opens the picker; `/account personal` switches directly. The picker shows email and organization and marks the current account. Switching restarts Claude, which ends its [background tasks](#background-tasks). If both accounts can read the same session, for example through a shared `projects` directory, the session continues when it has a turn; otherwise a new session starts. Switching is unavailable while Claude or an agent is working.
 
 `/account add work2` or the picker's last row creates another account. You can choose to share settings, instructions, skills and sessions via links from `~/.claude`; existing files are not overwritten. Claude Code's login opens in a window. Press `i` to enter a requested code, or `q` to cancel. On success the window closes; on failure it stays open with the output. Switch with `/account work2` afterwards. `:checkhealth anvim` lists accounts and explains the startup choice.
 
@@ -95,6 +95,12 @@ When Claude in Chrome or Safari is on but its extension is not connected, the st
 ## Away mode
 
 `/away` turns [away mode](permissions.md#away) on, and `/away` again turns it off. While you are away, no request waits for you, except a plan's approval. `/held` lists the calls and questions that anvim [held](permissions.md#held-calls) for you, newest first.
+
+## Background tasks
+
+Claude can run a Bash command in the background, such as a test run or a wait for a deploy. It can also schedule a prompt for later with CronCreate, ScheduleWakeup or `/loop`. The prompt footer counts both, as in `2 tasks`, after the agent count. `/tasks` lists them: each task with its kind, such as `shell`, its description and the time it started, then each scheduled prompt with the time it fires, or its cron schedule if it repeats. Agents are not in the list, because the footer and the Agent Overview show them.
+
+Claude Code tells anvim about a new scheduled prompt only when Claude finishes a turn. A turn that you stop, or that fails, does not count. `/clear` and `/reset` keep the tasks and the prompts. A restart of Claude, such as an account switch, ends them, and a line in the transcript says how many ended.
 
 ## Other slash commands
 

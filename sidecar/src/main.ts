@@ -5,6 +5,7 @@ import {
   type Query,
   type SDKMessage,
   type SDKUserMessage,
+  type StopHookInput,
 } from "@anthropic-ai/claude-agent-sdk";
 import { openSync, writeSync } from "node:fs";
 import { createInterface } from "node:readline";
@@ -38,7 +39,7 @@ import { systemPrompt } from "./systemprompt";
 import { TodoStore } from "./todos";
 import { errorText, head } from "./text";
 import { EditorBridge, editorServer, SERVER } from "./tools";
-import { commandsEvent, Translator } from "./translate";
+import { commandsEvent, cronsEvent, Translator } from "./translate";
 
 type Start = Extract<Command, { type: "start" }>;
 // The answers to the plugin's requests, which carry an error when their call fails.
@@ -296,6 +297,17 @@ async function run(cmd: Start): Promise<void> {
         { hooks: [permissions.notice.preToolUse] },
       ],
       PostToolUse: postToolUse(() => session, cmd.cwd),
+      Stop: [
+        {
+          hooks: [
+            async (input) => {
+              const crons = cronsEvent(input as StopHookInput);
+              if (crons) emit(crons);
+              return {};
+            },
+          ],
+        },
+      ],
       ...(startHooks.length > 0 ? { SessionStart: [{ hooks: startHooks }] } : {}),
       ...(promptHooks.length > 0 ? { UserPromptSubmit: [{ hooks: promptHooks }] } : {}),
       ...(notes ? { SubagentStart: [{ hooks: [notes.subagentStart] }] } : {}),

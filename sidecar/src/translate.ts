@@ -1,4 +1,4 @@
-import type { SDKMessage, SlashCommand as SdkSlashCommand } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKMessage, SlashCommand as SdkSlashCommand, StopHookInput } from "@anthropic-ai/claude-agent-sdk";
 import { FieldStream } from "./fieldstream";
 import type { Event } from "./protocol";
 import {
@@ -48,6 +48,8 @@ export class Translator {
   private agents = new Set<string>();
   // The running agents that started in the background.
   private background = new Set<string>();
+  // The other background tasks, as the last tasks event sent them.
+  private tasks = "[]";
   // The subagent Read calls that wait for their result. A subagent's result
   // has no tool_use_result, so a Read's line count comes from its text.
   private agentReads = new Set<string>();
@@ -139,17 +141,25 @@ export class Translator {
     }
   }
 
-  // An ambient task is housekeeping, which Claude Code shows no activity for.
   // The list of background tasks is the level signal: a background agent that
-  // left it has ended, even when its task_notification never came.
+  // left it has ended, even when its task_notification never came. An ambient
+  // task is housekeeping, which Claude Code shows no activity for.
   private backgroundTasks(m: AnyRecord, out: Event[]): void {
-    const live = new Set((m.tasks ?? []).map((t: AnyRecord) => t.task_id));
+    const all: AnyRecord[] = m.tasks ?? [];
+    const live = new Set(all.map((t) => t.task_id));
     for (const id of this.background) {
       if (live.has(id)) continue;
       this.background.delete(id);
       this.agents.delete(id);
       out.push({ type: "agent_end", agent_id: id, status: "completed" });
     }
+    const tasks = all
+      .filter((t) => t.task_type !== "local_agent" && !t.ambient)
+      .map((t) => ({ id: String(t.task_id), kind: taskKind(t.task_type), description: String(t.description ?? "") }));
+    const json = JSON.stringify(tasks);
+    if (json === this.tasks) return;
+    this.tasks = json;
+    out.push({ type: "tasks", tasks });
   }
 
   private task(m: AnyRecord, out: Event[]): void {
@@ -372,6 +382,35 @@ export class Translator {
       });
     }
   }
+}
+
+// The names that Claude Code's own task list gives the task types.
+const TASK_KINDS: Record<string, string> = {
+  local_workflow: "workflow",
+  local_bash: "shell",
+  monitor_mcp: "monitor",
+  monitor_ws: "monitor",
+  mcp_task: "MCP task",
+  in_process_teammate: "teammate",
+  auto_mode_scan: "auto-mode scan",
+  local_memory_import: "memory import",
+  post_turn_memory: "memory save",
+  remote_agent: "cloud session",
+};
+
+function taskKind(type: unknown): string {
+  const name = String(type ?? "");
+  return TASK_KINDS[name] ?? name;
+}
+
+// The SDK names the session's scheduled prompts only in the Stop hook's
+// input. A prompt that fires starts a turn, whose end sends the list again.
+export function cronsEvent(input: StopHookInput): Event | undefined {
+  if (!input.session_crons) return undefined;
+  return {
+    type: "crons",
+    crons: input.session_crons.map(({ id, schedule, recurring, prompt }) => ({ id, schedule, recurring, prompt })),
+  };
 }
 
 export function commandsEvent(commands: SdkSlashCommand[]): Event {

@@ -129,6 +129,8 @@ In the `/held` window:
 | `Enter` | Put the entry, or the selected entries, in the prompt |
 | `q`, `Esc` | Close the window |
 
+In the `/tasks` window, `q` and `Esc` close the window.
+
 <a id="claude-and-its-agents"></a>
 
 ## Claude and agents

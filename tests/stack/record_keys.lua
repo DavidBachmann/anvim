@@ -50,6 +50,8 @@ local function ctx(buf)
     return "processes"
   elseif vim.bo[buf].filetype == "anvim_held" then
     return "held"
+  elseif vim.bo[buf].filetype == "anvim_tasks" then
+    return "tasks"
   elseif vim.bo[buf].filetype == "anvim_login" then
     return "login"
   elseif vim.bo[buf].buftype == "" then

@@ -352,6 +352,14 @@ export type Event =
   // max is the window of the subagent's model, or the main agent's window
   // until a turn's result names that model. Without max, percent is unknown.
   | { type: "agent_context"; agent_id: string; tokens: number; max?: number; percent?: number }
+  // The live background tasks that are not agents, such as a shell from Bash
+  // with run_in_background, after each change. kind is Claude Code's short
+  // name for the task's type, such as "shell".
+  | { type: "tasks"; tasks: { id: string; kind: string; description: string }[] }
+  // The session's scheduled prompts from CronCreate, ScheduleWakeup and
+  // /loop, at the end of each main turn. schedule is a cron expression in
+  // local time. A prompt that is not recurring fires once.
+  | { type: "crons"; crons: { id: string; schedule: string; recurring: boolean; prompt: string }[] }
   | {
       type: "turn_end";
       subtype: string;
