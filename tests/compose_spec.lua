@@ -63,4 +63,16 @@ describe("compose", function()
     assert.are.same({ 1, 9 }, api.nvim_win_get_cursor(0), "the cursor stays on the space after 'big'")
     assert.are.same("n", api.nvim_get_mode().mode)
   end)
+
+  it("G and gg go to the end and the start of a wrapped line, in the prompt and the compose window", function()
+    local line = ("word "):rep(60) .. "end"
+    in_prompt({ line }, { 1, 100 })
+    for _, where in ipairs({ "prompt", "compose" }) do
+      feed("G")
+      assert.are.same({ 1, #line - 1 }, api.nvim_win_get_cursor(0), where .. " G")
+      feed("gg")
+      assert.are.same({ 1, 0 }, api.nvim_win_get_cursor(0), where .. " gg")
+      feed("<C-g>")
+    end
+  end)
 end)

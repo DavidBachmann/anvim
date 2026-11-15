@@ -181,6 +181,7 @@ function M.open()
   })
   -- As snacks maps the keys of its windows, without a wait.
   require("anvim.keys").set("compose", { "n", "i" }, "<C-g>", M.close, { buffer = buf, nowait = true })
+  input.map_ends("compose", buf)
   -- After a window command, the cursor is in the other window by the time
   -- the event loop runs. After :q! the compose window is gone. The key view
   -- and the Agent Overview give the cursor back.

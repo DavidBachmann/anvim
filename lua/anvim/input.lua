@@ -69,6 +69,18 @@ local mode_labels = {
   auto = { "⏵⏵ auto mode on", "AnvimModeAuto" },
 }
 
+-- A prompt is often one line that wraps, where Vim's own G and gg keep the
+-- cursor in place. Without a count, they go to the end and the start of the text.
+---@param place "prompt"|"compose"
+---@param buf integer
+function M.map_ends(place, buf)
+  for lhs, rhs in pairs({ gg = "gg0", G = "G$" }) do
+    require("anvim.keys").set(place, { "n", "x" }, lhs, function()
+      return vim.v.count > 0 and lhs or rhs
+    end, { buffer = buf, expr = true })
+  end
+end
+
 function M.buf()
   if bufnr and api.nvim_buf_is_loaded(bufnr) and vim.b[bufnr].anvim_input then
     return bufnr
@@ -124,6 +136,7 @@ function M.buf()
     require("anvim.compose").open()
   end)
   map({ "i", "n" }, "<C-o>", M.toggle_verbose)
+  M.map_ends("prompt", bufnr)
   -- The transcript takes no focus, so the prompt scrolls it.
   local function scroll(modes, list)
     for _, key in ipairs(list) do

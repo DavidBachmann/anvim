@@ -189,6 +189,7 @@ M.places = {
         "Up a screen line, queued prompts back on the first line, or end the selection of the agent count",
         row = "Down and up by screen line, or to the agent count",
       },
+      { { "gg", "G" }, "Go to the start and the end of the text, or to a line with a count", mode = { "n", "x" } },
       { "<C-p>", "Queued prompts back, or previous prompt", row = "Previous and next prompt" },
       { "<C-n>", "Next prompt", row = "Previous and next prompt" },
       { { "<C-u>", "<C-d>" }, "Scroll the transcript" },
@@ -211,6 +212,7 @@ M.places = {
     ctx = "compose",
     keys = {
       { "<C-g>", "Back to the prompt", mode = { "n", "i" } },
+      { { "gg", "G" }, "Go to the start and the end of the text, or to a line with a count", mode = { "n", "x" } },
       { ":w", "Put the text in the prompt", static = true },
       { { ":wq", "ZZ" }, "Put the text in the prompt and close", static = true },
       { ":q!", "Drop the changes", static = true },

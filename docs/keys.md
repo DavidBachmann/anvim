@@ -74,6 +74,7 @@ The tables below are a quick reference; Vim's normal motions still work. The rea
 | `j`, `Down` on the last line, in normal mode | Select the agent count in the footer, while agents run |
 | `k`, `Up`, `Esc` | End the selection of the agent count |
 | `f` on the selected agent count | Follow the next agent, and Claude after the last |
+| `gg`, `G` | Go to the start and the end of the text, in normal and visual mode. With a count, go to that line |
 | `Up` on the first line, `Ctrl-P` | Take the queued prompts back into the prompt, to change them, while prompts are queued |
 | `Up` on the first line, `Down` on the last | Move through prompt history, in insert mode |
 | `Ctrl-P`, `Ctrl-N` | Move through prompt history, in normal mode |
@@ -91,6 +92,7 @@ The tables below are a quick reference; Vim's normal motions still work. The rea
 | Key | Action |
 | --- | --- |
 | `Ctrl-G` | Put the text back in the prompt and go there |
+| `gg`, `G` | Go to the start and the end of the text, as in the prompt |
 | `:w` | Put the text in the prompt, and keep the window open |
 | `:wq`, `ZZ` | Put the text in the prompt, and close the window |
 | `:q!` | Drop the changes |
