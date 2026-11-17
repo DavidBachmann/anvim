@@ -194,12 +194,19 @@ local function choices(r)
 end
 
 -- Lines and highlights of a block. Each mark is { row, col, end_col, group }.
+-- Text with line breaks, such as a long question or a typed answer, adds a
+-- line for each, with the first line's indent.
 local function builder()
   local b = { lines = {}, marks = {} }
   function b.add(text, group, col)
-    b.lines[#b.lines + 1] = text
-    if group then
-      b.marks[#b.marks + 1] = { #b.lines - 1, col or 0, #text, group }
+    local parts = vim.split(text, "\n", { plain = true })
+    local indent = parts[1]:match("^%s*")
+    for i, line in ipairs(parts) do
+      line = (i > 1 and line ~= "") and indent .. line or line
+      b.lines[#b.lines + 1] = line
+      if group and line ~= "" then
+        b.marks[#b.marks + 1] = { #b.lines - 1, math.min(col or 0, #line), #line, group }
+      end
     end
   end
   return b

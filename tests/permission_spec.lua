@@ -619,6 +619,45 @@ describe("permission", function()
     end)
   end)
 
+  it("shows a question with line breaks and answers it", function()
+    helpers.start()
+    focus()
+    local form = {
+      questions = {
+        {
+          question = "Drafts:\n\nSky: one\nWind: two\n\nTranslate them?",
+          header = "Copy",
+          multiSelect = false,
+          options = { { label = "Yes", description = "" }, { label = "No", description = "" } },
+        },
+      },
+    }
+    helpers.capture_sends(function(sent)
+      local req = request("AskUserQuestion", form)
+      assert.are.same({
+        "  ☐ Copy",
+        "  Drafts:",
+        "",
+        "  Sky: one",
+        "  Wind: two",
+        "",
+        "  Translate them?",
+        "  ❯ 1. Yes",
+        "    2. No",
+        "    3. Other (type an answer)",
+      }, tail(10))
+      keys("1")
+      assert.are.same({
+        {
+          type = "permission_response",
+          req = req,
+          behavior = "allow",
+          answers = { [form.questions[1].question] = { "Yes" } },
+        },
+      }, sent)
+    end)
+  end)
+
   it("shows the plan, approves with auto-accept edits, and keeps the plan", function()
     helpers.start()
     focus()
