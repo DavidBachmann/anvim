@@ -12,7 +12,6 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from
 import { basename, dirname, join, resolve } from "node:path";
 import { inside, realPath } from "./paths";
 import { hookDecision } from "./sandbox";
-import { subagentContext } from "./systemprompt";
 
 export const DIR = ".anvim";
 const DAY = /^\d{4}-\d{2}-\d{2}\.md$/;
@@ -103,10 +102,6 @@ export class Notes {
     this.told = day;
     return { hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: this.text(day) } };
   };
-
-  subagentStart: HookCallback = async () => ({
-    hookSpecificOutput: { hookEventName: "SubagentStart", additionalContext: subagentContext() },
-  });
 }
 
 // An edit in the diary that is not a day file goes back to Claude, as does a

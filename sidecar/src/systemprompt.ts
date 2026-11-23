@@ -48,8 +48,31 @@ const AMNESIA = [
   "This is a temporary session. Treat the project as new to you. Do not save memories about the user or the project.",
 ];
 
-export function systemPrompt(opts: { amnesia: boolean }): string {
-  return [...VIEWER, ...EDITOR_TOOLS, ...TODOS, ...(opts.amnesia ? AMNESIA : NOTES)].join(" ");
+// The tool is named Bash, and models write bash. The "Shell: zsh" line in
+// Claude Code's environment block does not stop that.
+const ZSH = [
+  "Your Bash tool runs zsh, not bash.",
+  "In zsh, arrays count from 1, an unquoted $var does not split into words, and a glob that matches nothing stops the whole command line.",
+  "Quote URLs, words with ? or [, and words that start with =.",
+  "Do not name a variable path or status: zsh ties path to PATH, and status is read-only.",
+];
+
+// Claude Code's own pick: the first of CLAUDE_CODE_SHELL and SHELL that names
+// bash or zsh, else zsh when it finds one.
+export function usesZsh(
+  env: Record<string, string | undefined> = process.env,
+  which: (cmd: string) => string | null = Bun.which,
+): boolean {
+  const named = [env.CLAUDE_CODE_SHELL, env.SHELL].find((s) => s?.includes("bash") || s?.includes("zsh"));
+  return named ? named.includes("zsh") : which("zsh") !== null;
+}
+
+export type PromptOptions = { amnesia: boolean; zsh: boolean };
+
+export function systemPrompt(opts: PromptOptions): string {
+  return [...VIEWER, ...EDITOR_TOOLS, ...TODOS, ...(opts.amnesia ? AMNESIA : NOTES), ...(opts.zsh ? ZSH : [])].join(
+    " ",
+  );
 }
 
 // What each subagent learns about the notes, from a SubagentStart hook.
@@ -62,6 +85,6 @@ const SUBAGENT_NOTES = [
   "The diary in .anvim/diary/ belongs to the main agent. Report back instead.",
 ];
 
-export function subagentContext(): string {
-  return SUBAGENT_NOTES.join(" ");
+export function subagentContext(opts: PromptOptions): string {
+  return [...(opts.amnesia ? [] : SUBAGENT_NOTES), ...(opts.zsh ? ZSH : [])].join(" ");
 }

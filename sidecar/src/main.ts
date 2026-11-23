@@ -35,7 +35,7 @@ import { PreviewBridge } from "./preview";
 import type { Command, Event } from "./protocol";
 import { SandboxGuard, SandboxNotice, sandboxSetup, startMode } from "./sandbox";
 import * as sessions from "./sessions";
-import { systemPrompt } from "./systemprompt";
+import { subagentContext, systemPrompt, usesZsh } from "./systemprompt";
 import { TodoStore } from "./todos";
 import { errorText, head } from "./text";
 import { EditorBridge, editorServer, SERVER } from "./tools";
@@ -274,6 +274,11 @@ async function run(cmd: Start): Promise<void> {
   const defined = (hooks: (HookCallback | undefined)[]) => hooks.filter((h): h is HookCallback => h !== undefined);
   const startHooks = defined([todos?.sessionStart, notes?.sessionStart]);
   const promptHooks = defined([todos?.firstPrompt, notes?.prompt, permissions.notice.prompt]);
+  const promptOpts = { amnesia, zsh: usesZsh() };
+  const subagentText = subagentContext(promptOpts);
+  const subagentStart: HookCallback = async () => ({
+    hookSpecificOutput: { hookEventName: "SubagentStart", additionalContext: subagentText },
+  });
   const amnesiaOpts = amnesia ? amnesiaOptions(cmd.cwd, sandbox.options.sandbox) : undefined;
   const safari = cmd.safari === true;
   const chrome = chromeArgs(cmd.chrome);
@@ -310,11 +315,11 @@ async function run(cmd: Start): Promise<void> {
       ],
       ...(startHooks.length > 0 ? { SessionStart: [{ hooks: startHooks }] } : {}),
       ...(promptHooks.length > 0 ? { UserPromptSubmit: [{ hooks: promptHooks }] } : {}),
-      ...(notes ? { SubagentStart: [{ hooks: [notes.subagentStart] }] } : {}),
+      ...(subagentText ? { SubagentStart: [{ hooks: [subagentStart] }] } : {}),
     },
     // anvim's todo list is the only one, also if Claude Code offers its own again.
     disallowedTools: ["TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"],
-    systemPrompt: { type: "preset", preset: "claude_code", append: systemPrompt({ amnesia }) },
+    systemPrompt: { type: "preset", preset: "claude_code", append: systemPrompt(promptOpts) },
     ...amnesiaOpts,
     // Amnesia and the Safari gate both add flag settings.
     settings: { ...amnesiaOpts?.settings, ...browserSettings(safari) },
