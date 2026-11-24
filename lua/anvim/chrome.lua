@@ -64,6 +64,20 @@ function M.label(tool, input)
   return arg and ("%s(%s)"):format(name, arg) or name
 end
 
+-- The login that the extension needs. Claude Code meets only the extensions of
+-- its own claude.ai account and organization, so each anvim account needs
+-- another login there.
+---@return string
+function M.needs()
+  local email = require("anvim.state").email
+  if not email then
+    return "signed in to the claude.ai account of this session"
+  end
+  local accounts = require("anvim.accounts")
+  local a = accounts.find(accounts.list(), accounts.current())
+  return "signed in to claude.ai as " .. (a and a.email == email and accounts.label(a) or email)
+end
+
 -- Claude Code opens the extension's pages in Chrome, which has the extension.
 function M.open(url)
   if vim.fn.has("mac") == 0 then

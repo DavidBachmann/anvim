@@ -261,6 +261,7 @@ local function render_chrome(t, c)
     if c.browser then
       t:add({ { "Browser: " }, { c.browser, "DiagnosticOk" } })
     end
+    t:add({ { "The extension must be " .. require("anvim.chrome").needs() .. ".", "Comment" } })
   end
   t:add("")
   local needs = c.installed and "" or " (requires extension)"
@@ -468,9 +469,8 @@ local function pick_browser(ev)
     say("Couldn't list connected browsers: " .. ev.error, "DiagnosticError")
     return
   elseif #ev.browsers == 0 then
-    say(
-      "No browsers are connected. Open Chrome with the Claude extension and make sure you're signed in to the same claude.ai account."
-    )
+    local needs = require("anvim.chrome").needs()
+    say(("No browsers are connected. Open Chrome with the Claude extension, %s."):format(needs))
     return
   end
   vim.ui.select(ev.browsers, {

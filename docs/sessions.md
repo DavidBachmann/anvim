@@ -88,6 +88,8 @@ CPU is the share of one core, so 100% is one full core and a group can show more
 
 Claude in Chrome lets Claude use Chrome through the Claude extension. It requires a claude.ai login. Start with `--chrome` or `--no-chrome` to override Claude Code's “Enabled by default” setting. `/chrome` opens the Chrome tab, where `Enter` runs the selected action: install or manage the extension, choose a browser, reconnect, or change the default for future sessions. Reconnecting can restart Claude in the same session with Chrome enabled.
 
+Claude Code reaches only the browsers whose extension is signed in to the claude.ai account and organization of the session, so each [account](#accounts) needs its own login in the extension. The Chrome tab and `:checkhealth anvim` name that login. To use several accounts, give each one a Chrome profile with the extension and its login, and keep a window of each profile open. Logging out of the extension to change the account [loses its shortcuts and scheduled tasks](https://code.claude.com/docs/en/chrome).
+
 The extension's site permissions govern browsing, clicking and typing. A session that **starts in bypass mode** tells the extension to skip those checks, allowing actions on any site without asking. Start with `--mode default` to retain the checks. See [permissions](permissions.md) for the other implications of bypass mode.
 
 ## Safari

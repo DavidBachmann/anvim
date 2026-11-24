@@ -230,8 +230,10 @@ local function use(a, why)
   remember(a.name)
 end
 
+-- The email, and the organization unless it is the personal one.
 ---@param a anvim.Account
-local function label(a)
+---@return string
+function M.label(a)
   local parts = { a.email }
   local org = a.organization
   if org and not (a.email and org == a.email .. "'s Organization") then
@@ -252,7 +254,7 @@ local function ask_login()
   vim.ui.select(offered(M.list()), {
     prompt = "Sign in again to",
     format_item = function(a)
-      return ("%-12s %s"):format(a.name, label(a))
+      return ("%-12s %s"):format(a.name, M.label(a))
     end,
   }, function(a)
     if a then
@@ -277,7 +279,7 @@ function M.show_picker(prompt, mark, on_choice)
       if a.action then
         return "  " .. a.title
       end
-      return ("%s%-12s %s"):format(a.name == mark and "⏺ " or "  ", a.name, label(a))
+      return ("%s%-12s %s"):format(a.name == mark and "⏺ " or "  ", a.name, M.label(a))
     end,
     -- At start, the explorer opens its split after the picker, and snacks
     -- closes a picker when a split outside it gets the cursor.

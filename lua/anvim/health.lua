@@ -113,14 +113,18 @@ end
 
 local browser_names = { chrome = "Claude in Chrome", safari = "Safari" }
 local browser_advice = {
-  chrome = {
-    "Open Chrome with the Claude extension, signed in to claude.ai with the same account as this session",
-    "/chrome can reconnect the extension",
-  },
-  safari = {
-    "Open Safari and turn on the extension in Safari's settings",
-    "The server must be in Claude Code's MCP config under the name `mcp-safari`",
-  },
+  chrome = function()
+    return {
+      "Open Chrome with the Claude extension, " .. require("anvim.chrome").needs(),
+      "/chrome can reconnect the extension",
+    }
+  end,
+  safari = function()
+    return {
+      "Open Safari and turn on the extension in Safari's settings",
+      "The server must be in Claude Code's MCP config under the name `mcp-safari`",
+    }
+  end,
 }
 
 local function browsers()
@@ -139,7 +143,8 @@ local function browsers()
     if b.connected then
       health.ok(name .. " is connected")
     else
-      health.warn(("%s is not connected: %s"):format(name, b.why or "anvim does not know why"), browser_advice[b.name])
+      local advice = browser_advice[b.name] and browser_advice[b.name]()
+      health.warn(("%s is not connected: %s"):format(name, b.why or "anvim does not know why"), advice)
     end
   end
 end
