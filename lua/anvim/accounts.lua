@@ -206,6 +206,20 @@ local function remember(name)
   end)
 end
 
+-- Remembers the email of the account's login.
+---@param a anvim.Account
+---@return string? before The email that anvim remembered until now.
+local function remember_login(a)
+  local before
+  prefs.update("logins", function(all)
+    all = type(all) == "table" and all or {}
+    before = all[a.name]
+    all[a.name] = a.email
+    return all
+  end)
+  return before
+end
+
 -- Sets CLAUDE_CONFIG_DIR for the account. The default account unsets it,
 -- because Claude Code reads another login for ~/.claude when it is set.
 ---@param a anvim.Account
@@ -422,7 +436,10 @@ local function logged_in(a, email)
   if email and a.email and email:lower() ~= a.email:lower() then
     local again = "Sign out of claude.ai in the browser, then run /account login %s %s."
     transcript.notice("warn", ("%s, not as %s. " .. again):format(done, email, a.name, email))
-  elseif pending or a.name ~= M.current() then
+    return
+  end
+  remember_login(a)
+  if pending or a.name ~= M.current() then
     transcript.notice("info", ("%s. /account %s switches to it."):format(done, a.name))
   elseif state.busy or #require("anvim.agents").running() > 0 then
     transcript.notice("info", done .. ". Once Claude is done, <leader>cR restarts it with this login.")
@@ -581,8 +598,31 @@ local function failed()
   end
 end
 
+-- Claude started. The login behind an account can change outside anvim, so a
+-- work project could run with a personal login. The user hears of a change once.
+local function started(ev)
+  local a = ev.email and not config.options.replay and M.find(M.list(), M.current())
+  if not (a and a.email) then
+    return
+  end
+  local before = remember_login(a)
+  if before and before:lower() ~= a.email:lower() then
+    transcript.notice(
+      "warn",
+      ("The account %s was %s and is now %s. /account login %s %s signs in as before."):format(
+        a.name,
+        before,
+        a.email,
+        a.name,
+        before
+      )
+    )
+  end
+end
+
 function M.attach()
   sidecar.on("login_failed", failed)
+  sidecar.on("account", started)
 end
 
 -- /account, /account <name>, /account add [name] and

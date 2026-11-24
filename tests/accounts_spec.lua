@@ -185,6 +185,32 @@ describe("accounts", function()
     assert(ok, err)
   end)
 
+  it("warns once when Claude starts with another login than the account had", function()
+    local config, prefs = require("anvim.config"), require("anvim.prefs")
+    local replay = config.options.replay
+    config.options.replay = nil
+    local function warnings()
+      local text = table.concat(helpers.buf_lines(transcript.buf()), "\n")
+      return select(2, text:gsub("The account default was", ""))
+    end
+    local ok, err = pcall(function()
+      helpers.fresh()
+      prefs.set("logins", { personal = "me@home.com" })
+      -- The first start with an account only remembers its login.
+      sidecar.dispatch({ type = "account", email = "me@work.com" })
+      assert.are.same(0, warnings())
+      assert.are.same({ default = "me@work.com", personal = "me@home.com" }, prefs.get("logins"))
+      prefs.set("logins", { default = "old@work.com" })
+      sidecar.dispatch({ type = "account", email = "me@work.com" })
+      sidecar.dispatch({ type = "account", email = "me@work.com" })
+      assert.are.same(1, warnings())
+      local notice = "was old@work.com and is now me@work.com. /account login default old@work.com signs in as before."
+      helpers.contains(helpers.buf_lines(transcript.buf()), vim.pesc(notice))
+    end)
+    config.options.replay = replay
+    assert(ok, err)
+  end)
+
   it("links what ~/.claude shares, and never over what the new dir has", function()
     local dir = home .. "/.claude-new"
     vim.fn.mkdir(dir, "p")
