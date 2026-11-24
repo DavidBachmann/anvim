@@ -56,6 +56,10 @@ An account is a Claude Code configuration directory. `default` uses the normal `
 
 `/account` or `:AnvimAccount` opens the picker; `/account personal` switches directly. The picker shows email and organization and marks the current account. Switching restarts Claude, which ends its [background tasks](#background-tasks). If both accounts can read the same session, for example through a shared `projects` directory, the session continues when it has a turn; otherwise a new session starts. Switching is unavailable while Claude or an agent is working.
 
+A Claude login can expire. Claude Code then says "this login reached its time limit", and anvim's line below it names the account. `/account login` signs in to the current account again, and `/account login personal` to another one. The picker has a row for it too. anvim asks for the email, so that the login page starts with it, or takes it from the command, as in `/account login personal me@example.com`. Check the email on the page before you authorize, because the browser's claude.ai session decides the login. If another login comes back, anvim says so. After a login of the current account, Claude restarts in the same session.
+
+Avoid `claude auth login` in a terminal for this. Without `CLAUDE_CONFIG_DIR`, it signs in the `default` account and replaces the login that it had.
+
 `/account add work2` or the picker's last row creates another account. You can choose to share settings, instructions, skills and sessions via links from `~/.claude`; existing files are not overwritten. Claude Code's login opens in a window. Press `i` to enter a requested code, or `q` to cancel. On success the window closes; on failure it stays open with the output. Switch with `/account work2` afterwards. `:checkhealth anvim` lists accounts and explains the startup choice.
 
 ## The Settings window

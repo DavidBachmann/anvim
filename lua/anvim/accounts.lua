@@ -1,7 +1,8 @@
 -- Accounts: the Claude Code config dirs that hold a login of their own, such
 -- as a work login and a personal one. CLAUDE_CONFIG_DIR picks the dir, and
 -- unset, it is ~/.claude with the login in ~/.claude.json. anvim picks the
--- account at start, remembers it for each directory, switches it and adds one.
+-- account at start, remembers it for each directory, switches it, adds one
+-- and signs in again.
 local config = require("anvim.config")
 local prefs = require("anvim.prefs")
 local sidecar = require("anvim.sidecar")
@@ -225,17 +226,42 @@ local function label(a)
   return table.concat(parts, " · ")
 end
 
+local function ask_name()
+  vim.ui.input({ prompt = "Name of the new account: " }, function(name)
+    if name and vim.trim(name) ~= "" then
+      M.add(vim.trim(name))
+    end
+  end)
+end
+
+local function ask_login()
+  vim.ui.select(offered(M.list()), {
+    prompt = "Sign in again to",
+    format_item = function(a)
+      return ("%-12s %s"):format(a.name, label(a))
+    end,
+  }, function(a)
+    if a then
+      M.sign_in(a.name)
+    end
+  end)
+end
+
 ---@param prompt string
 ---@param mark string? The account that gets the ⏺.
----@param on_choice fun(a: anvim.Account?, add: boolean?)
+---@param on_choice fun(a: anvim.Account?, action: fun()?) The action of a row that is no account.
 function M.show_picker(prompt, mark, on_choice)
+  ---@type table[]
   local items = offered(M.list())
-  items[#items + 1] = { name = "", add = true, login = false }
+  if #items > 0 then
+    items[#items + 1] = { title = "Sign in again", action = ask_login }
+  end
+  items[#items + 1] = { title = "Add an account", action = ask_name }
   vim.ui.select(items, {
     prompt = prompt,
     format_item = function(a)
-      if a.add then
-        return "  Add an account"
+      if a.action then
+        return "  " .. a.title
       end
       return ("%s%-12s %s"):format(a.name == mark and "⏺ " or "  ", a.name, label(a))
     end,
@@ -243,18 +269,10 @@ function M.show_picker(prompt, mark, on_choice)
     -- closes a picker when a split outside it gets the cursor.
     snacks = pending and { auto_close = false } or nil,
   }, function(a)
-    if a and a.add then
-      on_choice(nil, true)
+    if a and a.action then
+      on_choice(nil, a.action)
     else
       on_choice(a)
-    end
-  end)
-end
-
-local function ask_name()
-  vim.ui.input({ prompt = "Name of the new account: " }, function(name)
-    if name and vim.trim(name) ~= "" then
-      M.add(vim.trim(name))
     end
   end)
 end
@@ -290,13 +308,13 @@ function M.start(go)
   end
   pending = go
   vim.schedule(function()
-    M.show_picker("Claude starts with the account", nil, function(a, add)
+    M.show_picker("Claude starts with the account", nil, function(a, action)
       if a then
         M.switch(a.name)
       else
         M.stopped()
-        if add then
-          ask_name()
+        if action then
+          action()
         end
       end
     end)
@@ -315,12 +333,24 @@ local function same_sessions(a, b)
   return dir(a) == dir(b)
 end
 
+-- The account of this name, which has a login or is the default one. An
+-- unknown name gets a notice.
+---@param name string
+---@param list anvim.Account[]
+---@return anvim.Account?
+local function known(name, list)
+  local a = M.find(list, name)
+  if a and (a.login or a.name == "default") then
+    return a
+  end
+  transcript.notice("info", ("The account %s is unknown. The accounts are %s."):format(name, names(offered(list))))
+end
+
 ---@param name string
 function M.switch(name)
   local list = M.list()
-  local a = M.find(list, name)
-  if not (a and (a.login or a.name == "default")) then
-    transcript.notice("info", ("The account %s is unknown. The accounts are %s."):format(name, names(offered(list))))
+  local a = known(name, list)
+  if not a then
     return
   end
   if pending then
@@ -358,9 +388,9 @@ function M.switch(name)
 end
 
 function M.pick()
-  M.show_picker("Account", not pending and M.current() or nil, function(a, add)
-    if add then
-      ask_name()
+  M.show_picker("Account", not pending and M.current() or nil, function(a, action)
+    if action then
+      action()
     elseif a then
       M.switch(a.name)
     end
@@ -382,12 +412,36 @@ function M.link(dir)
   return linked
 end
 
--- Claude Code's auth login in a terminal float, with CLAUDE_CONFIG_DIR set
--- to dir. It opens in normal mode, and i types.
+-- What the user hears after a login, and the restart that gives Claude the
+-- new login of its account. The browser decides the login, so it can be
+-- another one than the email that the user gave.
+---@param a anvim.Account
+---@param email string?
+local function logged_in(a, email)
+  local done = ("The account %s logged in%s"):format(a.name, a.email and (" as " .. a.email) or "")
+  if email and a.email and email:lower() ~= a.email:lower() then
+    local again = "Sign out of claude.ai in the browser, then run /account login %s %s."
+    transcript.notice("warn", ("%s, not as %s. " .. again):format(done, email, a.name, email))
+  elseif pending or a.name ~= M.current() then
+    transcript.notice("info", ("%s. /account %s switches to it."):format(done, a.name))
+  elseif state.busy or #require("anvim.agents").running() > 0 then
+    transcript.notice("info", done .. ". Once Claude is done, <leader>cR restarts it with this login.")
+  else
+    transcript.notice("info", done .. ".")
+    state.email = nil
+    require("anvim.statusline").refresh()
+    require("anvim.sessions").restart("Restarting Claude with this login")
+  end
+end
+
+-- Claude Code's auth login in a terminal float, for the account in dir. It
+-- opens in normal mode, and i types.
 ---@param name string
----@param dir string
----@param cmd? string[] The login command, the bundled binary's by default.
-function M.login(name, dir, cmd)
+---@param dir string? Nil for the default account.
+---@param opts? { email: string?, cmd: string[]? } The email that the login page starts with, and the login command, the bundled binary's by default.
+function M.login(name, dir, opts)
+  opts = opts or {}
+  local cmd = opts.cmd
   if not cmd then
     local claude = sidecar.claude()
     if not claude then
@@ -395,6 +449,13 @@ function M.login(name, dir, cmd)
       return
     end
     cmd = { claude, "auth", "login" }
+    if opts.email then
+      vim.list_extend(cmd, { "--email", opts.email })
+    end
+  end
+  -- jobstart() cannot unset a variable.
+  if not dir then
+    cmd = vim.list_extend({ "env", "-u", "CLAUDE_CONFIG_DIR" }, cmd)
   end
   -- The prompt's <CR> sent /account from insert mode. In a terminal, it would go on to terminal mode.
   vim.cmd.stopinsert()
@@ -420,24 +481,17 @@ function M.login(name, dir, cmd)
   local ok, err = pcall(api.nvim_win_call, win.win, function()
     job = vim.fn.jobstart(cmd, {
       term = true,
-      env = { CLAUDE_CONFIG_DIR = dir },
+      env = dir and { CLAUDE_CONFIG_DIR = dir } or nil,
       on_exit = function(_, code)
         vim.schedule(function()
+          local a = account(name, dir)
           -- A login that failed or wrote nothing keeps its output on screen.
-          if closed or code ~= 0 or not account(name, dir).login then
+          if closed or code ~= 0 or not a.login then
             return
           end
           closed = true
           win:close()
-          local email = account(name, dir).email
-          transcript.notice(
-            "info",
-            ("The account %s logged in%s. /account %s switches to it."):format(
-              name,
-              email and (" as " .. email) or "",
-              name
-            )
-          )
+          logged_in(a, opts.email)
         end)
       end,
     })
@@ -466,7 +520,14 @@ function M.add(name)
   end
   local dir = M.home .. "/.claude-" .. name
   if account(name, dir).login then
-    transcript.notice("info", ("~/.claude-%s already has a login. /account %s switches to it."):format(name, name))
+    transcript.notice(
+      "info",
+      ("~/.claude-%s already has a login. /account %s switches to it, and /account login %s signs in again."):format(
+        name,
+        name,
+        name
+      )
+    )
     return
   end
   local share = "Share settings, instructions, skills and sessions with ~/.claude (recommended)"
@@ -485,7 +546,47 @@ function M.add(name)
   end)
 end
 
--- /account, /account <name> and /account add [name].
+-- Signs in again to an account, such as when its login has expired or holds
+-- another login than it should. The email asks the login page for that login.
+---@param name string
+---@param email string?
+function M.sign_in(name, email)
+  local a = known(name, M.list())
+  if not a then
+    return
+  end
+  if email then
+    M.login(a.name, a.dir, { email = email })
+    return
+  end
+  vim.ui.input({ prompt = ("Email for the account %s: "):format(a.name), default = a.email }, function(text)
+    if not text then
+      return
+    end
+    text = vim.trim(text)
+    -- An input ends insert mode after it closes, as a picker does.
+    vim.schedule(function()
+      M.login(a.name, a.dir, { email = text ~= "" and text or nil })
+    end)
+  end)
+end
+
+-- Claude Code says that the login failed, and that `claude auth login` signs
+-- in again. In a terminal, that command signs in the default account.
+local function failed()
+  local a = not config.options.replay and M.find(M.list(), M.current())
+  if a and a.login then
+    local email = a.email and (" (%s)"):format(a.email) or ""
+    transcript.notice("info", ("This is the account %s%s. /account login signs in again."):format(a.name, email))
+  end
+end
+
+function M.attach()
+  sidecar.on("login_failed", failed)
+end
+
+-- /account, /account <name>, /account add [name] and
+-- /account login [name] [email].
 ---@param arg string
 function M.command(arg)
   if config.options.replay then
@@ -497,6 +598,13 @@ function M.command(arg)
     M.add(name)
   elseif arg == "add" then
     ask_name()
+  elseif arg == "login" or arg:find("^login%s") then
+    local words = vim.split(arg, "%s+", { trimempty = true })
+    if words[2] or not pending then
+      M.sign_in(words[2] or M.current(), words[3])
+    else
+      ask_login()
+    end
   elseif arg ~= "" then
     M.switch(arg)
   else

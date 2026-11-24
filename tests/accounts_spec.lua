@@ -136,6 +136,55 @@ describe("accounts", function()
     assert.are.same(home .. "/.claude-personal", started)
   end)
 
+  it("signs in again to an account's own config dir, and restarts Claude only into the right login", function()
+    local config = require("anvim.config")
+    local replay, jobstart, claude, restart = config.options.replay, vim.fn.jobstart, sidecar.claude, sessions.restart
+    local jobs, restarts = {}, 0
+    vim.fn.jobstart = function(cmd, opts)
+      jobs[#jobs + 1] = { cmd = cmd, env = opts.env, exit = opts.on_exit }
+      return 0
+    end
+    sidecar.claude = function()
+      return "claude"
+    end
+    sessions.restart = function()
+      restarts = restarts + 1
+    end
+    config.options.replay = nil
+    vim.env.CLAUDE_CONFIG_DIR = home .. "/.claude-personal"
+    local function login(name, email, notice)
+      accounts.sign_in(name, email)
+      local job = jobs[#jobs]
+      job.exit(0, 0)
+      vim.wait(1000, function()
+        return table.concat(helpers.buf_lines(transcript.buf()), "\n"):find(notice, 1, true) ~= nil
+      end)
+      helpers.contains(helpers.buf_lines(transcript.buf()), vim.pesc(notice))
+      return job
+    end
+    local ok, err = pcall(function()
+      helpers.fresh()
+      sidecar.dispatch({ type = "login_failed" })
+      local hint = "This is the account personal (me@home.com). /account login signs in again."
+      helpers.contains(helpers.buf_lines(transcript.buf()), vim.pesc(hint))
+
+      -- The default account has no CLAUDE_CONFIG_DIR, also while another account runs.
+      local job = login("default", "me@work.com", "logged in as me@work.com. /account default switches to it.")
+      assert.are.same(
+        { "env", "-u", "CLAUDE_CONFIG_DIR", "claude", "auth", "login", "--email", "me@work.com" },
+        job.cmd
+      )
+      assert.is_nil(job.env)
+      login("personal", "you@home.com", "logged in as me@home.com, not as you@home.com.")
+      assert.are.same(0, restarts)
+      job = login("personal", "me@home.com", "The account personal logged in as me@home.com.")
+      assert.are.same({ CLAUDE_CONFIG_DIR = home .. "/.claude-personal" }, job.env)
+      assert.are.same(1, restarts)
+    end)
+    config.options.replay, vim.fn.jobstart, sidecar.claude, sessions.restart = replay, jobstart, claude, restart
+    assert(ok, err)
+  end)
+
   it("links what ~/.claude shares, and never over what the new dir has", function()
     local dir = home .. "/.claude-new"
     vim.fn.mkdir(dir, "p")

@@ -345,6 +345,7 @@ export class Translator {
     if (failed) {
       const text = synthetic ? resultText(m.message.content).trim() : "";
       out.push({ type: "notice", level: "error", text: truncate(text || String(m.error ?? "API error")) });
+      if (main && m.error === "authentication_failed") out.push({ type: "login_failed" });
     }
   }
 

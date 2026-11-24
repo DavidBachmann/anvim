@@ -392,7 +392,7 @@ M.places = {
       { { "q", "<Esc>" }, "Close the window" },
     },
   },
-  -- Claude Code's login of a new account, in a terminal.
+  -- Claude Code's login of an account, in a terminal.
   {
     id = "login",
     name = "Account login",

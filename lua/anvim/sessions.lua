@@ -646,7 +646,11 @@ local own_commands = {
   { name = "away", description = "Away mode until your next message: no request waits for you, except a plan" },
   { name = "held", description = "Show the calls and questions that anvim held for you" },
   { name = "tasks", description = "Show the background tasks and the scheduled prompts" },
-  { name = "account", description = "Switch the Claude account, or add one", argument_hint = "[<name>|add <name>]" },
+  {
+    name = "account",
+    description = "Switch the Claude account, sign in again, or add one",
+    argument_hint = "[<name>|login [<name> [<email>]]|add <name>]",
+  },
   { name = "codex-model", description = "Set the model of Codex agents", argument_hint = "[<model>|default]" },
   {
     name = "codex-effort",

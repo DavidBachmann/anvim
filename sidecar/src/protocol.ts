@@ -403,6 +403,9 @@ export type Event =
   | { type: "prompt_state"; id: string; state: string }
   // The email of Claude Code's login, at start.
   | { type: "account"; email?: string }
+  // Claude Code's login failed, such as when it expired. It comes after the
+  // notice with Claude Code's own text.
+  | { type: "login_failed" }
   // The plan's 5-hour and weekly usage in percent, at start and after each
   // turn. Both are absent for a login without plan limits, such as an API key.
   | { type: "limits"; session?: number; week?: number }

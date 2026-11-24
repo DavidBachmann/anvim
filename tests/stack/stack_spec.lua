@@ -942,7 +942,7 @@ describe("stack", function()
       snap("tasks", "tasks", vim.api.nvim_get_current_buf())
       require("anvim.tasks").close()
       sidecar.dispatch({ type = "tasks", tasks = {} })
-      local login = require("anvim.accounts").login("keys", vim.fn.tempname(), { "sh", "-c", "read x" })
+      local login = require("anvim.accounts").login("keys", vim.fn.tempname(), { cmd = { "sh", "-c", "read x" } })
       snap("login", "login", login.buf)
       login:close()
       -- The prompt has the choice keys while a request waits.
@@ -1347,7 +1347,7 @@ describe("stack", function()
     vim.fn.setfperm(stub, "rwxr-xr-x")
     lua([[require("anvim.layout").focus_input()]])
     wait_where({ win = "input", mode = "i" }, "the prompt")
-    lua([[require("anvim.accounts").login("new", ...)]], dir, { stub })
+    lua([[require("anvim.accounts").login("new", ...)]], dir, { cmd = { stub } })
     wait(
       5000,
       [[return table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n"):find("Paste code") ~= nil]],
@@ -1363,7 +1363,7 @@ describe("stack", function()
 
     local id = lua(
       [[
-      local win = require("anvim.accounts").login("new", ..., { "sh", "-c", "sleep 30" })
+      local win = require("anvim.accounts").login("new", ..., { cmd = { "sh", "-c", "sleep 30" } })
       return vim.b[win.buf].terminal_job_id
     ]],
       dir

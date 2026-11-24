@@ -166,12 +166,15 @@ describe("Translator", () => {
       failed([{ type: "text", text: refused }], { error: "server_error" }),
       failed([], { error: "server_error" }),
       failed([{ type: "text", text: "The model's tool call could not be parsed (retry also failed)." }], {}),
+      failed([{ type: "text", text: "Failed to authenticate" }], { error: "authentication_failed" }),
     ]);
     expect(events).toEqual([
       { type: "turn_start" },
       { type: "notice", level: "error", text: refused },
       { type: "notice", level: "error", text: "server_error" },
       { type: "notice", level: "error", text: "The model's tool call could not be parsed (retry also failed)." },
+      { type: "notice", level: "error", text: "Failed to authenticate" },
+      { type: "login_failed" },
     ]);
   });
 
