@@ -64,17 +64,17 @@ A subagent's guarded call never asks, so a task cannot hang on a prompt while yo
 
 ## Away mode
 
-`/away` tells anvim that you are gone, and `/away` again that you are back. While you are away, no request waits for you, except a plan's approval:
+`/away` tells anvim that you are gone. Your next message to Claude tells it that you are back, and so does `/away` again. Give Claude its task first, then type `/away`. While you are away, no request waits for you, except a plan's approval:
 
 - A call that would ask you, guarded or not, is [held](#held-calls).
 - A question from Claude gets no prompt. Claude chooses the option that it would recommend, tells you which one, and goes on. The question goes on the held list.
 - A plan's approval waits for you as usual.
 
-Turning away mode on answers the requests that are open at that moment, except a plan's. Claude hears of each switch once, with its next tool call or prompt. While away, Claude is told to take the next step when it is clear, instead of ending its turn with a question.
+Turning away mode on answers the requests that are open at that moment, except a plan's. Claude hears of each switch once, with its next tool call or prompt. A message that you send never says that you are away. If Claude heard that you were, the message says that you are back. While away, Claude is told to take the next step when it is clear, instead of ending its turn with a question.
 
 A request that waits 10 minutes turns away mode on as `/away` does, and the transcript says so. Set `away_after` in a personal spec to change the minutes; `0` or `false` turns this off. The statusline shows a blue `zZz [/away]` after the login's email while you are away. A restart of Claude keeps the state, and a new anvim starts with you present.
 
-When you turn away mode off, one line in the transcript counts what waited, such as “While you were away, anvim held 7 calls, and Claude answered 2 questions itself. /held shows them.”
+When away mode ends, one line in the transcript counts what waited, such as “While you were away, anvim held 7 calls, and Claude answered 2 questions itself. /held shows them.”
 
 <a id="held-calls"></a>
 
@@ -82,7 +82,7 @@ When you turn away mode off, one line in the transcript counts what waited, such
 
 anvim denies a held call in place of a prompt, and Claude reads why. The call's line in the transcript, or in a subagent's log, says “Held for the user”, and `anvim.log` records it with `held:`. The held list keeps every held call and question while anvim runs. Nothing in it needs dismissing. While it has entries that you have not seen, the statusline shows `N held [/held]`.
 
-`/held` opens the list, newest first, and marks every entry as seen. Turning away mode off does that too. A row shows the time, the agent, the call's description or target, and the reason. Repeats of the same call by the same agent share one row with a count, such as `×4`. Seen entries are dimmed. `Enter` puts the entry under the cursor, or the selected entries, in the prompt as text that asks Claude to run the call again if it is still needed. Edit it and send it: Claude runs the call, which asks you live. anvim never runs a held call itself.
+`/held` opens the list, newest first, and marks every entry as seen. The end of away mode does that too. A row shows the time, the agent, the call's description or target, and the reason. Repeats of the same call by the same agent share one row with a count, such as `×4`. Seen entries are dimmed. `Enter` puts the entry under the cursor, or the selected entries, in the prompt as text that asks Claude to run the call again if it is still needed. Edit it and send it: Claude runs the call, which asks you live. anvim never runs a held call itself.
 
 ### Browser actions
 

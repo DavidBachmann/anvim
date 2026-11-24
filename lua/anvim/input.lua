@@ -395,6 +395,9 @@ end
 ---@param seen? string What the user sees and <Up> takes back, such as /reset for its /clear.
 ---@return string id
 function M.send(text, seen)
+  -- A message means that the user is back. The sidecar must hear it first, or
+  -- the message would carry the notice that the user is away.
+  require("anvim.away").set(false)
   local id = uuid()
   -- While Claude works, the prompt waits under the box. In the transcript, it
   -- would split the reply that streams in.

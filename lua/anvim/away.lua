@@ -345,7 +345,9 @@ function M.attach()
     local after = tonumber(ev.after) or M.after()
     transcript.notice(
       "info",
-      ("anvim turned away on, because a request waited %s. /away turns it off."):format(plural(after, "minute"))
+      ("anvim turned away on, because a request waited %s. Your next message turns it off."):format(
+        plural(after, "minute")
+      )
     )
     refresh()
   end)

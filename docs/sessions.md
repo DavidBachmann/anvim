@@ -12,7 +12,7 @@ Choosing a session restarts Claude and reconstructs its transcript. If Claude Co
 
 ## Start over
 
-`/clear` starts a new session, and the view starts over with it. anvim clears the transcript, the agents, the code window's tabs, the `<leader>cf` file list and the `<leader>ct` trail. Claude's count of send-backs starts again, and Codex runs stop. Away mode and the held list stay. The code window keeps its file, and the prompt history stays.
+`/clear` starts a new session, and the view starts over with it. anvim clears the transcript, the agents, the code window's tabs, the `<leader>cf` file list and the `<leader>ct` trail. Claude's count of send-backs starts again, and Codex runs stop. Away mode ends, as with each message, and the held list stays. The code window keeps its file, and the prompt history stays.
 
 `/clear` and its alias `/new` keep the [todo list](todos.md). `/reset` does what `/clear` does and also starts a new, empty list. Claude can still change the old list until the clear takes effect, which waits for a running turn to end. `/undo-reset` brings the old list back.
 
@@ -94,7 +94,7 @@ When Claude in Chrome or Safari is on but its extension is not connected, the st
 
 ## Away mode
 
-`/away` turns [away mode](permissions.md#away) on, and `/away` again turns it off. While you are away, no request waits for you, except a plan's approval. `/held` lists the calls and questions that anvim [held](permissions.md#held-calls) for you, newest first.
+`/away` turns [away mode](permissions.md#away) on. Your next message to Claude, or `/away` again, turns it off. While you are away, no request waits for you, except a plan's approval. `/held` lists the calls and questions that anvim [held](permissions.md#held-calls) for you, newest first.
 
 ## Background tasks
 

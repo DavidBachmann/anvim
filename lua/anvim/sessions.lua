@@ -643,7 +643,7 @@ local own_commands = {
     argument_hint = "[reconnect|enable|disable [<server>|all]]",
   },
   { name = "chrome", description = "Open Claude in Chrome settings" },
-  { name = "away", description = "Toggle away mode: no request waits for you, except a plan" },
+  { name = "away", description = "Away mode until your next message: no request waits for you, except a plan" },
   { name = "held", description = "Show the calls and questions that anvim held for you" },
   { name = "tasks", description = "Show the background tasks and the scheduled prompts" },
   { name = "account", description = "Switch the Claude account, or add one", argument_hint = "[<name>|add <name>]" },
